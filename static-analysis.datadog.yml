@@ -1,0 +1,16 @@
+schema-version: v1
+rulesets:
+- tsx-react
+- typescript-best-practices:
+  rules:
+    no-console:
+      ignore:
+      - '**'
+    boolean-prop-naming:
+      ignore:
+      - '**'
+- typescript-browser-security
+- typescript-common-security
+- typescript-express
+- typescript-inclusive
+- typescript-node-security

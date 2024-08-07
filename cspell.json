@@ -1,0 +1,60 @@
+{
+  // Version of the setting file.  Always 0.2
+  "version": "0.2",
+  /**
+   * These are prebuilt dictionaries for cspell.
+   */
+  "dictionaries": [
+    "en_US",
+    "companies",
+    "typescript",
+    "softwareTerms",
+    "bash",
+    "css",
+    "html",
+    "node",
+    "npm",
+    "filetypes",
+    "fonts"
+  ],
+  // language - current active spelling language
+  "language": "en",
+  // words - list of words to be always considered correct
+  "words": [
+    "ddsource",
+    "ddtags",
+    "lockb",
+    "rizzardi",
+    "yinz",
+    "yinzer",
+    "yinzerflow",
+    "yinzjs"
+  ],
+  /**
+   * flagWords - list of words to be always considered incorrect
+   * This is useful for offensive words and common spelling errors.
+   * For example "hte" should be "the"
+   */
+  "flagWords": [
+    ""
+  ],
+  /**
+   * ignorePaths - list of glob patterns to ignore files
+   * This is useful for ignoring files that are not source code.   *
+   * We are using the --gitignore flag so this is not needed we
+   * only need to ignore stuff not in gitignore
+   */
+  "ignorePaths": [
+    "bun.lockb"
+  ],
+  /**
+   * useGitignore - use .gitignore file(s) to exclude files and folders
+   */
+  "useGitignore": true,
+  /**
+   * Compound words are words that are built by combining two or more words.
+   * For example: "spellchecker" is a compound word and by default cspell considers this
+   * to be two words "spell" and "checker" so it will fail
+   */
+  "allowCompoundWords": true
+}

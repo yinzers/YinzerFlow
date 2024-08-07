@@ -1,0 +1,57 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "NodeNext",
+    "lib": ["ESNext"],
+    "skipLibCheck": true,
+    "types": ["bun-types"],
+
+    /* Bundler mode */
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "alwaysStrict": true,
+    "declaration": true,
+    "outDir": "dist",
+    "declarationDir": "dist",
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "utils/*": ["./app/utils/*"],
+      "config/*": ["./app/config/*"],
+      "root/*": ["./app/*"],
+      "example/*": ["./example/*"]
+    },
+    "sourceMap": false,
+    "removeComments": true,
+    "declarationMap": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowSyntheticDefaultImports": true,
+    "allowJs": false,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noImplicitOverride": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "strictBindCallApply": true
+  },
+  "include": ["**/*"]
+}

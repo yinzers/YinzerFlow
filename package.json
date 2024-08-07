@@ -1,0 +1,63 @@
+{
+  "name": "yinzerflow",
+  "version": "0.1.1",
+  "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
+  "license": "MIT",
+  "homepage": "https://github.com/yinzers/YinzerFlow.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yinzers/YinzerFlow.git"
+  },
+  "description": "A simple, fast, and lightweight web framework for Node and Bun",
+  "keywords": [
+    "http",
+    "rest",
+    "server",
+    "router",
+    "app",
+    "api",
+    "web",
+    "framework",
+    "node",
+    "bun",
+    "yinzerflow"
+  ],
+  "types": "index.d.ts",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "bun test --watch",
+    "test:production": "bun test --timeout 20 --rerun-each 10 --bail 10",
+    "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
+    "build": "bun clean; bun build.ts",
+    "start": "bun --watch example/typescript/index.ts",
+    "lint": "eslint . --fix --quiet --color --cache",
+    "lint:format": "prettier --check .",
+    "lint:spelling": "cspell . --no-progress --unique",
+    "lint:size": "gzip-size lib/index.js --include-original",
+    "format": "prettier --write app"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.12",
+    "ip": "^2.0.1"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^1.1.1",
+    "@types/ip": "^1.1.3",
+    "bun-plugin-dts": "^0.2.3",
+    "bun-types": "^1.0.3",
+    "cspell": "^6.31.2",
+    "eslint": "^9.6.0",
+    "eslint-import-resolver-typescript": "^3.6.1",
+    "eslint-plugin-import": "^2.29.1",
+    "globals": "^15.8.0",
+    "gzip-size-cli": "^5.1.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.1.6",
+    "typescript-eslint": "^7.16.0",
+    "yinzerflow": "^0.1.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
