@@ -1,4 +1,4 @@
-import { YinzerFlow } from 'yinzerflow';
+import { YinzerFlow, HttpStatusCode } from 'yinzerflow';
 
 const app = new YinzerFlow();
 
@@ -7,13 +7,13 @@ export default [
     '/register',
     ({ response }) => {
       // Register user
-      response.setStatus(201);
+      response.setStatus(HttpStatusCode.CREATED);
       return { success: true, message: 'User registered' };
     },
     {
       beforeHandler: ({ response }) => {
         // Some validation
-        response.setStatus(400);
+        response.setStatus(HttpStatusCode.BAD_REQUEST);
         return { success: false, message: 'Invalid request' };
       },
     },

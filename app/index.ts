@@ -6,10 +6,14 @@ import type { TResponseBody } from 'root/HttpResponse.ts';
 import HttpResponse, { HttpStatusCode } from 'root/HttpResponse.ts';
 import { Context } from 'root/Context.utils.ts';
 
+// TODO - Write tests for this file
+
 export type Enum<T> = T[keyof T];
 
 type TResponseFunction = (ctx: Context) => TResponseBody<unknown>;
-type TUndefinableResponseFunction = TResponseFunction | undefined;
+type TUndefinableResponseFunction = TResponseFunction | ((ctx: Context) => void);
+
+type TErrorFunction = ((ctx: Context, error: unknown) => TResponseBody<unknown>) | ((ctx: Context, error: unknown) => void);
 
 export interface IRoute {
   path: string;
@@ -49,8 +53,19 @@ class YinzerFlow {
 
   private readonly middleware: Array<TMiddleware> = [];
 
-  constructor(options?: { port: number }) {
-    if (options && options.port) this.port = options.port;
+  private readonly errorHandler: TErrorFunction = ({ response }, error): TResponseBody<unknown> => {
+    console.error('Server error: \n', error);
+    response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR);
+    return { success: false, message: 'Internal server error' };
+  };
+
+  constructor(options?: { port?: number; errorHandler?: TErrorFunction }) {
+    if (options) {
+      if (options.port) this.port = options.port;
+      if (options.errorHandler) {
+        this.errorHandler = options.errorHandler;
+      }
+    }
   }
 
   /* eslint-disable-next-line @typescript-eslint/no-invalid-void-type */
@@ -241,15 +256,26 @@ class YinzerFlow {
     server.on('connection', (socket) => {
       socket.on('data', (buffer) => {
         const request = new HttpRequest(buffer.toString());
-        const response = this._handleRequest(request);
+        try {
+          const response = this._handleRequest(request);
 
-        socket.write(response.formatHttpResponse());
-        socket.end();
+          socket.write(response.formatHttpResponse());
+          socket.end();
+        } catch (error) {
+          const ctx = new Context(request, new HttpResponse(request));
+          ctx.response.setBody(this.errorHandler(ctx, error));
+          socket.write(ctx.response.formatHttpResponse());
+          socket.end();
+        }
+      });
+
+      socket.on('error', (error) => {
+        console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
       });
     });
 
     server.on('error', (error) => {
-      console.error(error);
+      console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
     });
   }
 }

@@ -207,7 +207,6 @@ export default class HttpResponse {
     this.statusCode = HttpStatusCode.OK;
     this.status = HttpStatus.OK;
     this.headers = {
-      Server: 'YinzerFlow',
       Date: dayjs().format('ddd, DD MMM YYYY HH:mm:ss [GMT]'),
       Connection: 'keep-alive',
       'Keep-Alive': 'timeout=5, max=1000',
@@ -274,6 +273,7 @@ export default class HttpResponse {
 
     if (typeof body === 'string' && body.includes('<html>')) {
       this.addHeaders([{ 'Content-Type': 'text/html', 'Content-Length': String(calculateContentLength(body)) }]);
+      return void 0;
     }
 
     if (typeof body === 'string') {

@@ -30,7 +30,7 @@
     "test:production": "bun test --timeout 20 --rerun-each 10 --bail 10",
     "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
     "build": "bun clean; bun build.ts",
-    "start": "bun --watch example/typescript/index.ts",
+    "start": "bun --watch local/index.ts",
     "lint": "eslint . --fix --quiet --color --cache",
     "lint:format": "prettier --check .",
     "lint:spelling": "cspell . --no-progress --unique",
