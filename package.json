@@ -1,6 +1,6 @@
 {
   "name": "yinzerflow",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
   "license": "MIT",
   "homepage": "https://github.com/yinzers/YinzerFlow.git",
@@ -55,7 +55,7 @@
     "prettier": "^3.3.3",
     "typescript": "^5.1.6",
     "typescript-eslint": "^8.0.1",
-    "yinzerflow": "^0.1.0"
+    "yinzerflow": "^0.1.4"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

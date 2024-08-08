@@ -1,7 +1,7 @@
-import type { IRequest } from 'root/HttpRequest.ts';
+import type { IRequest, TRequestBody } from 'root/HttpRequest.ts';
 
-export default (path: IRequest['path']): IRequest['query'] => {
-  const parsedQuery: IRequest['query'] = {};
+export default (path: IRequest['path']): TRequestBody => {
+  const parsedQuery: TRequestBody<Record<string, unknown>> = {};
   const queryIndex = path.indexOf('?');
 
   if (queryIndex === -1) return parsedQuery;

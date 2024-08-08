@@ -1,9 +1,9 @@
-import type { IRequest } from 'root/HttpRequest.ts';
+import type { IRequest, TRequestBody } from 'root/HttpRequest.ts';
 
-export default (headers: IRequest['headers'], body: string): IRequest['body'] => {
+export default (headers: IRequest['headers'], body: string): TRequestBody => {
   if (!headers['Content-Type']) throw new Error('Missing Content-Type header');
 
-  let parsedBody: IRequest['body'] = {};
+  let parsedBody: TRequestBody = {};
   if (headers['Content-Type'] === 'application/json') parsedBody = handleApplicationJson(body);
 
   if (headers['Content-Type'] === 'application/x-www-form-urlencoded') parsedBody = handleXwwwFormUrlencoded(body);
@@ -13,16 +13,16 @@ export default (headers: IRequest['headers'], body: string): IRequest['body'] =>
   return parsedBody;
 };
 
-const handleApplicationJson = (body: string): IRequest['body'] => {
+const handleApplicationJson = (body: string): TRequestBody => {
   try {
-    return <IRequest['body']>JSON.parse(body);
+    return <TRequestBody>JSON.parse(body);
   } catch (_error) {
     throw new Error('Invalid body');
   }
 };
 
-const handleXwwwFormUrlencoded = (body: string): IRequest['body'] => {
-  const parsedBody: IRequest['body'] = {};
+const handleXwwwFormUrlencoded = (body: string): TRequestBody => {
+  const parsedBody: TRequestBody<Record<string, unknown>> = {};
 
   for (const pair of body.split('&')) {
     if (!pair) continue;
@@ -34,7 +34,7 @@ const handleXwwwFormUrlencoded = (body: string): IRequest['body'] => {
   return parsedBody;
 };
 
-const handleMultipartFormData = (body: string): IRequest['body'] => {
+const handleMultipartFormData = (body: string): TRequestBody => {
   const parsedBody = {};
 
   if (body.includes('Content-Type')) throw new Error('Body type not supported yet');
