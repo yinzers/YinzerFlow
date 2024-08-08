@@ -8,6 +8,7 @@ import { Context } from 'root/Context.utils.ts';
 
 // TODO - Write tests for this file
 
+// TODO - Write automation to ensure the version is updated in the package.json file before publishing
 // TODO - Write automation to publish to npm and also create a release in GitHub
 
 export type Enum<T> = T[keyof T];
