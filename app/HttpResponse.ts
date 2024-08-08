@@ -34,7 +34,7 @@ export const HttpStatusCode = <const>{
 
 export type THttpStatusCode = Enum<typeof HttpStatusCode>;
 
-interface IHeaders {
+export interface IHeaders {
   /* eslint-disable @typescript-eslint/naming-convention */
   /** ======================================== Authentication ============================================ */
   /**

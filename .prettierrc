@@ -10,5 +10,8 @@
   "htmlWhitespaceSensitivity": "css",
   "vueIndentScriptAndStyle": true,
   "embeddedLanguageFormatting": "auto",
-  "singleAttributePerLine": true
+  "singleAttributePerLine": true,
+  "experimentalTernaries": true,
+  "parser": "typescript",
+  "endOfLine": "lf"
 }

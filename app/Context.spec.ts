@@ -15,12 +15,10 @@ describe('Context', () => {
       protocol: 'HTTP/1.1',
       method: 'GET',
       path: '/',
-      headers: [
-        { key: 'Host', value: 'localhost:5000' },
-        { key: 'User-Agent', value: 'curl/7.64.1' },
-        { key: 'Accept', value: '*/*' },
-      ],
-      body: undefined,
+      headers: { Host: 'localhost:5000', 'User-Agent': 'curl/7.64.1', Accept: '*/*' },
+      body: {},
+      query: {},
+      params: {},
     });
 
     expect(response).toMatchObject({

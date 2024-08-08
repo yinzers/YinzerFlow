@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'bun:test';
 import HttpRequest from 'root/HttpRequest.ts';
 
@@ -22,12 +23,8 @@ describe('HttpRequest', () => {
     expect(httpRequest.protocol).toBe('HTTP/1.1');
     expect(httpRequest.method).toBe('GET');
     expect(httpRequest.path).toBe('/');
-    expect(httpRequest.headers).toEqual([
-      { key: 'Host', value: 'localhost:5000' },
-      { key: 'User-Agent', value: 'curl/7.64.1' },
-      { key: 'Accept', value: '*/*' },
-    ]);
-    expect(httpRequest.body).toBe(undefined);
+    expect(httpRequest.headers).toEqual({ Host: 'localhost:5000', 'User-Agent': 'curl/7.64.1', Accept: '*/*' });
+    expect(httpRequest.body).toEqual({});
   });
 
   it('should parse a valid POST request', () => {
@@ -37,14 +34,14 @@ describe('HttpRequest', () => {
     expect(httpRequest.protocol).toBe('HTTP/1.1');
     expect(httpRequest.method).toBe('POST');
     expect(httpRequest.path).toBe('/');
-    expect(httpRequest.headers).toEqual([
-      { key: 'Host', value: 'localhost:5000' },
-      { key: 'User-Agent', value: 'curl/7.64.1' },
-      { key: 'Accept', value: '*/*' },
-      { key: 'Content-Length', value: '11' },
-      { key: 'Content-Type', value: 'application/json' },
-    ]);
-    expect(httpRequest.body).toBe('{"key":"value"}');
+    expect(httpRequest.headers).toEqual({
+      Host: 'localhost:5000',
+      'User-Agent': 'curl/7.64.1',
+      Accept: '*/*',
+      'Content-Length': '11',
+      'Content-Type': 'application/json',
+    });
+    expect(httpRequest.body).toEqual({ key: 'value' });
   });
 
   it('should parse a valid PATCH request', () => {
@@ -54,14 +51,14 @@ describe('HttpRequest', () => {
     expect(httpRequest.protocol).toBe('HTTP/1.1');
     expect(httpRequest.method).toBe('PATCH');
     expect(httpRequest.path).toBe('/');
-    expect(httpRequest.headers).toEqual([
-      { key: 'Host', value: 'localhost:5000' },
-      { key: 'User-Agent', value: 'curl/7.64.1' },
-      { key: 'Accept', value: '*/*' },
-      { key: 'Content-Length', value: '11' },
-      { key: 'Content-Type', value: 'application/json' },
-    ]);
-    expect(httpRequest.body).toBe('{"key":"value"}');
+    expect(httpRequest.headers).toEqual({
+      Host: 'localhost:5000',
+      'User-Agent': 'curl/7.64.1',
+      Accept: '*/*',
+      'Content-Length': '11',
+      'Content-Type': 'application/json',
+    });
+    expect(httpRequest.body).toEqual({ key: 'value' });
   });
 
   it('should parse a valid PUT request', () => {
@@ -71,14 +68,14 @@ describe('HttpRequest', () => {
     expect(httpRequest.protocol).toBe('HTTP/1.1');
     expect(httpRequest.method).toBe('PUT');
     expect(httpRequest.path).toBe('/');
-    expect(httpRequest.headers).toEqual([
-      { key: 'Host', value: 'localhost:5000' },
-      { key: 'User-Agent', value: 'curl/7.64.1' },
-      { key: 'Accept', value: '*/*' },
-      { key: 'Content-Length', value: '11' },
-      { key: 'Content-Type', value: 'application/json' },
-    ]);
-    expect(httpRequest.body).toBe('{"key":"value"}');
+    expect(httpRequest.headers).toEqual({
+      Host: 'localhost:5000',
+      'User-Agent': 'curl/7.64.1',
+      Accept: '*/*',
+      'Content-Length': '11',
+      'Content-Type': 'application/json',
+    });
+    expect(httpRequest.body).toEqual({ key: 'value' });
   });
 
   it('should parse a valid DELETE request', () => {
@@ -88,14 +85,14 @@ describe('HttpRequest', () => {
     expect(httpRequest.protocol).toBe('HTTP/1.1');
     expect(httpRequest.method).toBe('DELETE');
     expect(httpRequest.path).toBe('/');
-    expect(httpRequest.headers).toEqual([
-      { key: 'Host', value: 'localhost:5000' },
-      { key: 'User-Agent', value: 'curl/7.64.1' },
-      { key: 'Accept', value: '*/*' },
-      { key: 'Content-Length', value: '11' },
-      { key: 'Content-Type', value: 'application/json' },
-    ]);
-    expect(httpRequest.body).toBe('{"key":"value"}');
+    expect(httpRequest.headers).toEqual({
+      Host: 'localhost:5000',
+      'User-Agent': 'curl/7.64.1',
+      Accept: '*/*',
+      'Content-Length': '11',
+      'Content-Type': 'application/json',
+    });
+    expect(httpRequest.body).toEqual({ key: 'value' });
   });
 
   it('should parse a valid OPTIONS request', () => {
@@ -105,13 +102,43 @@ describe('HttpRequest', () => {
     expect(httpRequest.protocol).toBe('HTTP/1.1');
     expect(httpRequest.method).toBe('OPTIONS');
     expect(httpRequest.path).toBe('/');
-    expect(httpRequest.headers).toEqual([
-      { key: 'Host', value: 'localhost:5000' },
-      { key: 'User-Agent', value: 'curl/7.64.1' },
-      { key: 'Accept', value: '*/*' },
-      { key: 'Content-Length', value: '11' },
-      { key: 'Content-Type', value: 'application/json' },
-    ]);
-    expect(httpRequest.body).toBe('{"key":"value"}');
+    expect(httpRequest.headers).toEqual({
+      Host: 'localhost:5000',
+      'User-Agent': 'curl/7.64.1',
+      Accept: '*/*',
+      'Content-Length': '11',
+      'Content-Type': 'application/json',
+    });
+    expect(httpRequest.body).toEqual({ key: 'value' });
+  });
+
+  it('should parse a valid request with a query', () => {
+    const request = `GET /?key=value HTTP/1.1\r\nHost: localhost:5000\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\n\r\n`;
+    const httpRequest = new HttpRequest(request);
+
+    expect(httpRequest.protocol).toBe('HTTP/1.1');
+    expect(httpRequest.method).toBe('GET');
+    expect(httpRequest.path).toBe('/?key=value');
+    expect(httpRequest.headers).toEqual({ Host: 'localhost:5000', 'User-Agent': 'curl/7.64.1', Accept: '*/*' });
+    expect(httpRequest.body).toEqual({});
+    expect(httpRequest.query).toEqual({ key: 'value' });
+  });
+
+  it('should parse a valid request with params', () => {
+    const request = `GET /users/1/post/3 HTTP/1.1\r\nHost: localhost:5000\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\n\r\n`;
+    const httpRequest = new HttpRequest(request);
+
+    httpRequest.parseParams({
+      path: '/users/:id/post/:post',
+      handler: () => ({}),
+      method: 'GET',
+    });
+
+    expect(httpRequest.protocol).toBe('HTTP/1.1');
+    expect(httpRequest.method).toBe('GET');
+    expect(httpRequest.path).toBe('/users/1/post/3');
+    expect(httpRequest.headers).toEqual({ Host: 'localhost:5000', 'User-Agent': 'curl/7.64.1', Accept: '*/*' });
+    expect(httpRequest.body).toEqual({});
+    expect(httpRequest.params).toEqual({ id: '1', post: '3' });
   });
 });

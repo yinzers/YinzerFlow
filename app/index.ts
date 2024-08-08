@@ -113,7 +113,6 @@ class YinzerFlow {
     }
 
     if (route.beforeHandler) {
-      console.log('beforeHandler', route);
       result = route.beforeHandler(ctx);
       if (result) {
         /**
@@ -135,19 +134,8 @@ class YinzerFlow {
     return result;
   }
 
-  protected _handleRequest(request: HttpRequest): HttpResponse {
+  protected _handleRequest(request: HttpRequest, route: IRoute): HttpResponse {
     const ctx = new Context(request, new HttpResponse(request));
-
-    /**
-     * To speed up the response time we are going to ensure the route exists before worrying about any other logic.
-     */
-    const route = this._routes.find((r) => r.path === ctx.request.path && r.method === ctx.request.method);
-
-    if (!route) {
-      ctx.response.setStatus(HttpStatusCode.NOT_FOUND);
-      ctx.response.setBody('404 Not Found');
-      return ctx.response;
-    }
 
     let result = undefined;
 
@@ -260,7 +248,21 @@ class YinzerFlow {
       socket.on('data', (buffer) => {
         const request = new HttpRequest(buffer.toString());
         try {
-          const response = this._handleRequest(request);
+          const route = findRoute(request, this._routes);
+
+          if (!route) {
+            // TODO - Allow for a custom 404 handler to be defined
+            const ctx = new Context(request, new HttpResponse(request));
+            ctx.response.setStatus(HttpStatusCode.NOT_FOUND);
+            ctx.response.setBody({ success: false, message: 'Not found' });
+            socket.write(ctx.response.formatHttpResponse());
+            socket.end();
+            return;
+          }
+
+          request.parseParams(route);
+
+          const response = this._handleRequest(request, route);
 
           socket.write(response.formatHttpResponse());
           socket.end();
@@ -284,3 +286,29 @@ class YinzerFlow {
 }
 
 export { YinzerFlow, HttpStatusCode, HttpMethod };
+
+const findRoute = (request: HttpRequest, routes: Array<IRoute>): IRoute | undefined => {
+  /**
+   * To speed up the response time we are going to ensure the route exists before worrying about any other logic.
+   */
+  const route = routes.find((r) => r.path === request.path && r.method === request.method);
+  if (route) return route;
+
+  /**
+   * To save time we will only check for params if we don't find a route that matches exactly.
+   *
+   * It is possible for the route not to match exactly if the route has params in it.
+   * So we are going to check for that here and if we don't find a route we will return undefined
+   * and handle a 404 response in the listen method.
+   */
+  return routes.find((r) => {
+    const pathParts = r.path.split('/');
+    const requestPathParts = request.path.split('/');
+    if (pathParts.length !== requestPathParts.length) return false;
+    for (let i = 0; i < pathParts.length; i++) {
+      if (pathParts[i]?.startsWith(':')) continue;
+      if (pathParts[i] !== requestPathParts[i]) return false;
+    }
+    return true;
+  });
+};

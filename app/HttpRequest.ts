@@ -1,4 +1,10 @@
-import type { Enum } from 'root/index.ts';
+import type { IHeaders } from 'root/HttpResponse.ts';
+import type { Enum, IRoute } from 'root/index.ts';
+import divideStringUtils from 'utils/divideString.utils.ts';
+import parseRequestBodyUtils from 'utils/parseRequestBody.utils.ts';
+import parseRequestHeadersUtils from 'utils/parseRequestHeaders.utils.ts';
+import parseRequestParamsUtils from 'utils/parseRequestParams.utils.ts';
+import parseRequestQueryUtils from 'utils/parseRequestQuery.utils.ts';
 
 export const HttpMethod = <const>{
   DELETE: 'DELETE',
@@ -11,12 +17,20 @@ export const HttpMethod = <const>{
 };
 export type THttpMethod = Enum<typeof HttpMethod>;
 
-interface IRequest {
+export type TRequestBody<T = unknown> = Record<string, T>;
+export type TRequestQuery<T = unknown> = Record<string, T>;
+export type TRequestParams<T = unknown> = Record<string, T>;
+
+export interface IRequest {
   protocol: string;
   method: THttpMethod;
   path: string;
-  headers: Array<Record<string, string>>;
-  body?: string;
+  headers: IHeaders;
+  body: TRequestBody | object;
+
+  query: TRequestQuery | object;
+
+  params: TRequestParams | object;
 }
 
 export default class HttpRequest {
@@ -25,14 +39,18 @@ export default class HttpRequest {
   readonly path: IRequest['path'];
   readonly headers: IRequest['headers'];
   readonly body: IRequest['body'];
+  readonly query: IRequest['query'];
+  params: IRequest['params'];
 
   constructor(request: string) {
-    const { protocol, method, path, headers, body } = this._parseRequest(request);
+    const { protocol, method, path, headers, body, query, params } = this._parseRequest(request);
     this.protocol = protocol;
     this.method = method;
     this.path = path;
     this.headers = headers;
     this.body = body;
+    this.query = query;
+    this.params = params;
   }
 
   private _parseRequest(request: string): IRequest {
@@ -46,32 +64,28 @@ export default class HttpRequest {
      * - The first line contains the request method, path, and protocol
      * - The headers are separated from the body by two newlines
      */
-    const [firstLine, rest] = this._divideStringOn(request, '\r\n');
+    const [firstLine, rest] = divideStringUtils(request, '\r\n');
     const [method, path, protocol] = <[THttpMethod, string, string]>firstLine.split(' ', 3);
-    /* eslint-disable-next-line prefer-const */
-    let [headers, body] = this._divideStringOn(rest, '\r\n\r\n');
+    const [headers, body] = divideStringUtils(rest, '\r\n\r\n');
 
-    const parsedHeaders = [];
-    for (const header of headers.split('\r\n')) {
-      if (!header.includes(': ')) throw new Error('Invalid header');
-      const [key, value] = this._divideStringOn(header, ': ');
-      if (!key || !value) throw new Error('Invalid header');
-      parsedHeaders.push({ key, value });
-    }
+    const parsedHeaders: IRequest['headers'] = parseRequestHeadersUtils(headers);
+    const parsedQuery: IRequest['query'] = parseRequestQueryUtils(path);
+
+    let parsedBody: IRequest['body'] = {};
+    if (body) parsedBody = parseRequestBodyUtils(parsedHeaders, body);
 
     /**
      * If the request method is GET or HEAD, the request body is empty
      * This is because GET and HEAD requests are used to retrieve information from the server
      * but do not send any data to the server
      */
-    if (method === HttpMethod.GET || method === HttpMethod.HEAD) return { protocol, method, path, headers: parsedHeaders };
-    return { protocol, method, path, headers: parsedHeaders, body };
+    if (method === HttpMethod.GET || method === HttpMethod.HEAD) {
+      return { protocol, method, path, headers: parsedHeaders, query: parsedQuery, params: {}, body: {} };
+    }
+    return { protocol, method, path, headers: parsedHeaders, body: parsedBody, query: parsedQuery, params: {} };
   }
 
-  private _divideStringOn(s: string, search: string): [string, string] {
-    const index = s.indexOf(search);
-    const first = s.slice(0, index);
-    const rest = s.slice(index + search.length);
-    return [first, rest];
+  parseParams(route: IRoute): void {
+    this.params = parseRequestParamsUtils(this.path, route);
   }
 }
