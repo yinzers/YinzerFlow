@@ -17,9 +17,9 @@ export const HttpMethod = <const>{
 };
 export type THttpMethod = Enum<typeof HttpMethod>;
 
-export type TRequestBody<T = unknown> = Record<string, T>;
-export type TRequestQuery<T = unknown> = Record<string, T>;
-export type TRequestParams<T = unknown> = Record<string, T>;
+export type TRequestBody<T = unknown> = T;
+export type TRequestQuery<T = unknown> = T;
+export type TRequestParams<T = unknown> = T;
 
 export interface IRequest {
   protocol: string;
