@@ -339,9 +339,19 @@ The request handling process follows this sequence:
 
 ## Error Handling
 
-YinzerFlow provides a built-in error handler that can be used to catch and handle errors that occur during request processing. You can define a custom error handler by passing a function to the `errorHandler` method located in the options object when creating a new YinzerFlow instance.
+### Why Use Built-in Error Handling?
 
-````typescript
+1. **Enhanced User Experience**: Custom error handlers provide meaningful and consistent error messages to users.
+2. **Simplified Debugging**: Built-in logging capabilities make identifying and fixing errors easier.
+3. **Improved Reliability**: Effectively catching and managing errors prevents unexpected crashes, ensuring smoother operation.
+
+### How to Set Up a Custom Error Handler
+
+Set up a custom error handler by defining it in the `errorHandler` method when creating a new instance of YinzerFlow.
+
+#### Example Usage
+
+```typescript
 const app = new YinzerFlow({
   port: 5000,
   errorHandler: ({ response }, error): TResponseBody<unknown> => {
@@ -363,4 +373,3 @@ Guidelines coming soon. For now, feel free to open an issue or submit a pull req
 ## Conclusion
 
 YinzerFlow provides a straightforward way to build HTTP servers in Node.js, with support for routing and middleware. For more advanced features, consider extending the framework or integrating with other libraries.
-````
