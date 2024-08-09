@@ -70,7 +70,7 @@ const eslintRules = {
   'no-alert': 'error',
   'no-bitwise': 'error',
   'no-confusing-arrow': 'error',
-  'no-console': 'off',
+  'no-console': 'error',
   'no-else-return': 'error',
   'no-empty': 'error',
   'no-empty-static-block': 'error',
@@ -312,7 +312,7 @@ const typscriptRules = {
   '@typescript-eslint/no-import-type-side-effects': 'error',
   '@typescript-eslint/no-inferrable-types': 'error',
   '@typescript-eslint/no-invalid-void-type': [
-    'error',
+    'off',
     {
       allowAsThisParameter: true,
       allowInGenericTypeArguments: true,
@@ -429,7 +429,7 @@ export default config({
    * will only accept file patterns. It is important to note that if the global ignore is paired with other
    * key-value pairs within an object, it will no longer be global and will only apply to that specific object.
    */
-  ignores: ['node_modules/*', 'lib/*', '**/*.js'],
+  ignores: ['node_modules/*', 'lib/*', '**/*.js', 'example/**/*'],
 
   /**
    * ESLint configurations

@@ -6,6 +6,7 @@ import authenticationRoutes from 'example/typescript/routes/authentication.route
 export const app = new YinzerFlow({
   port: 5000,
   errorHandler: ({ response }, error): TResponseBody<unknown> => {
+    /* eslint-disable-next-line no-console */
     console.error('Server error: \n', error);
     response.setStatus(<THttpStatusCode>HttpStatusCode.TOO_MANY_REQUESTS);
     return { success: false, message: 'Internal server error' };

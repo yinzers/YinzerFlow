@@ -1,10 +1,15 @@
 import { createServer } from 'net';
+import type { Socket } from 'net';
 import ip from 'ip';
 import type { THttpMethod } from 'root/HttpRequest.ts';
 import HttpRequest, { HttpMethod } from 'root/HttpRequest.ts';
 import type { TResponseBody } from 'root/HttpResponse.ts';
 import HttpResponse, { HttpStatusCode } from 'root/HttpResponse.ts';
 import { Context } from 'root/Context.utils.ts';
+import executeBeforeGroupFunctionsUtils from 'utils/executeBeforeGroupFunctions.utils.ts';
+import executeBeforeHandlerFunctionsUtils from 'utils/executeBeforeHandlerFunctions.utils.ts';
+import executeMiddlewareFunctionsUtils from 'utils/executeMiddlewareFunctions.utils.ts';
+import findRouteUtils from 'utils/findRoute.utils.ts';
 
 // TODO - Write tests for this file
 
@@ -13,10 +18,12 @@ import { Context } from 'root/Context.utils.ts';
 
 export type Enum<T> = T[keyof T];
 
-type TResponseFunction = (ctx: Context) => TResponseBody<unknown>;
-type TUndefinableResponseFunction = TResponseFunction | ((ctx: Context) => void);
+type TResponseFunction = (ctx: Context) => Promise<TResponseBody<unknown>> | TResponseBody<unknown>;
+type TUndefinableResponseFunction = TResponseFunction | ((ctx: Context) => Promise<void> | void);
 
-type TErrorFunction = ((ctx: Context, error: unknown) => TResponseBody<unknown>) | ((ctx: Context, error: unknown) => void);
+type TErrorFunction =
+  | ((ctx: Context, error: unknown) => Promise<TResponseBody<unknown>> | TResponseBody<unknown>)
+  | ((ctx: Context, error: unknown) => Promise<void> | void);
 
 export interface IRoute {
   path: string;
@@ -28,7 +35,7 @@ export interface IRoute {
 }
 
 interface IMiddleware {
-  fn: TResponseFunction | ((ctx: Context) => void);
+  fn: TUndefinableResponseFunction;
 }
 
 interface IExcludeMiddleware extends IMiddleware {
@@ -41,115 +48,109 @@ interface IIncludeMiddleware extends IMiddleware {
   excluded: [];
 }
 
-type TMiddleware = IExcludeMiddleware | IIncludeMiddleware;
+export type TMiddleware = IExcludeMiddleware | IIncludeMiddleware;
 
 /**
  *
  * incoming request -> route validation -> global middleware -> before route middleware -> route handler -> after route middleware -> response
  */
 class YinzerFlow {
-  private readonly backlog: number = 511;
-  private readonly ip: string = ip.address();
-  private readonly port: number = 5000;
-
+  private readonly _backlog: number = 511;
+  private readonly _ip: string = ip.address();
+  private readonly _port: number = 5000;
+  private _isListening = false;
   private readonly _routes: Array<IRoute> = [];
-
   private readonly middleware: Array<TMiddleware> = [];
 
-  private readonly errorHandler: TErrorFunction = ({ response }, error): TResponseBody<unknown> => {
+  constructor(options?: { port?: number; errorHandler?: TErrorFunction }) {
+    if (options) {
+      if (options.port) this._port = options.port;
+      if (options.errorHandler) {
+        this._errorHandler = options.errorHandler;
+      }
+    }
+  }
+
+  private readonly _errorHandler: TErrorFunction = ({ response }, error): TResponseBody<unknown> => {
+    /* eslint-disable-next-line no-console */
     console.error('Server error: \n', error);
     response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR);
     return { success: false, message: 'Internal server error' };
   };
 
-  constructor(options?: { port?: number; errorHandler?: TErrorFunction }) {
-    if (options) {
-      if (options.port) this.port = options.port;
-      if (options.errorHandler) {
-        this.errorHandler = options.errorHandler;
-      }
-    }
-  }
+  protected async _handleRequest(request: HttpRequest, route: IRoute): Promise<HttpResponse> {
+    const createContext = new Context(request, new HttpResponse(request));
 
-  /* eslint-disable-next-line @typescript-eslint/no-invalid-void-type */
-  protected _handleMiddleware(route: IRoute, ctx: Context): TResponseBody<unknown> | void {
-    let result = undefined;
-    if (this.middleware.length) {
-      for (const middleware of this.middleware) {
-        if (middleware.paths === 'allButExcluded' && !middleware.excluded.includes(route.path)) {
-          result = middleware.fn(ctx);
-          if (result) {
-            if (typeof result === 'object') result = JSON.stringify(result);
-            return result;
-          }
-        }
-
-        if (middleware.paths.includes(route.path)) {
-          result = middleware.fn(ctx);
-          if (result) {
-            if (typeof result === 'object') result = JSON.stringify(result);
-
-            return result;
-          }
-        }
-      }
-    }
-
-    return void 0;
-  }
-
-  protected _handleRoute(route: IRoute, ctx: Context): TResponseBody<unknown> {
     let result = undefined;
 
-    if (route.beforeGroup) {
-      result = route.beforeGroup(ctx);
-      if (result) {
-        /**
-         * If the beforeGroup returns a result we are going to return it and not continue with the route handler.
-         * This is useful for things like authentication or throttling an entire group of routes.
-         */
-        return result;
-      }
-    }
+    result = await Promise.resolve(executeMiddlewareFunctionsUtils(route, createContext, this.middleware));
 
-    if (route.beforeHandler) {
-      result = route.beforeHandler(ctx);
-      if (result) {
-        /**
-         * If the beforeHandler returns a result we are going to return it and not continue with the route handler.
-         * This is useful for things like authentication or validation.
-         */
-        return result;
-      }
+    if (result) {
+      createContext.response.setBody(result);
+      return createContext.response;
     }
 
     /**
-     * We aren't going to return the result of the route handler here because we want to allow for afterHandler to run,
-     * just in case we need to modify the response in some way or something in the afterHandler function.
+     * If the beforeGroup returns a result we are going to return it and not continue with the route handler.
+     * This is useful for things like authentication or throttling an entire group of routes.
      */
-    result = route.handler(ctx);
-
-    if (route.afterHandler) route.afterHandler(ctx);
-
-    return result;
-  }
-
-  protected _handleRequest(request: HttpRequest, route: IRoute): HttpResponse {
-    const ctx = new Context(request, new HttpResponse(request));
-
-    let result = undefined;
-
-    result = this._handleMiddleware(route, ctx);
+    result = await Promise.resolve(executeBeforeGroupFunctionsUtils(route, createContext));
 
     if (result) {
-      ctx.response.setBody(result);
-      return ctx.response;
+      createContext.response.setBody(result);
+      return createContext.response;
     }
 
-    result = this._handleRoute(route, ctx);
+    /**
+     * If the beforeHandler returns a result we are going to return it and not continue with the route handler.
+     * This is useful for things like authentication or validation.
+     */
+    result = await Promise.resolve(executeBeforeHandlerFunctionsUtils(route, createContext));
 
-    ctx.response.setBody(result ?? 'Server Error');
-    return ctx.response;
+    if (result) {
+      createContext.response.setBody(result);
+      return createContext.response;
+    }
+
+    /**
+     * We are not returning the results of the route handler until after the afterHandler has been called.
+     * This is just in case the afterHandler needs to modify the response in some way.
+     */
+    result = await Promise.resolve(route.handler(createContext));
+
+    if (route.afterHandler) await Promise.resolve(route.afterHandler(createContext));
+
+    createContext.response.setBody(result);
+    return createContext.response;
+  }
+
+  protected async _mainHandler(socket: Socket, buffer: Buffer): Promise<void> {
+    const createRequest = new HttpRequest(buffer.toString());
+    try {
+      const findRouteBasedOnRequest = findRouteUtils(createRequest, this._routes);
+
+      if (!findRouteBasedOnRequest) {
+        // TODO - Allow for a custom 404 handler to be defined
+        const ctx = new Context(createRequest, new HttpResponse(createRequest));
+        ctx.response.setStatus(HttpStatusCode.NOT_FOUND);
+        ctx.response.setBody({ success: false, message: 'Not found' });
+        socket.write(ctx.response.formatHttpResponse());
+        socket.end();
+        return;
+      }
+
+      createRequest.parseParams(findRouteBasedOnRequest);
+
+      const createResponse = await this._handleRequest(createRequest, findRouteBasedOnRequest);
+
+      socket.write(createResponse.formatHttpResponse());
+      socket.end();
+    } catch (error) {
+      const createContext = new Context(createRequest, new HttpResponse(createRequest));
+      createContext.response.setBody(this._errorHandler(createContext, error));
+      socket.write(createContext.response.formatHttpResponse());
+      socket.end();
+    }
   }
 
   protected _route(
@@ -238,77 +239,44 @@ class YinzerFlow {
    * if you call this method before defining any routes or middleware those routes and middleware will not be defined.
    */
   listen(): void {
-    const server = createServer().listen(this.port, this.ip, this.backlog);
+    const server = createServer().listen(this._port, this._ip, this._backlog);
 
     server.on('listening', () => {
-      console.log(`Server listening on ${this.ip}:${this.port}`);
+      this._isListening = true;
     });
 
     server.on('connection', (socket) => {
-      socket.on('data', (buffer) => {
-        const request = new HttpRequest(buffer.toString());
-        try {
-          const route = findRoute(request, this._routes);
-
-          if (!route) {
-            // TODO - Allow for a custom 404 handler to be defined
-            const ctx = new Context(request, new HttpResponse(request));
-            ctx.response.setStatus(HttpStatusCode.NOT_FOUND);
-            ctx.response.setBody({ success: false, message: 'Not found' });
-            socket.write(ctx.response.formatHttpResponse());
-            socket.end();
-            return;
-          }
-
-          request.parseParams(route);
-
-          const response = this._handleRequest(request, route);
-
-          socket.write(response.formatHttpResponse());
-          socket.end();
-        } catch (error) {
-          const ctx = new Context(request, new HttpResponse(request));
-          ctx.response.setBody(this.errorHandler(ctx, error));
-          socket.write(ctx.response.formatHttpResponse());
-          socket.end();
-        }
+      /* eslint-disable-next-line @typescript-eslint/no-misused-promises */
+      socket.on('data', async (buffer) => {
+        await this._mainHandler(socket, buffer);
       });
 
       socket.on('error', (error) => {
+        /* eslint-disable-next-line no-console */
         console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
       });
     });
 
     server.on('error', (error) => {
+      /* eslint-disable-next-line no-console */
       console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
     });
+  }
+
+  close(): void {
+    if (this._isListening) {
+      createServer().close();
+      this._isListening = false;
+    }
+  }
+
+  getStatus(): { isListening: boolean; port: number; ip: string } {
+    return {
+      isListening: this._isListening,
+      port: this._port,
+      ip: this._ip,
+    };
   }
 }
 
 export { YinzerFlow, HttpStatusCode, HttpMethod };
-
-const findRoute = (request: HttpRequest, routes: Array<IRoute>): IRoute | undefined => {
-  /**
-   * To speed up the response time we are going to ensure the route exists before worrying about any other logic.
-   */
-  const route = routes.find((r) => r.path === request.path && r.method === request.method);
-  if (route) return route;
-
-  /**
-   * To save time we will only check for params if we don't find a route that matches exactly.
-   *
-   * It is possible for the route not to match exactly if the route has params in it.
-   * So we are going to check for that here and if we don't find a route we will return undefined
-   * and handle a 404 response in the listen method.
-   */
-  return routes.find((r) => {
-    const pathParts = r.path.split('/');
-    const requestPathParts = request.path.split('/');
-    if (pathParts.length !== requestPathParts.length) return false;
-    for (let i = 0; i < pathParts.length; i++) {
-      if (pathParts[i]?.startsWith(':')) continue;
-      if (pathParts[i] !== requestPathParts[i]) return false;
-    }
-    return true;
-  });
-};
