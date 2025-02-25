@@ -55,12 +55,18 @@ export type TMiddleware = IExcludeMiddleware | IIncludeMiddleware;
  * incoming request -> route validation -> global middleware -> before route middleware -> route handler -> after route middleware -> response
  */
 class YinzerFlow {
-  private readonly _backlog: number = 511;
+  /**
+   * Removing backlog as it is not needed for the server to listen for incoming requests
+   * For some reason it throws an error if it is set
+   */
+  // private readonly _backlog: number = 511;
   private readonly _ip: string = ip.address();
   private readonly _port: number = 5000;
   private _isListening = false;
-  private readonly _routes: Array<IRoute> = [];
+  private readonly _routes = new Map<string, IRoute>();
   private readonly middleware: Array<TMiddleware> = [];
+  private _server: ReturnType<typeof createServer> | null = null;
+  private readonly _connections = new Set<Socket>();
 
   constructor(options?: { port?: number; errorHandler?: TErrorFunction }) {
     if (options) {
@@ -72,7 +78,6 @@ class YinzerFlow {
   }
 
   private readonly _errorHandler: TErrorFunction = ({ response }, error): TResponseBody<unknown> => {
-    /* eslint-disable-next-line no-console */
     console.error('Server error: \n', error);
     response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR);
     return { success: false, message: 'Internal server error' };
@@ -130,12 +135,13 @@ class YinzerFlow {
       const findRouteBasedOnRequest = findRouteUtils(createRequest, this._routes);
 
       if (!findRouteBasedOnRequest) {
-        // TODO - Allow for a custom 404 handler to be defined
         const ctx = new Context(createRequest, new HttpResponse(createRequest));
         ctx.response.setStatus(HttpStatusCode.NOT_FOUND);
         ctx.response.setBody({ success: false, message: 'Not found' });
-        socket.write(ctx.response.formatHttpResponse());
-        socket.end();
+        await new Promise<void>((resolve) => {
+          socket.write(ctx.response.formatHttpResponse(), () => resolve());
+          socket.end();
+        });
         return;
       }
 
@@ -143,13 +149,17 @@ class YinzerFlow {
 
       const createResponse = await this._handleRequest(createRequest, findRouteBasedOnRequest);
 
-      socket.write(createResponse.formatHttpResponse());
-      socket.end();
+      await new Promise<void>((resolve) => {
+        socket.write(createResponse.formatHttpResponse(), () => resolve());
+        socket.end();
+      });
     } catch (error) {
       const createContext = new Context(createRequest, new HttpResponse(createRequest));
-      createContext.response.setBody(this._errorHandler(createContext, error));
-      socket.write(createContext.response.formatHttpResponse());
-      socket.end();
+      createContext.response.setBody(await Promise.resolve(this._errorHandler(createContext, error)));
+      await new Promise<void>((resolve) => {
+        socket.write(createContext.response.formatHttpResponse(), () => resolve());
+        socket.end();
+      });
     }
   }
 
@@ -172,7 +182,9 @@ class YinzerFlow {
       beforeHandler: beforeHandler ?? undefined,
       afterHandler: afterHandler ?? undefined,
     };
-    this._routes.push(route);
+    // Create unique key combining method and path
+    const routeKey = `${options.method}:${path}`;
+    this._routes.set(routeKey, route);
     return route;
   }
 
@@ -205,11 +217,21 @@ class YinzerFlow {
   }
 
   group(prefix: IRoute['path'], routes: Array<IRoute>, options?: { beforeGroup: IRoute['beforeGroup'] }): void {
-    for (const route of routes) this._routes.push({ ...route, path: `${prefix}${route.path}`, beforeGroup: options?.beforeGroup });
+    for (const route of routes) {
+      const routeKey = `${route.method}:${prefix}${route.path}`;
+      this._routes.set(routeKey, {
+        ...route,
+        path: `${prefix}${route.path}`,
+        beforeGroup: options?.beforeGroup,
+      });
+    }
   }
 
   routes(routes: Array<IRoute>): void {
-    for (const route of routes) this._routes.push(route);
+    for (const route of routes) {
+      const routeKey = `${route.method}:${route.path}`;
+      this._routes.set(routeKey, route);
+    }
   }
 
   beforeAll(
@@ -238,36 +260,58 @@ class YinzerFlow {
    * This should be the last method called in the application. It will start the server and listen for incoming requests,
    * if you call this method before defining any routes or middleware those routes and middleware will not be defined.
    */
-  listen(): void {
-    const server = createServer().listen(this._port, this._ip, this._backlog);
+  async listen(): Promise<void> {
+    return new Promise((resolve) => {
+      this._server = createServer().listen(this._port, this._ip);
 
-    server.on('listening', () => {
-      this._isListening = true;
-    });
-
-    server.on('connection', (socket) => {
-      /* eslint-disable-next-line @typescript-eslint/no-misused-promises */
-      socket.on('data', async (buffer) => {
-        await this._mainHandler(socket, buffer);
+      this._server.on('listening', () => {
+        this._isListening = true;
+        resolve();
       });
 
-      socket.on('error', (error) => {
-        /* eslint-disable-next-line no-console */
+      this._server.on('connection', (socket) => {
+        this._connections.add(socket);
+
+        socket.on('close', () => {
+          this._connections.delete(socket);
+        });
+
+        socket.on('data', (buffer) => {
+          this._mainHandler(socket, buffer).catch((err) => {
+            console.error('Error handling request:', err);
+          });
+        });
+
+        socket.on('error', (error) => {
+          console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
+        });
+      });
+
+      this._server.on('error', (error) => {
         console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
       });
     });
-
-    server.on('error', (error) => {
-      /* eslint-disable-next-line no-console */
-      console.error('An error occurred with yinzerflow. Please open an issue on GitHub.', error);
-    });
   }
 
-  close(): void {
-    if (this._isListening) {
-      createServer().close();
-      this._isListening = false;
-    }
+  async close(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this._isListening || !this._server) {
+        resolve();
+        return;
+      }
+
+      // Close all existing connections
+      for (const socket of this._connections) {
+        socket.destroy();
+      }
+      this._connections.clear();
+
+      this._server.close(() => {
+        this._isListening = false;
+        this._server = null;
+        resolve();
+      });
+    });
   }
 
   getStatus(): { isListening: boolean; port: number; ip: string } {

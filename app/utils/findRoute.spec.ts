@@ -10,52 +10,71 @@ describe('findRoute', () => {
       path: '/test/goes/here',
       method: 'GET',
     };
-    const routes = <Array<IRoute>>[
-      {
-        method: 'GET',
-        path: '/test/goes/here',
-        handler: () => ({}),
-      },
-      {
-        method: 'PUT',
-        path: '/test/goes/here',
-        handler: () => ({}),
-      },
-      {
-        method: 'POST',
-        path: '/user',
-        handler: () => ({}),
-      },
-    ];
+    const routes = new Map<string, IRoute>([
+      [
+        'GET:/test/goes/here',
+        {
+          method: 'GET',
+          path: '/test/goes/here',
+          handler: () => ({}),
+        },
+      ],
+      [
+        'PUT:/test/goes/here',
+        {
+          method: 'PUT',
+          path: '/test/goes/here',
+          handler: () => ({}),
+        },
+      ],
+      [
+        'POST:/user',
+        {
+          method: 'POST',
+          path: '/user',
+          handler: () => ({}),
+        },
+      ],
+    ]);
 
     const result = findRouteUtils(request, routes);
-    expect(result).toEqual(routes[0]);
+    expect(result).toEqual(routes.get('GET:/test/goes/here'));
   });
 
   it('should return an exact route with params', () => {
     const request = <HttpRequest>{
       path: '/test/:id/here/:id2',
-      method: 'PUT',
+      method: 'POST',
     };
-    const routes = <Array<IRoute>>[
-      {
-        method: 'GET',
-        path: '/test/goes/here',
-        handler: () => ({}),
-      },
-      {
-        method: 'PUT',
-        path: '/test/:id/here',
-        handler: () => ({}),
-      },
-      {
-        method: 'POST',
-        path: '/test/:id/here/:id2',
-        handler: () => ({}),
-      },
-    ];
+    const routes = new Map<string, IRoute>([
+      [
+        'GET:/test/goes/here',
+        {
+          method: 'GET',
+          path: '/test/goes/here',
+          handler: () => ({}),
+        },
+      ],
+      [
+        'PUT:/test/:id/here',
+        {
+          method: 'PUT',
+          path: '/test/:id/here',
+          handler: () => ({}),
+        },
+      ],
+      [
+        'POST:/test/:id/here/:id2',
+        {
+          method: 'POST',
+          path: '/test/:id/here/:id2',
+          handler: () => ({}),
+        },
+      ],
+    ]);
 
     const result = findRouteUtils(request, routes);
-    expect(result).toEqual(routes[2]);
+    console.log(result);
+    expect(result).toEqual(routes.get('POST:/test/:id/here/:id2'));
   });
 });

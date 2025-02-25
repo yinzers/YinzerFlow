@@ -70,7 +70,7 @@ const eslintRules = {
   'no-alert': 'error',
   'no-bitwise': 'error',
   'no-confusing-arrow': 'error',
-  'no-console': 'error',
+  'no-console': 'off',
   'no-else-return': 'error',
   'no-empty': 'error',
   'no-empty-static-block': 'error',
