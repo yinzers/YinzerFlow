@@ -25,4 +25,6 @@ app.group('/auth', authenticationRoutes, {
   },
 });
 
-app.listen();
+await app.listen();
+
+console.log(app.getStatus());

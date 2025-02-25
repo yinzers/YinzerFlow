@@ -17,4 +17,4 @@ services:
     working_dir: /usr/src/app
     volumes:
       - ./:/usr/src/app
-      - /home/redacted/.npmrc:/home/node/.npmrc
+      - /home/patrick/.npmrc:/home/node/.npmrc
