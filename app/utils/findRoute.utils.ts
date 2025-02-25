@@ -4,7 +4,6 @@ import type { IRoute } from 'root/index.ts';
 export default function findRouteUtils(request: HttpRequest, routes: Map<string, IRoute>): IRoute | undefined {
   // First try exact match
   const exactKey = `${request.method}:${request.path}`;
-  console.log(exactKey);
   const exactMatch = routes.get(exactKey);
   if (exactMatch) return exactMatch;
 
@@ -19,7 +18,6 @@ export default function findRouteUtils(request: HttpRequest, routes: Map<string,
     if (regex.test(request.path)) return route;
   }
 
-  console.log(request);
 
   return undefined;
 }

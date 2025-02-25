@@ -74,7 +74,6 @@ describe('findRoute', () => {
     ]);
 
     const result = findRouteUtils(request, routes);
-    console.log(result);
     expect(result).toEqual(routes.get('POST:/test/:id/here/:id2'));
   });
 });

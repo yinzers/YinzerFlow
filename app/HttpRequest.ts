@@ -54,7 +54,6 @@ export default class HttpRequest {
   }
 
   private _parseRequest(request: string): IRequest {
-    console.log('request', request);
     /**
      * Validate the request
      */
