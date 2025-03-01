@@ -2,7 +2,15 @@
 /* eslint-disable import/first */
 import globals from 'globals';
 import { fixupPluginRules } from '@eslint/compat';
-import { config, configs, parser, plugin } from 'typescript-eslint';
+import { configs, parser, plugin } from 'typescript-eslint';
+import eslint from '@eslint/js';
+import _import from 'eslint-plugin-import';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory name using ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Parser imports
@@ -12,20 +20,17 @@ import { config, configs, parser, plugin } from 'typescript-eslint';
 const tsParser = parser;
 
 /**
- * Config imports
- * Configs are used to define rules and settings for ESLint. These rules are helpful to ensure there are
- * non conflicting rules and settings within the ESLint configuration.
- */
-const typescriptEslintConfig = configs;
-
-/**
  * Plugin imports
  * Plugins are used to define rules and settings for ESLint. These rules are added in the rules object and/or
  * settings object within the ESLint configuration.
  */
 const typescriptEslintPlugin = plugin;
-import _import from 'eslint-plugin-import';
 
+/**
+ * ESLint core rules
+ * These rules are part of the core ESLint package and focus on JavaScript best practices,
+ * potential errors, and stylistic preferences.
+ */
 const eslintRules = {
   /** eslint possible problems*/
   'array-callback-return': 'error',
@@ -185,6 +190,10 @@ const eslintRules = {
   'wrap-regex': 'error',
 };
 
+/**
+ * Import plugin rules
+ * These rules help enforce best practices for ES module imports
+ */
 const importRules = {
   'import/export': 'error',
   'import/no-deprecated': 'error',
@@ -216,6 +225,10 @@ const importRules = {
   'import/order': 'error',
 };
 
+/**
+ * TypeScript-specific rules
+ * These rules leverage TypeScript's type system to catch errors and enforce best practices
+ */
 const typscriptRules = {
   '@typescript-eslint/adjacent-overload-signatures': 'error',
   '@typescript-eslint/array-type': [
@@ -421,61 +434,125 @@ const typscriptRules = {
   '@typescript-eslint/require-await': 'error',
 };
 
-export default config({
-  /**
-   * Global ignore settings
-   *
-   * Global ignore is the only way to ignore files AND folders in ESLint. Using ignores in any other place
-   * will only accept file patterns. It is important to note that if the global ignore is paired with other
-   * key-value pairs within an object, it will no longer be global and will only apply to that specific object.
-   */
-  ignores: ['node_modules/*', 'lib/*', '**/*.js', 'example/**/*'],
+/**
+ * Test-specific rules
+ * These rules are relaxed for test files to accommodate common testing patterns
+ */
+const testRules = {
+  // Allow empty arrow functions in mocks
+  'no-empty-function': 'off',
+  '@typescript-eslint/no-empty-function': 'off',
+  'arrow-body-style': 'off',
 
-  /**
-   * ESLint configurations
-   */
-  extends: [...typescriptEslintConfig.strict, ...typescriptEslintConfig.stylistic],
+  // Allow unused parameters in mock functions - prefix with _ or allow any parameter name
+  '@typescript-eslint/no-unused-vars': 'off',
 
-  /**
-   * Typescript ESLint rules and settings
-   */
+  // Allow any type in test assertions
+  '@typescript-eslint/no-unsafe-return': 'off',
+  '@typescript-eslint/no-explicit-any': 'off',
 
-  settings: {
-    /**
-     * Import plugin settings
-     */
-    'import/parsers': {
-      '@typescript-eslint/parser': ['.ts', '.tsx'],
+  // Allow longer functions in tests
+  'max-lines-per-function': [
+    'error',
+    {
+      max: 200,
+      skipBlankLines: true,
+      skipComments: true,
     },
-    'import/resolver': {
-      typescript: {},
-    },
-    'import/ignore': ['node_modules'],
+  ],
+
+  // Allow more statements in test functions
+  'max-statements': ['error', 30],
+
+  // Allow more parameters in test functions
+  'max-params': ['error', 5],
+
+  // Allow type assertions in tests
+  '@typescript-eslint/no-unsafe-assignment': 'off',
+  '@typescript-eslint/no-unsafe-member-access': 'off',
+  '@typescript-eslint/no-unsafe-call': 'off',
+  '@typescript-eslint/no-unsafe-argument': 'off',
+  '@typescript-eslint/unbound-method': 'off',
+
+  // Allow variable initialization in beforeEach
+  '@typescript-eslint/init-declarations': 'off',
+
+  // Allow type assertions with 'as'
+  '@typescript-eslint/consistent-type-assertions': 'off',
+
+  // Allow promise executor returns in tests
+  'no-promise-executor-return': 'off',
+
+  // Allow awaiting non-promises in tests
+  '@typescript-eslint/await-thenable': 'off',
+
+  // Allow void expressions in tests
+  '@typescript-eslint/no-confusing-void-expression': 'off',
+};
+
+// Include TypeScript ESLint configs directly
+const strictConfig = configs.strict;
+const stylisticConfig = configs.stylistic;
+
+// Export as a flat config array
+export default [
+  // Global ignores - files that should be excluded from linting
+  {
+    ignores: ['node_modules/*', 'lib/*', '**/*.js', 'example/**/*', 'eslint.config.mjs'],
   },
 
-  languageOptions: {
-    globals: {
-      ...globals.node,
-      ...globals.es2025,
-      Bun: false,
+  // Include TypeScript ESLint configs directly
+  ...strictConfig,
+  ...stylisticConfig,
+
+  // Base configuration for all files
+  {
+    name: 'yinzerflow/base',
+    settings: {
+      'import/parsers': {
+        '@typescript-eslint/parser': ['.ts', '.tsx'],
+      },
+      'import/resolver': {
+        typescript: {},
+      },
+      'import/ignore': ['node_modules'],
     },
-
-    parser: tsParser,
-
-    parserOptions: {
-      project: ['./tsconfig.json'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2025,
+        Bun: false,
+      },
+      parser: tsParser,
+      parserOptions: {
+        // Using projectService for better performance with TypeScript's type checking
+        projectService: true,
+        tsconfigRootDir: __dirname,
+      },
+    },
+    plugins: {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      import: fixupPluginRules(_import),
+      '@typescript-eslint': typescriptEslintPlugin,
+    },
+    rules: {
+      ...eslintRules,
+      ...importRules,
+      ...typscriptRules,
     },
   },
 
-  plugins: {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    import: fixupPluginRules(_import),
-    '@typescript-eslint': typescriptEslintPlugin,
+  // Test files configuration - separate config object with files pattern
+  {
+    name: 'yinzerflow/tests',
+    files: ['**/__tests__/**/*.ts', '**/*.spec.ts', '**/*.test.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2025,
+        Bun: true,
+      },
+    },
+    rules: testRules,
   },
-
-  rules: {
-    ...eslintRules,
-    ...importRules,
-    ...typscriptRules,
-  },
-});
+];

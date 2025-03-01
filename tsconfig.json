@@ -25,8 +25,11 @@
     "paths": {
       "utils/*": ["./app/utils/*"],
       "config/*": ["./app/config/*"],
-      "root/*": ["./app/*"],
-      "example/*": ["./example/*"]
+      "example/*": ["./example/*"],
+      "local/*": ["./local/*"],
+      "types/*": ["./app/types/*"],
+      "core/*": ["./app/core/*"],
+      "constants/*": ["./app/constants/*"],
     },
     "sourceMap": false,
     "removeComments": true,
