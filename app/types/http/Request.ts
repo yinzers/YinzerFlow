@@ -1,12 +1,12 @@
 import type { Enum } from '../Common.ts';
 import type { HttpMethod } from '../../constants/http.ts';
-import type { UploadedFile } from '../../core/RequestParser.ts';
 import type { IHeaders } from './Response.ts';
+import type { UploadedFile } from 'utils/request.utils.ts';
 
 /**
  * Represents an HTTP method type
- * 
- * This type is derived from the HttpMethod enum constants and ensures
+ *
+ * This type Ts derived from the HttpMethod enum constants and ensures
  * that only valid HTTP methods can be used throughout the application.
  */
 export type THttpMethod = Enum<typeof HttpMethod>;
@@ -22,7 +22,7 @@ export type THttpMethod = Enum<typeof HttpMethod>;
  * - Plain text content
  * - YAML data
  * - Or a custom type provided as a generic parameter
- * 
+ *
  * @template T - Optional custom type for the request body
  */
 export type TRequestBody<T = unknown> =
@@ -30,10 +30,10 @@ export type TRequestBody<T = unknown> =
       string,
       {
         _attributes?: Record<string, string>;
-        [childElement: string]: any;
+        [childElement: string]: unknown;
       }
     >
-  | Record<string, any>
+  | Record<string, unknown>
   | T
   | {
       // For CSV data
@@ -52,7 +52,7 @@ export type TRequestBody<T = unknown> =
 
 /**
  * Represents multipart form data with file uploads
- * 
+ *
  * This interface is used for handling form submissions that include file uploads.
  * It separates regular form fields from uploaded files for easier processing.
  */
@@ -65,7 +65,7 @@ export interface IMultipartFormData {
 
 /**
  * Represents CSV data parsed from a request
- * 
+ *
  * This interface provides a structured way to work with CSV data,
  * separating the header row from the data rows.
  */
@@ -78,7 +78,7 @@ export interface ICsvData {
 
 /**
  * Represents plain text data parsed from a request
- * 
+ *
  * This interface is used for handling plain text content types,
  * providing the raw text content as a string.
  */
@@ -89,17 +89,17 @@ export interface IPlainTextData {
 
 /**
  * Represents XML data parsed from a request
- * 
+ *
  * This type provides a structured representation of XML content,
  * including support for attributes and nested elements.
  */
-export type IXmlData = Record<
+export type TXmlData = Record<
   string,
   {
     /** XML element attributes as key-value pairs */
     _attributes?: Record<string, string>;
     /** Child elements and text content */
-    [childElement: string]: any;
+    [childElement: string]: unknown;
   }
 >;
 
@@ -108,14 +108,14 @@ export type IXmlData = Record<
  *
  * This type provides a generic object representation of JSON data.
  */
-export type IJsonData = Record<string, any>;
+export type TJsonData = Record<string, unknown>;
 
 /**
  * Represents URL-encoded form data parsed from a request
  *
  * This type provides a simple key-value representation of form data.
  */
-export type IUrlEncodedFormData = Record<string, string>;
+export type TUrlEncodedFormData = Record<string, string>;
 
 /**
  * Represents YAML data parsed from a request
@@ -123,21 +123,28 @@ export type IUrlEncodedFormData = Record<string, string>;
  * This type provides a structured representation of YAML content,
  * using unknown for type safety while allowing for nested structures.
  */
-export type IYamlData = Record<string, unknown>;
+export type TYamlData = Record<string, unknown>;
 
 /**
  * Represents query parameters parsed from the URL
- * 
+ *
  * @template T - Optional custom type for the query parameters
  */
 export type TRequestQuery<T = unknown> = T;
 
 /**
  * Represents URL parameters parsed from the route pattern
- * 
+ *
  * @template T - Optional custom type for the URL parameters
  */
 export type TRequestParams<T = unknown> = T;
+
+/**
+ * Represents URL-encoded JSON data parsed from a request
+ *
+ * This type provides a simple key-value representation of JSON data.
+ */
+export type TUrlEncodedJson = Record<string, string>;
 
 /**
  * Represents an HTTP request

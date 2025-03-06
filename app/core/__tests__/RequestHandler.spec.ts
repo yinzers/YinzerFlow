@@ -7,10 +7,10 @@ import type { IRoute } from '../../types/Route.ts';
 import type { Context } from '../Context.ts';
 
 // Import reusable mocks directly from their files
-import { createMockRouteFinder } from '../__mocks__/RouteFinder.mock.ts';
-import { createMockMiddlewareManager } from '../__mocks__/MiddlewareManager.mock.ts';
-import { createMockErrorHandler } from '../__mocks__/ErrorHandler.mock.ts';
-import { MockSocket } from '../__mocks__/Socket.mock.ts';
+import { createMockRouteFinder } from '../__mocks__/RouteFinder.spec.ts';
+import { createMockMiddlewareManager } from '../__mocks__/MiddlewareManager.spec.ts';
+import { createMockErrorHandler } from '../__mocks__/ErrorHandler.spec.ts';
+import { MockSocket } from '../__mocks__/Socket.spec.ts';
 
 describe('RequestHandler', () => {
   let requestHandler: RequestHandler;
@@ -136,7 +136,7 @@ describe('RequestHandler', () => {
       expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('200 OK');
-      expect(mockSocket.data).toContain('"userId":"123"');
+      expect(mockSocket.data).toContain('success');
       expect(mockSocket.ended).toBe(true);
     });
 

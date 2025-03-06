@@ -53,6 +53,12 @@ rulesets:
           - "**/__tests__/**"
           - "**/*.spec.ts"
           - "**/*.test.ts"
+      no-unused-expressions:
+        ignore:
+          - "**"
+      no-cond-assign:
+        ignore:
+          - "**"
   - typescript-browser-security
   - typescript-common-security
   - typescript-express

@@ -6,16 +6,19 @@ import type { TErrorFunction } from '../../types/Response.ts';
 /**
  * Creates a mock error handler function
  */
-export function createMockErrorHandler() {
-  const mockErrorHandler = mock<TErrorFunction>((ctx: Context, error: unknown) => ({
-      success: false,
-      message: error instanceof Error ? error.message : String(error),
-    }));
+export const createMockErrorHandler = (): {
+  mock: Mock<TErrorFunction>;
+  reset: () => void;
+} => {
+  const mockErrorHandler = mock<TErrorFunction>((_ctx: Context, error: unknown) => ({
+    success: false,
+    message: error instanceof Error ? error.message : String(error),
+  }));
 
   return {
     mock: mockErrorHandler,
-    reset: () => {
+    reset: (): void => {
       mockErrorHandler.mockReset();
     },
   };
-}
+};

@@ -1,7 +1,7 @@
-import type { TMiddleware } from '../types/Middleware.ts';
 import type { IRoute, TUndefinableResponseFunction } from '../types/Route.ts';
 import type { Context } from './Context.ts';
-import type { TResponseBody } from 'lib/YinzerFlow.js';
+import type { TResponseBody } from 'types/http/Response.ts';
+import type { TMiddleware } from 'types/Middleware.ts';
 
 /**
  * Manages middleware registration and execution

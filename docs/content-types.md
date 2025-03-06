@@ -12,10 +12,10 @@ YinzerFlow automatically parses request bodies based on the Content-Type header:
 | XML | `isXmlData` | `IXmlData` | XML data with root elements, attributes, and child elements |
 | Multipart Form | `isMultipartFormData` | `IMultipartFormData` | Form data with `fields` and `files` properties |
 | URL-encoded Form | `isUrlEncodedFormData` | `IUrlEncodedFormData` | Form data as key-value pairs (`Record<string, string>`) |
-| URL-encoded JSON | `isUrlEncodedJsonData` | `IJsonData` | URL-encoded data with JSON values |
+| URL-encoded JSON | `isUrlEncodedJson` | `TUrlEncodedJson` | URL-encoded data with JSON values |
 | CSV | `isCsvData` | `ICsvData` | CSV data with `headers` and `rows` properties |
 | Plain Text | `isPlainTextData` | `IPlainTextData` | Text data with a `content` property |
-| YAML | `isYamlData` | `IYamlData` | YAML data as a structured object |
+| YAML | `isYamlData` | `TYamlData` | YAML data as a structured object |
 
 ## Working with Content Types
 
@@ -117,6 +117,37 @@ app.post('/api/json', ({ request, response }) => {
 });
 ```
 
+### Multipart Form Data
+
+```typescript
+import { isMultipartFormData } from 'yinzerflow/types/http/Request';
+
+app.post('/api/upload', ({ request, response }) => {
+  if (!isMultipartFormData(request.body)) {
+    response.setStatus(400);
+    return { error: 'Expected multipart form data' };
+  }
+  
+  // Access form fields and files
+  const { fields, files } = request.body;
+  
+  // Process uploaded files
+  const uploadedFiles = Object.entries(files).map(([fieldName, file]) => ({
+    fieldName,
+    fileName: file.name,
+    size: file.size,
+    type: file.contentType
+  }));
+  
+  return { 
+    success: true, 
+    message: `Received ${uploadedFiles.length} files and ${Object.keys(fields).length} fields`,
+    files: uploadedFiles,
+    fields
+  };
+});
+```
+
 ### XML Data
 
 ```typescript
@@ -205,6 +236,28 @@ app.post('/api/yaml', ({ request, response }) => {
 });
 ```
 
+### URL-encoded JSON Data
+
+```typescript
+import { isUrlEncodedJson } from 'yinzerflow/types/http/Request';
+
+app.post('/api/form-json', ({ request, response }) => {
+  if (!isUrlEncodedJson(request.body)) {
+    response.setStatus(400);
+    return { error: 'Expected URL-encoded JSON data' };
+  }
+  
+  // Access URL-encoded JSON data
+  // This could contain parsed JSON objects as values
+  const userData = request.body.user;
+  
+  return { 
+    success: true, 
+    user: userData
+  };
+});
+```
+
 ### URL-encoded Form Data
 
 ```typescript
@@ -224,31 +277,6 @@ app.post('/api/form', ({ request, response }) => {
     user: { username, email }
   };
 });
-```
-
-## Type Guards Implementation
-
-For reference, here's how the type guards are implemented:
-
-```typescript
-// Type guard for JSON data
-export function isJsonData(body: unknown): body is IJsonData {
-  return typeof body === 'object' && body !== null && !Array.isArray(body);
-}
-
-// Type guard for multipart form data
-export function isMultipartFormData(body: unknown): body is IMultipartFormData {
-  return (
-    typeof body === 'object' && 
-    body !== null && 
-    'fields' in body && 
-    'files' in body &&
-    typeof (body as any).fields === 'object' &&
-    typeof (body as any).files === 'object'
-  );
-}
-
-// Additional type guards follow the same pattern
 ```
 
 For more detailed examples, see the [content handlers example](/example/routes/content-types.ts). 

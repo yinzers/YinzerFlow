@@ -29,6 +29,6 @@ export class MockSocket {
    * Returns the mock socket as a Socket type
    */
   asSocket(): Socket {
-    return this as unknown as Socket;
+    return <Socket>(<unknown>this);
   }
 }

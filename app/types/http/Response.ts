@@ -192,6 +192,8 @@ export interface IHeaders {
   Priority?: string;
   /** Global Privacy Control signal */
   'Sec-GPC'?: string;
+  /** Custom headers */
+  [key: string]: string | undefined;
   /* eslint-enable @typescript-eslint/naming-convention */
 }
 
