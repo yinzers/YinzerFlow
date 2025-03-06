@@ -157,15 +157,21 @@ const app = new YinzerFlow({
 
 ## Advanced Topics
 
-For more advanced usage, check out the [API Documentation](./api.md), which covers:
+For more advanced usage, check out the following documentation:
 
-- Type-safe responses
-- Custom middleware patterns
-- Request and response manipulation
-- HTTP constants and status codes
-- Content type handling
-- Cookie management
-- And more!
+### Handling Different Content-Types In A Request ✅
+
+YinzerFlow automatically parses request bodies based on the Content-Type header. The framework supports JSON, XML, form data, file uploads, CSV, YAML, and more.
+
+```typescript
+// Request body is automatically parsed based on Content-Type
+app.post('/api/data', ({ request }) => {
+  const data = request.body;
+  return { received: data };
+});
+```
+
+For detailed information about working with different content types, including type guards and examples, see the [Content Type Handling](./content-types.md) documentation.
 
 ## Contributing to Documentation
 
@@ -184,14 +190,15 @@ The documentation is organized as follows:
 
 ```
 docs/
-├── README.md          # This file - overview and getting started
-└── api.md             # Detailed API documentation
+├── README.md                # This file - overview and getting started
+├── content-types.md         # Working with different content types
 ```
 
 Additional documentation files will be added as the framework evolves, including:
 
-- Tutorials for common use cases
+- Middleware and routing
+- Error handling and logging
 - Performance optimization guides
 - Security best practices
 - Deployment strategies
-- Troubleshooting and FAQs 
+- Troubleshooting and FAQs

@@ -1,4 +1,7 @@
-import type { IRequest, TRequestBody } from '../types/http/Request.ts';
+/* eslint-disable max-lines */
+/* eslint-disable complexity */
+/* eslint-disable max-statements */
+import type { IRequest, IYamlData, TRequestBody } from '../types/http/Request.ts';
 import type { IRoute } from '../types/Route.ts';
 import { ContentType } from '../constants/http.ts';
 
@@ -452,11 +455,13 @@ export class RequestParser {
       // Then parse any JSON values
       const result: Record<string, any> = {};
 
-      for (const [key, value] of Object.entries(decoded)) {
+      // Fix: Type-safe Object.entries with type assertion
+      for (const [key, value] of Object.entries(<Record<string, unknown>>decoded)) {
         try {
           // Try to parse as JSON
           // First decode the URL-encoded JSON string
-          const decodedValue = decodeURIComponent(value as string);
+          const decodedValue = decodeURIComponent(String(value));
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           result[key] = JSON.parse(decodedValue);
         } catch {
           // If not valid JSON, keep as is
@@ -481,22 +486,30 @@ export class RequestParser {
       // Split into lines
       const lines = body.split(/\r?\n/).filter((line) => line.trim());
       if (lines.length === 0) {
-        return { rows: [] };
+        return { rows: <Array<Record<string, string>>>[] };
       }
 
       // Parse header row
-      const headers = this._parseCsvLine(lines[0]);
+      const [headerLine, ...dataLines] = lines;
+      if (!headerLine) {
+        return { rows: <Array<Record<string, string>>>[] };
+      }
+
+      const headers = this._parseCsvLine(headerLine);
 
       // Parse data rows
-      const rows = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = this._parseCsvLine(lines[i]);
+      const rows: Array<Record<string, string>> = [];
+      for (const line of dataLines) {
+        if (!line) continue;
+
+        const values = this._parseCsvLine(line);
         if (values.length === 0) continue;
 
         const row: Record<string, string> = {};
         for (let j = 0; j < headers.length; j++) {
-          if (j < values.length) {
-            row[headers[j]] = values[j];
+          const header = headers[j];
+          if (j < values.length && header !== undefined) {
+            row[header] = values[j] ?? '';
           }
         }
 
@@ -516,7 +529,7 @@ export class RequestParser {
    * @returns Array of values
    */
   private _parseCsvLine(line: string): Array<string> {
-    const values: Array<string> = [];
+    const values = new Array<string>();
     let currentValue = '';
     let inQuotes = false;
 
@@ -560,7 +573,8 @@ export class RequestParser {
     try {
       // Simple YAML parsing - convert to JSON-like structure
       // This is a basic implementation - for production, use a proper YAML parser
-      const result: Record<string, any> = {};
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result: IYamlData = Object.create(null);
 
       // Split into lines
       const lines = body.split(/\r?\n/).filter((line) => line.trim() && !line.startsWith('#'));
@@ -592,8 +606,10 @@ export class RequestParser {
         // Parse key-value pair
         if (content.includes(':')) {
           const [key, value] = content.split(':', 2);
+          if (!key || value === undefined) continue;
+
           const trimmedKey = key.trim();
-          const trimmedValue = value?.trim();
+          const trimmedValue = value.trim();
 
           if (trimmedValue) {
             // Simple key-value pair
@@ -605,7 +621,7 @@ export class RequestParser {
         }
       }
 
-      return result;
+      return <TRequestBody>result;
     } catch (error) {
       throw new Error(`YAML parsing not fully supported: ${error instanceof Error ? error.message : 'unknown error'}`);
     }
@@ -617,7 +633,7 @@ export class RequestParser {
    * @param value - YAML value string
    * @returns Parsed value
    */
-  private _parseYamlValue(value: string): any {
+  private _parseYamlValue(value: string): unknown {
     // Handle numbers
     if (/^-?\d+(?:\.\d+)?$/.test(value)) {
       return parseFloat(value);
@@ -646,64 +662,23 @@ export class RequestParser {
    * @param path - Array of keys representing the path
    * @param value - Value to set
    */
-  private _setNestedValue(obj: Record<string, any>, path: Array<string>, value: any): void {
+  private _setNestedValue(obj: IYamlData, path: Array<string>, value: unknown): void {
     let current = obj;
 
     for (let i = 0; i < path.length - 1; i++) {
       const key = path[i];
+      if (key === undefined) continue;
+
       if (!current[key]) {
-        current[key] = {};
+        current[key] = Object.create(null);
       }
-      current = current[key];
+      // Safe cast since we just assigned an object
+      current = <IYamlData>current[key];
     }
 
-    current[path[path.length - 1]] = value;
-  }
-
-  /**
-   * Parse the Content-Type header from a multipart section
-   *
-   * @param headers - Headers string from multipart section
-   * @returns Content type if found, undefined otherwise
-   */
-  private _getContentTypeFromHeaders(headers: string): string | undefined {
-    const [contentTypeLine] = headers.split('\r\n').filter((line) => line.toLowerCase().startsWith('content-type:'));
-    if (!contentTypeLine) return undefined;
-
-    const contentTypeMatch = /content-type:\s*(?<contentType>[^\r\n]+)/i.exec(contentTypeLine);
-    return contentTypeMatch?.groups?.contentType?.trim();
-  }
-
-  /**
-   * Parse XML content
-   *
-   * @param content - XML string
-   * @returns Parsed XML as a JavaScript object
-   */
-  private _parseXml(content: string): Record<string, any> {
-    const result: Record<string, any> = {};
-
-    // Very simple XML parser - for complex XML, use a proper XML parser library
-    const tagRegex = /<(?<tag>[^\s>]+)[^>]*>(?<content>[\s\S]*?)<\/\1>/gs;
-    let match;
-
-    while ((match = tagRegex.exec(content)) !== null) {
-      if (match.groups) {
-        const { tag, content } = match.groups;
-        result[tag] = content;
-      }
+    const lastKey = path[path.length - 1];
+    if (lastKey !== undefined) {
+      current[lastKey] = value;
     }
-
-    return result;
-  }
-
-  /**
-   * Get content type from headers
-   *
-   * @param headers - Request headers
-   * @returns Content type or undefined
-   */
-  private _getContentType(headers: Record<string, string>): string | undefined {
-    return headers['content-type'] ?? headers['Content-Type'];
   }
 }

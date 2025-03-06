@@ -340,36 +340,23 @@ export default function setupContentHandlers(app: YinzerFlow) {
     // TypeScript knows request.body is MultipartFormData here
     const { fields, files } = request.body;
 
-    // Validate required fields
-    if (!fields.username) {
-      response.setStatus(400);
-      return {
-        success: false,
-        message: 'Missing required field: username',
-      };
-    }
+    // Process fields
+    const username = fields.username || 'anonymous';
 
-    // Validate required files
-    if (!files.avatar) {
-      response.setStatus(400);
-      return {
-        success: false,
-        message: 'Missing required file: avatar',
-      };
-    }
-
-    // Process the avatar file
-    const avatar = files.avatar;
+    // Process files
+    const fileNames = Object.keys(files);
+    const fileSizes = fileNames.map((name) => ({
+      name,
+      size: files[name].size,
+      type: files[name].contentType,
+    }));
 
     return {
       success: true,
-      message: `Upload received for ${fields.username}`,
-      avatar: {
-        filename: avatar.filename,
-        size: avatar.size,
-        type: avatar.contentType,
-      },
-      otherFiles: Object.keys(files).filter((name) => name !== 'avatar').length,
+      message: `Upload received for ${username}`,
+      fieldCount: Object.keys(fields).length,
+      fileCount: fileNames.length,
+      files: fileSizes,
     };
   });
 
