@@ -1,5 +1,5 @@
-import type { Context } from '../Context.utils.ts';
-import type { TResponseBody } from '../HttpResponse.ts';
+import type { TResponseBody } from './http/Response.ts';
+import type { Context } from 'types/Common.ts';
 
 export type TErrorFunction =
   | ((ctx: Context, error: unknown) => Promise<TResponseBody<unknown>> | TResponseBody<unknown>)

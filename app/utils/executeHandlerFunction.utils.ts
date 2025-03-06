@@ -1,6 +1,6 @@
-import type { Context } from '../types/Common.ts';
-import type { TResponseBody } from '../types/http/Response.ts';
-import type { IRoute } from '../types/Route.ts';
+import type { Context } from 'types/Common.ts';
+import type { TResponseBody } from 'types/http/Response.ts';
+import type { IRoute } from 'types/Route.ts';
 
 /**
  * Execute a route handler function

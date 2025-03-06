@@ -1,16 +1,60 @@
 schema-version: v1
 rulesets:
-- tsx-react
-- typescript-best-practices:
-  rules:
-    no-console:
-      ignore:
-      - '**'
-    boolean-prop-naming:
-      ignore:
-      - '**'
-- typescript-browser-security
-- typescript-common-security
-- typescript-express
-- typescript-inclusive
-- typescript-node-security
+  - tsx-react:
+    rules:
+      jsx-no-comment-textnodes:
+        ignore:
+          - "**"
+  - typescript-best-practices:
+    rules:
+      no-console:
+        ignore:
+          - "**"
+      boolean-prop-naming:
+        ignore:
+          - "**"
+      no-empty:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unused-parameter:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unsafe-type-assertion:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unsafe-assignment:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unsafe-return:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unsafe-argument:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unsafe-member-access:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+      no-unsafe-call:
+        ignore:
+          - "**/__tests__/**"
+          - "**/*.spec.ts"
+          - "**/*.test.ts"
+  - typescript-browser-security
+  - typescript-common-security
+  - typescript-express
+  - typescript-inclusive
+  - typescript-node-security

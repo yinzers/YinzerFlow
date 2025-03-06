@@ -1,18 +1,13 @@
 import type { TMiddleware } from '../types/Middleware.ts';
-import type { TUndefinableResponseFunction } from '../types/Route.ts';
+import type { IRoute, TUndefinableResponseFunction } from '../types/Route.ts';
+import type { Context } from './Context.ts';
+import type { TResponseBody } from 'lib/YinzerFlow.js';
 
 /**
  * Manages middleware registration and execution
  */
 export class MiddlewareManager {
   private readonly middleware: Array<TMiddleware> = [];
-
-  /**
-   * Get all registered middleware
-   */
-  getMiddleware(): Array<TMiddleware> {
-    return this.middleware;
-  }
 
   /**
    * Add middleware to be executed before route handlers
@@ -44,86 +39,64 @@ export class MiddlewareManager {
   }
 
   /**
-   * Add middleware with options
-   * @param middleware The middleware function to add
-   * @param options Options for the middleware (paths, excluded, exact)
+   * Process middleware functions for a route
    */
-  addMiddleware(
-    middleware: (ctx: unknown, next: () => Promise<unknown>) => unknown,
-    options: {
-      paths: Array<string> | 'all' | 'allButExcluded';
-      excluded?: Array<string>;
-      exact?: boolean;
-    },
-  ): void {
-    this.middleware.push(<TMiddleware>(<unknown>{
-      middleware,
-      options: {
-        paths: options.paths,
-        excluded: options.excluded ?? [],
-        exact: options.exact ?? false,
-      },
-    }));
-  }
+  async processBeforeAll(route: IRoute, ctx: Context): Promise<TResponseBody<unknown> | void> {
+    if (!this.middleware.length) return;
 
-  /**
-   * Get middleware that should be executed for a specific path
-   * @param path The path to get middleware for
-   * @returns Array of middleware functions that should be executed for the path
-   */
-  getMiddlewareForPath(path: string): Array<(ctx: unknown, next: () => Promise<unknown>) => unknown> {
-    const result: Array<(ctx: unknown, next: () => Promise<unknown>) => unknown> = [];
+    for (const middleware of this.middleware) {
+      // Handle "all but excluded" middleware
+      if (middleware.paths === 'allButExcluded' && !middleware.excluded.includes(route.path)) {
+        const result = await Promise.resolve(middleware.fn(ctx));
 
-    for (const mw of this.middleware) {
-      const middleware = <
-        {
-          middleware: (ctx: unknown, next: () => Promise<unknown>) => unknown;
-          options: {
-            paths: Array<string> | 'all' | 'allButExcluded';
-            excluded: Array<string>;
-            exact: boolean;
-          };
+        if (result) {
+          return typeof result === 'object' ? result : result;
         }
-      >(<unknown>mw);
-
-      // Global middleware (applies to all paths)
-      if (middleware.options.paths === 'all') {
-        result.push(middleware.middleware);
-        continue;
       }
 
-      // Middleware that applies to all paths except excluded ones
-      if (middleware.options.paths === 'allButExcluded' && !middleware.options.excluded.includes(path)) {
-        result.push(middleware.middleware);
-        continue;
-      }
+      // Handle included paths middleware
+      if (Array.isArray(middleware.paths) && middleware.paths.includes(route.path)) {
+        const result = await Promise.resolve(middleware.fn(ctx));
 
-      // Path-specific middleware
-      if (Array.isArray(middleware.options.paths)) {
-        const isExactMatch = middleware.options.paths.includes(path);
-
-        // Handle exact matching if specified
-        if (middleware.options.exact) {
-          if (isExactMatch) {
-            result.push(middleware.middleware);
-          }
-          continue;
-        }
-
-        // Handle subpath matching (default behavior)
-        const isSubpathMatch = middleware.options.paths.some(
-          (p) =>
-            path === p || // Exact match
-            path.startsWith(`${p}/`) || // Subpath
-            (path.endsWith('/') && path.slice(0, -1) === p), // Trailing slash
-        );
-
-        if (isExactMatch || isSubpathMatch) {
-          result.push(middleware.middleware);
+        if (result) {
+          return typeof result === 'object' ? result : result;
         }
       }
     }
 
-    return result;
+    return undefined;
+  }
+
+  /**
+   * Process beforeGroup functions for a route
+   */
+  async processBeforeGroup(route: IRoute, ctx: Context): Promise<TResponseBody<unknown> | void> {
+    if (route.beforeGroup) {
+      return Promise.resolve(route.beforeGroup(ctx));
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Process beforeHandler functions for a route
+   */
+  async processBeforeHandler(route: IRoute, ctx: Context): Promise<TResponseBody<unknown> | void> {
+    if (route.beforeHandler) {
+      return Promise.resolve(route.beforeHandler(ctx));
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Process afterHandler functions for a route
+   */
+  async processAfterHandler(route: IRoute, ctx: Context): Promise<TResponseBody<unknown> | void> {
+    if (route.afterHandler) {
+      return Promise.resolve(route.afterHandler(ctx));
+    }
+
+    return undefined;
   }
 }

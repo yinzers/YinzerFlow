@@ -3,7 +3,7 @@ import dts from 'bun-plugin-dts';
 await Bun.build({
   sourcemap: 'external',
   minify: false,
-  entrypoints: ['./app/index.ts'],
+  entrypoints: ['./app/YinzerFlow.ts'],
   outdir: './lib',
   target: 'node',
   plugins: [

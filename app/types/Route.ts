@@ -1,6 +1,6 @@
-import type { Context } from 'utils/Context.utils.ts';
-import type { THttpMethod } from './http/Request.ts';
-import type { TResponseBody } from 'lib/index.js';
+import type { Context } from 'core/Context.ts';
+import type { THttpMethod } from 'types/http/Request.ts';
+import type { TResponseBody } from 'types/http/Response.ts';
 
 export type TResponseFunction = (ctx: Context) => Promise<TResponseBody<unknown>> | TResponseBody<unknown>;
 export type TUndefinableResponseFunction = TResponseFunction | ((ctx: Context) => Promise<void> | void);

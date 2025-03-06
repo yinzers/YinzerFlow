@@ -1,19 +1,25 @@
 import type { Socket } from 'net';
-import { HttpStatusCode } from '../constants/http.ts';
 import type { IRoute } from '../types/Route.ts';
 import type { TErrorFunction } from '../types/Response.ts';
-import type { RouteFinder } from './RouteFinder.ts';
-import type { MiddlewareManager } from './MiddlewareManager.ts';
-import { MiddlewareExecutor } from './MiddlewareExecutor.ts';
+import { HttpStatusCode } from '../constants/http.ts';
 import { HttpRequest } from './HttpRequest.ts';
 import { HttpResponse } from './HttpResponse.ts';
-import { Context } from './Context.ts';
+import { Context as ContextClass } from './Context.ts';
+import type { MiddlewareManager } from './MiddlewareManager.ts';
+import type { RouteFinder } from './RouteFinder.ts';
+
 /**
- * Handles processing of incoming HTTP requests
+ * Handles HTTP requests and routes them to the appropriate handler
+ *
+ * This class is responsible for:
+ * 1. Receiving HTTP requests from a socket
+ * 2. Finding the appropriate route
+ * 3. Processing the request through middleware
+ * 4. Executing the route handler
+ * 5. Sending the response back to the client
+ * 6. Handling any errors that occur during processing
  */
 export class RequestHandler {
-  private readonly middlewareExecutor = new MiddlewareExecutor();
-
   constructor(
     private readonly routeFinder: RouteFinder,
     private readonly middlewareManager: MiddlewareManager,
@@ -21,88 +27,125 @@ export class RequestHandler {
   ) {}
 
   /**
-   * Main handler for incoming HTTP requests
+   * Main handler for incoming HTTP requests from a socket
+   *
+   * @param socket - The client socket connection
+   * @param buffer - The raw request data
    */
   async handleSocketRequest(socket: Socket, buffer: Buffer): Promise<void> {
-    const createRequest = new HttpRequest(buffer.toString());
+    const request = new HttpRequest(buffer.toString());
+
     try {
       // Find the route for this request
-      const findRouteBasedOnRequest = this.routeFinder.findRouteFromRequest(createRequest);
+      const route = this.routeFinder.findRouteFromRequest(request);
 
-      if (!findRouteBasedOnRequest) {
-        const ctx = new Context(createRequest, new HttpResponse(createRequest));
-        ctx.response.setStatus(HttpStatusCode.NOT_FOUND);
-        ctx.response.setBody({ success: false, message: 'Not found' });
-        await new Promise<void>((resolve) => {
-          socket.write(ctx.response.formatHttpResponse(), () => resolve());
-          socket.end();
-        });
-        return;
-      }
-
-      // Parse route parameters
-      createRequest.parseParams(findRouteBasedOnRequest);
-
-      // Process the request through middleware and handlers
-      const createResponse = await this.handleRequest(createRequest, findRouteBasedOnRequest);
+      // Process the request or return 404
+      const response = route ? (request.parseParams(route), await this.processRequest(request, route)) : this.createNotFoundResponse(request);
 
       // Send the response
-      await new Promise<void>((resolve) => {
-        socket.write(createResponse.formatHttpResponse(), () => resolve());
-        socket.end();
-      });
+      await this.sendResponse(socket, response);
     } catch (error) {
-      // Handle errors
-      const createContext = new Context(createRequest, new HttpResponse(createRequest));
-      createContext.response.setBody(await Promise.resolve(this.errorHandler(createContext, error)));
-      await new Promise<void>((resolve) => {
-        socket.write(createContext.response.formatHttpResponse(), () => resolve());
-        socket.end();
-      });
+      // Handle errors and send error response
+      const errorResponse = await this.handleError(request, error);
+      await this.sendResponse(socket, errorResponse);
     }
   }
 
   /**
-   * Process a request through middleware and route handlers
+   * Sends an HTTP response through the socket
+   *
+   * @param socket - The client socket connection
+   * @param response - The HTTP response to send
    */
-  async handleRequest(request: HttpRequest, route: IRoute): Promise<HttpResponse> {
-    const createContext = new Context(request, new HttpResponse(request));
+  private async sendResponse(socket: Socket, response: HttpResponse): Promise<void> {
+    await new Promise<void>((resolve) => {
+      socket.write(response.formatHttpResponse(), () => resolve());
+      socket.end();
+    });
+  }
 
-    const middleware = this.middlewareManager.getMiddleware();
+  /**
+   * Handles errors that occur during request processing
+   *
+   * @param request - The HTTP request
+   * @param error - The error that occurred
+   * @returns An HTTP response with error details
+   */
+  private async handleError(request: HttpRequest, error: unknown): Promise<HttpResponse> {
+    const context = new ContextClass(request, new HttpResponse(request));
+    const errorResult = await Promise.resolve(this.errorHandler(context, error));
+    context.response.setBody(errorResult);
+    return context.response;
+  }
 
-    let result = undefined;
+  /**
+   * Process a request through middleware and handlers
+   *
+   * @param request - The HTTP request
+   * @param route - The matched route
+   * @returns An HTTP response
+   */
+  private async processRequest(request: HttpRequest, route: IRoute): Promise<HttpResponse> {
+    const context = new ContextClass(request, new HttpResponse(request));
 
-    // Execute middleware
-    result = await this.middlewareExecutor.executeMiddleware(route, createContext, middleware);
-
-    if (result) {
-      createContext.response.setBody(result);
-      return <HttpResponse>createContext.response;
+    // Process middleware chain
+    const middlewareResult = await this.processMiddlewareChain(route, context);
+    if (middlewareResult) {
+      return middlewareResult;
     }
 
-    // Execute beforeGroup functions
-    result = await this.middlewareExecutor.executeBeforeGroup(route, createContext);
+    // Process route handler
+    const handlerResult = await Promise.resolve(route.handler(context));
 
-    if (result) {
-      createContext.response.setBody(result);
-      return <HttpResponse>createContext.response;
+    // Process afterHandler if defined
+    await this.middlewareManager.processAfterHandler(route, context);
+
+    context.response.setBody(handlerResult);
+    return context.response;
+  }
+
+  /**
+   * Process the middleware chain (beforeAll, beforeGroup, beforeHandler)
+   *
+   * @param route - The matched route
+   * @param context - The request context
+   * @returns An HTTP response if middleware returns a result, otherwise undefined
+   */
+  private async processMiddlewareChain(route: IRoute, context: ContextClass): Promise<HttpResponse | undefined> {
+    // Process global middleware
+    const beforeAllResult = await this.middlewareManager.processBeforeAll(route, context);
+    if (beforeAllResult) {
+      context.response.setBody(beforeAllResult);
+      return context.response;
     }
 
-    // Execute beforeHandler functions
-    result = await this.middlewareExecutor.executeBeforeHandler(route, createContext);
-
-    if (result) {
-      createContext.response.setBody(result);
-      return <HttpResponse>createContext.response;
+    // Process group middleware
+    const beforeGroupResult = await this.middlewareManager.processBeforeGroup(route, context);
+    if (beforeGroupResult) {
+      context.response.setBody(beforeGroupResult);
+      return context.response;
     }
 
-    // Execute route handler
-    result = await Promise.resolve(route.handler(createContext));
+    // Process handler-specific middleware
+    const beforeHandlerResult = await this.middlewareManager.processBeforeHandler(route, context);
+    if (beforeHandlerResult) {
+      context.response.setBody(beforeHandlerResult);
+      return context.response;
+    }
 
-    // Execute afterHandler if defined
-    await this.middlewareExecutor.executeAfterHandler(route, createContext);
+    return undefined;
+  }
 
-    createContext.response.setBody(result);
-    return <HttpResponse>createContext.response;
+  /**
+   * Creates a 404 Not Found response
+   *
+   * @param request - The HTTP request
+   * @returns A 404 Not Found HTTP response
+   */
+  private createNotFoundResponse(request: HttpRequest): HttpResponse {
+    const context = new ContextClass(request, new HttpResponse(request));
+    context.response.setStatus(HttpStatusCode.NOT_FOUND);
+    context.response.setBody({ success: false, message: 'Not found' });
+    return context.response;
   }
 }

@@ -128,13 +128,6 @@ export class YinzerFlow {
     this.routeRegistry.addGroup(prefix, routes, options);
   }
 
-  /**
-   * Register multiple routes at once
-   */
-  routes(routes: Array<IRoute>): void {
-    this.routeRegistry.addRoutes(routes);
-  }
-
   // === MIDDLEWARE METHODS ===
 
   /**

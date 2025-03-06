@@ -1,5 +1,5 @@
 import type { Enum } from '../Common.ts';
-import type { HttpStatus, HttpStatusCode } from '../../constants/http.ts';
+import type { ContentType, HttpStatus, HttpStatusCode } from '../../constants/http.ts';
 import type { THttpMethod } from './Request.ts';
 
 export type THttpStatus = Enum<typeof HttpStatus>;
@@ -43,7 +43,10 @@ export interface IHeaders {
   'Timing-Allow-Origin'?: string;
   'Content-Disposition'?: string;
   'Content-Length'?: string;
-  'Content-Type'?: string | 'application/json' | 'text/html' | 'text/plain';
+  /**
+   * The media type of the resource
+   */
+  'Content-Type'?: (typeof ContentType)[keyof typeof ContentType] | string;
   'Content-Encoding'?: string;
   'Content-Language'?: string;
   'Content-Location'?: string;

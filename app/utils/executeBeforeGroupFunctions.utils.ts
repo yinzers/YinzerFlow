@@ -1,5 +1,5 @@
-import type { Context } from '../types/Common.ts';
-import type { TResponseBody } from '../types/http/Response.ts';
+import type { Context } from 'core/Context.ts';
+import type { TResponseBody } from 'types/http/Response.ts';
 
 /**
  * Execute beforeGroup functions in sequence

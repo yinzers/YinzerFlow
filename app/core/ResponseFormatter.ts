@@ -1,5 +1,5 @@
-import type { TResponseBody } from 'root/types/index.ts';
-import { calculateContentLength } from '../utils/string.utils.ts';
+import { calculateContentLength } from 'utils/string.utils.ts';
+import type { TResponseBody } from 'types/http/Response.ts';
 
 /**
  * Handles formatting of HTTP responses

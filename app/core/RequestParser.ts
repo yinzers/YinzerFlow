@@ -1,5 +1,6 @@
 import type { IRequest, TRequestBody } from '../types/http/Request.ts';
 import type { IRoute } from '../types/Route.ts';
+import { ContentType } from '../constants/http.ts';
 
 /**
  * Handles parsing of HTTP request components
@@ -18,11 +19,12 @@ export class RequestParser {
     if (!headers['Content-Type']) throw new Error('Missing Content-Type header');
 
     let parsedBody: TRequestBody = {};
-    if (headers['Content-Type'] === 'application/json') parsedBody = this.handleApplicationJson(body);
 
-    if (headers['Content-Type'] === 'application/x-www-form-urlencoded') parsedBody = this.handleXwwwFormUrlencoded(body);
+    if (headers['Content-Type'] === ContentType.JSON) parsedBody = this.handleApplicationJson(body);
 
-    if (headers['Content-Type'].includes('multipart/form-data')) parsedBody = this.handleMultipartFormData(body);
+    if (headers['Content-Type'] === ContentType.FORM) parsedBody = this.handleXwwwFormUrlencoded(body);
+
+    if (headers['Content-Type'].includes(ContentType.MULTIPART)) parsedBody = this.handleMultipartFormData(body);
 
     return parsedBody;
   }
