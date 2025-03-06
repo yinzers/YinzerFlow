@@ -1,11 +1,11 @@
-import { Socket } from 'net';
+import type { Socket } from 'net';
 
 /**
  * A mock implementation of the Socket class for testing
  */
 export class MockSocket {
-  public data: string = '';
-  public ended: boolean = false;
+  data = '';
+  ended = false;
 
   write(data: string, callback?: () => void): boolean {
     this.data = data;

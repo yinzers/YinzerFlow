@@ -187,7 +187,7 @@ const eslintRules = {
     },
   ],
   'template-curly-spacing': ['error', 'never'],
-  'wrap-regex': 'error',
+  'wrap-regex': 'off',
 };
 
 /**

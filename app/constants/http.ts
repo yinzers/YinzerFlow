@@ -60,7 +60,11 @@ export const HttpMethod = <const>{
 export const ContentType = <const>{
   JSON: 'application/json',
   HTML: 'text/html',
-  PLAIN: 'text/plain',
   FORM: 'application/x-www-form-urlencoded',
   MULTIPART: 'multipart/form-data',
+  XML: 'application/xml',
+  TEXT: 'text/plain',
+  CSV: 'text/csv',
+  YAML: 'application/yaml',
+  URL_ENCODED_JSON: 'application/x-www-form-urlencoded+json',
 };

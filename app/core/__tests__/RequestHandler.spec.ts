@@ -1,12 +1,10 @@
-import { describe, test, expect, mock, beforeEach, type Mock } from 'bun:test';
-import { Socket } from 'net';
+import type { Socket } from 'net';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { RequestHandler } from '../RequestHandler.ts';
 import { HttpRequest } from '../HttpRequest.ts';
 import { HttpResponse } from '../HttpResponse.ts';
-import { HttpStatusCode } from '../../constants/http.ts';
 import type { IRoute } from '../../types/Route.ts';
 import type { Context } from '../Context.ts';
-import type { TErrorFunction } from '../../types/Response.ts';
 
 // Import reusable mocks directly from their files
 import { createMockRouteFinder } from '../__mocks__/RouteFinder.mock.ts';
@@ -63,7 +61,7 @@ describe('RequestHandler', () => {
       // Arrange
       const requestBuffer = Buffer.from('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
 
-      const mockRouteHandler = mock((ctx: Context) => {
+      const mockRouteHandler = mock(() => {
         return { success: true, message: 'Test successful' };
       });
 
@@ -120,7 +118,7 @@ describe('RequestHandler', () => {
 
       const mockRouteHandler = mock((ctx: Context) => {
         const params = ctx.request.params as Record<string, string>;
-        return { success: true, userId: params['id'] };
+        return { success: true, userId: params.id };
       });
 
       const mockRoute: IRoute = {
@@ -150,8 +148,8 @@ describe('RequestHandler', () => {
         const query = ctx.request.query as Record<string, string>;
         return {
           success: true,
-          query: query['q'],
-          page: query['page'],
+          query: query.q,
+          page: query.page,
         };
       });
 
@@ -187,8 +185,8 @@ describe('RequestHandler', () => {
         return {
           success: true,
           user: {
-            name: body['name'],
-            email: body['email'],
+            name: body.name,
+            email: body.email,
           },
         };
       });
@@ -214,7 +212,7 @@ describe('RequestHandler', () => {
     });
   });
 
-  describe('processRequest', () => {
+  describe('_processRequest', () => {
     test('should return early if beforeAll middleware returns a result', async () => {
       // Arrange
       const request = new HttpRequest('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
@@ -226,10 +224,10 @@ describe('RequestHandler', () => {
       };
 
       const middlewareResult = { success: false, message: 'Blocked by middleware' };
-      mockProcessBeforeAll.mockImplementation(() => Promise.resolve(middlewareResult as unknown));
+      mockProcessBeforeAll.mockImplementation(async () => Promise.resolve(middlewareResult as unknown));
 
       // Act
-      const response = await (requestHandler as any).processRequest(request, route);
+      const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
       expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
@@ -251,10 +249,10 @@ describe('RequestHandler', () => {
       };
 
       const middlewareResult = { success: false, message: 'Blocked by group middleware' };
-      mockProcessBeforeGroup.mockImplementation(() => Promise.resolve(middlewareResult as unknown));
+      mockProcessBeforeGroup.mockImplementation(async () => Promise.resolve(middlewareResult as unknown));
 
       // Act
-      const response = await (requestHandler as any).processRequest(request, route);
+      const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
       expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
@@ -276,10 +274,10 @@ describe('RequestHandler', () => {
       };
 
       const middlewareResult = { success: false, message: 'Blocked by handler middleware' };
-      mockProcessBeforeHandler.mockImplementation(() => Promise.resolve(middlewareResult as unknown));
+      mockProcessBeforeHandler.mockImplementation(async () => Promise.resolve(middlewareResult as unknown));
 
       // Act
-      const response = await (requestHandler as any).processRequest(request, route);
+      const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
       expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
@@ -302,7 +300,7 @@ describe('RequestHandler', () => {
       };
 
       // Act
-      const response = await (requestHandler as any).processRequest(request, route);
+      const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
       expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
@@ -314,13 +312,13 @@ describe('RequestHandler', () => {
     });
   });
 
-  describe('createNotFoundResponse', () => {
+  describe('_createNotFoundResponse', () => {
     test('should return a 404 response with the correct body', () => {
       // Arrange
       const request = new HttpRequest('GET /not-found HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
 
       // Act
-      const response = (requestHandler as any).createNotFoundResponse(request);
+      const response = (requestHandler as any)._createNotFoundResponse(request);
 
       // Assert
       expect(response).toBeInstanceOf(HttpResponse);

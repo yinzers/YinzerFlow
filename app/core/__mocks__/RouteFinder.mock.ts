@@ -1,6 +1,7 @@
-import { mock, type Mock } from 'bun:test';
-import { RouteFinder } from '../RouteFinder.ts';
-import { HttpRequest } from '../HttpRequest.ts';
+import {  mock } from 'bun:test';
+import type {Mock} from 'bun:test';
+import type { RouteFinder } from '../RouteFinder.ts';
+import type { HttpRequest } from '../HttpRequest.ts';
 import type { IRoute } from '../../types/Route.ts';
 
 /**

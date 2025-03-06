@@ -40,14 +40,14 @@ export class RequestHandler {
       const route = this.routeFinder.findRouteFromRequest(request);
 
       // Process the request or return 404
-      const response = route ? (request.parseParams(route), await this.processRequest(request, route)) : this.createNotFoundResponse(request);
+      const response = route ? (request.parseParams(route), await this._processRequest(request, route)) : this._createNotFoundResponse(request);
 
       // Send the response
-      await this.sendResponse(socket, response);
+      await this._sendResponse(socket, response);
     } catch (error) {
       // Handle errors and send error response
-      const errorResponse = await this.handleError(request, error);
-      await this.sendResponse(socket, errorResponse);
+      const errorResponse = await this._handleError(request, error);
+      await this._sendResponse(socket, errorResponse);
     }
   }
 
@@ -57,7 +57,7 @@ export class RequestHandler {
    * @param socket - The client socket connection
    * @param response - The HTTP response to send
    */
-  private async sendResponse(socket: Socket, response: HttpResponse): Promise<void> {
+  private async _sendResponse(socket: Socket, response: HttpResponse): Promise<void> {
     await new Promise<void>((resolve) => {
       socket.write(response.formatHttpResponse(), () => resolve());
       socket.end();
@@ -71,7 +71,7 @@ export class RequestHandler {
    * @param error - The error that occurred
    * @returns An HTTP response with error details
    */
-  private async handleError(request: HttpRequest, error: unknown): Promise<HttpResponse> {
+  private async _handleError(request: HttpRequest, error: unknown): Promise<HttpResponse> {
     const context = new ContextClass(request, new HttpResponse(request));
     const errorResult = await Promise.resolve(this.errorHandler(context, error));
     context.response.setBody(errorResult);
@@ -85,11 +85,11 @@ export class RequestHandler {
    * @param route - The matched route
    * @returns An HTTP response
    */
-  private async processRequest(request: HttpRequest, route: IRoute): Promise<HttpResponse> {
+  private async _processRequest(request: HttpRequest, route: IRoute): Promise<HttpResponse> {
     const context = new ContextClass(request, new HttpResponse(request));
 
     // Process middleware chain
-    const middlewareResult = await this.processMiddlewareChain(route, context);
+    const middlewareResult = await this._processMiddlewareChain(route, context);
     if (middlewareResult) {
       return middlewareResult;
     }
@@ -111,7 +111,7 @@ export class RequestHandler {
    * @param context - The request context
    * @returns An HTTP response if middleware returns a result, otherwise undefined
    */
-  private async processMiddlewareChain(route: IRoute, context: ContextClass): Promise<HttpResponse | undefined> {
+  private async _processMiddlewareChain(route: IRoute, context: ContextClass): Promise<HttpResponse | undefined> {
     // Process global middleware
     const beforeAllResult = await this.middlewareManager.processBeforeAll(route, context);
     if (beforeAllResult) {
@@ -142,7 +142,7 @@ export class RequestHandler {
    * @param request - The HTTP request
    * @returns A 404 Not Found HTTP response
    */
-  private createNotFoundResponse(request: HttpRequest): HttpResponse {
+  private _createNotFoundResponse(request: HttpRequest): HttpResponse {
     const context = new ContextClass(request, new HttpResponse(request));
     context.response.setStatus(HttpStatusCode.NOT_FOUND);
     context.response.setBody({ success: false, message: 'Not found' });

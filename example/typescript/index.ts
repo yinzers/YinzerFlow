@@ -6,9 +6,9 @@
  */
 
 import { HttpStatusCode, YinzerFlow } from 'yinzerflow';
-import type { Context, THttpStatusCode, TResponseBody } from 'yinzerflow';
-import authenticationMiddleware from './middleware/authentication.middleware';
-import authenticationRoutes from './routes/authentication.routes';
+import type { THttpStatusCode, TResponseBody } from 'yinzerflow';
+import authenticationRoutes from './routes/authentication.routes.ts';
+import setupContentHandlers from './routes/content-types.ts';
 
 // Define response types for better type safety
 interface ServerResponse {
@@ -17,7 +17,7 @@ interface ServerResponse {
   timestamp?: string;
 }
 
-// Create a new YinzerFlow instance with custom error handling
+// Create a new YinzerFlow instance
 export const app = new YinzerFlow({
   port: 5000,
   errorHandler: ({ response }, error): TResponseBody<ServerResponse> => {
@@ -25,51 +25,24 @@ export const app = new YinzerFlow({
     response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR as THttpStatusCode);
     return {
       success: false,
-      message: 'Internal server error',
+      message: 'An unexpected error occurred',
       timestamp: new Date().toISOString(),
     };
   },
 });
 
-// Add global authentication middleware to all routes except login, register, and status
-app.beforeAll(authenticationMiddleware, {
-  paths: 'allButExcluded',
-  excluded: ['/auth/login', '/auth/register', '/status'],
-});
+// Setup routes
+app.get('/status', () => ({ success: true, message: 'Server is running' }));
 
-// Simple status endpoint to check if the server is running
-app.get(
-  '/status',
-  (): TResponseBody<ServerResponse> => ({
-    success: true,
-    message: 'Server is running',
-    timestamp: new Date().toISOString(),
-  }),
-);
+// Setup content type handlers
+setupContentHandlers(app);
 
-// Group authentication routes under the /auth prefix
-app.group('/auth', authenticationRoutes, {
-  beforeGroup: ({ request, response }: Context): TResponseBody<ServerResponse> | void => {
-    // Example of rate limiting middleware that could be implemented here
-    const clientIp = request.headers['x-forwarded-for'] || 'unknown';
-    console.log(`Request from IP: ${clientIp} to auth endpoint`);
-
-    // For demonstration purposes, we're not actually implementing rate limiting
-    // In a real application, you would check request frequency here
-
-    // Uncomment to simulate rate limiting:
-    // response.setStatus(HttpStatusCode.TOO_MANY_REQUESTS as THttpStatusCode);
-    // return {
-    //   success: false,
-    //   message: 'Too many requests',
-    //   timestamp: new Date().toISOString()
-    // };
-  },
-});
+// Setup authentication routes
+app.group('/auth', authenticationRoutes);
 
 // Start the server
 await app.listen();
+console.log(`Server running on http://localhost:${app.options.port}`);
 
 // Log server status
-console.log(`Server started successfully on port ${app.options.port}`);
-console.log('Server status:', app.getStatus());
+console.log(app.getStatus());
