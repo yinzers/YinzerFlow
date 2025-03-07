@@ -1,8 +1,8 @@
 import type { Socket } from 'net';
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { RequestHandler } from '../RequestHandler.ts';
-import { HttpRequest } from '../HttpRequest.ts';
-import { HttpResponse } from '../HttpResponse.ts';
+import { Request } from '../Request.ts';
+import { Response } from '../Response.ts';
 import type { IRoute } from '../../types/Route.ts';
 import type { Context } from '../Context.ts';
 
@@ -215,7 +215,7 @@ describe('RequestHandler', () => {
   describe('_processRequest', () => {
     test('should return early if beforeAll middleware returns a result', async () => {
       // Arrange
-      const request = new HttpRequest('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const mockRouteHandler = mock(() => ({}));
       const route: IRoute = {
         path: '/test',
@@ -240,7 +240,7 @@ describe('RequestHandler', () => {
 
     test('should return early if beforeGroup middleware returns a result', async () => {
       // Arrange
-      const request = new HttpRequest('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const mockRouteHandler = mock(() => ({}));
       const route: IRoute = {
         path: '/test',
@@ -265,7 +265,7 @@ describe('RequestHandler', () => {
 
     test('should return early if beforeHandler middleware returns a result', async () => {
       // Arrange
-      const request = new HttpRequest('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const mockRouteHandler = mock(() => ({}));
       const route: IRoute = {
         path: '/test',
@@ -290,7 +290,7 @@ describe('RequestHandler', () => {
 
     test('should process the full request pipeline when no middleware returns early', async () => {
       // Arrange
-      const request = new HttpRequest('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const handlerResult = { success: true, data: 'Test data' };
       const mockRouteHandler = mock(() => handlerResult);
       const route: IRoute = {
@@ -315,13 +315,13 @@ describe('RequestHandler', () => {
   describe('_createNotFoundResponse', () => {
     test('should return a 404 response with the correct body', () => {
       // Arrange
-      const request = new HttpRequest('GET /not-found HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /not-found HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
 
       // Act
       const response = (requestHandler as any)._createNotFoundResponse(request);
 
       // Assert
-      expect(response).toBeInstanceOf(HttpResponse);
+      expect(response).toBeInstanceOf(Response);
       expect(response.formatHttpResponse()).toContain('404 Not Found');
       expect(response.formatHttpResponse()).toContain('{"success":false,"message":"Not found"}');
     });

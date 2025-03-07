@@ -1,5 +1,5 @@
 import type { IRoute } from '../types/Route.ts';
-import type { HttpRequest } from './HttpRequest.ts';
+import type { Request } from './Request.ts';
 import type { RouteRegistry } from './RouteRegistry.ts';
 
 /**
@@ -24,7 +24,7 @@ export class RouteFinder {
    * Find a route based on the incoming request
    * First tries exact match, then falls back to pattern matching for route parameters
    */
-  findRouteFromRequest(request: HttpRequest): IRoute | undefined {
+  findRouteFromRequest(request: Request): IRoute | undefined {
     const routes = this.routeRegistry.getRoutes();
 
     // Normalize path by removing trailing slash (except for root path)

@@ -1,5 +1,5 @@
-import type { HttpRequest } from './HttpRequest.ts';
-import type { HttpResponse } from './HttpResponse.ts';
+import type { Request } from './Request.ts';
+import type { Response } from './Response.ts';
 
 /**
  * Request/response context
@@ -8,10 +8,10 @@ import type { HttpResponse } from './HttpResponse.ts';
  * It is passed to middleware and route handlers to provide access to the request and response.
  */
 export class Context {
-  request: HttpRequest;
-  response: HttpResponse;
+  request: Request;
+  response: Response;
 
-  constructor(request: HttpRequest, response: HttpResponse) {
+  constructor(request: Request, response: Response) {
     this.request = request;
     this.response = response;
   }

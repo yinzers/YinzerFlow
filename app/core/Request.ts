@@ -7,7 +7,7 @@ import * as requestUtils from '../utils/request.utils.ts';
 /**
  * Handles HTTP request parsing and parameter extraction
  */
-export class HttpRequest {
+export class Request {
   readonly protocol: IRequest['protocol'];
   readonly method: IRequest['method'];
   readonly path: IRequest['path'];

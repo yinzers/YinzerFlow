@@ -1,6 +1,6 @@
 import { mock } from 'bun:test';
 import type { RouteFinder } from '../RouteFinder.ts';
-import type { HttpRequest } from '../HttpRequest.ts';
+import type { Request } from '../Request.ts';
 import type { IRoute } from '../../types/Route.ts';
 
 /**
@@ -8,12 +8,12 @@ import type { IRoute } from '../../types/Route.ts';
  */
 export const createMockRouteFinder = (): {
   mock: RouteFinder;
-  findRouteFromRequest: ReturnType<typeof mock<(request: HttpRequest) => IRoute | undefined>>;
+  findRouteFromRequest: ReturnType<typeof mock<(request: Request) => IRoute | undefined>>;
   findRoute: ReturnType<typeof mock<(method: string, path: string) => IRoute | undefined>>;
   extractParamsFromPath: ReturnType<typeof mock<(path: string, pattern: string) => Record<string, string>>>;
   reset: () => void;
 } => {
-  const mockFindRouteFromRequest = mock<(request: HttpRequest) => IRoute | undefined>((_request: HttpRequest) => undefined);
+  const mockFindRouteFromRequest = mock<(request: Request) => IRoute | undefined>((_request: Request) => undefined);
 
   const mockFindRoute = mock<(method: string, path: string) => IRoute | undefined>((_method: string, _path: string) => undefined);
 

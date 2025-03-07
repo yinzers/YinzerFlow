@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { HttpRequest } from '../HttpRequest.ts';
+import { Request } from '../Request.ts';
 import { HttpMethod } from '../../constants/http.ts';
 import type { IRoute } from '../../types/Route.ts';
 
@@ -10,7 +10,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['GET /api/users HTTP/1.1', 'Host: example.com', 'User-Agent: test-agent', '', ''].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('GET');
@@ -30,7 +30,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['GET /api/users?name=John&age=30 HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('GET');
@@ -49,7 +49,7 @@ describe('HttpRequest', () => {
       );
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -77,7 +77,7 @@ describe('HttpRequest', () => {
       ].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -106,7 +106,7 @@ describe('HttpRequest', () => {
       ].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -127,7 +127,7 @@ describe('HttpRequest', () => {
       );
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -150,7 +150,7 @@ describe('HttpRequest', () => {
       );
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -170,7 +170,7 @@ describe('HttpRequest', () => {
       );
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -195,7 +195,7 @@ describe('HttpRequest', () => {
       );
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.method).toBe('POST');
@@ -216,7 +216,7 @@ describe('HttpRequest', () => {
       const rawRequest = '';
 
       // Act & Assert
-      expect(() => new HttpRequest(rawRequest)).toThrow('Invalid request');
+      expect(() => new Request(rawRequest)).toThrow('Invalid request');
     });
 
     test('should throw an error for missing Content-Type in POST requests with body', () => {
@@ -225,7 +225,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['POST /api/users HTTP/1.1', 'Host: example.com', '', body].join('\r\n');
 
       // Act & Assert
-      expect(() => new HttpRequest(rawRequest)).toThrow('Missing Content-Type header');
+      expect(() => new Request(rawRequest)).toThrow('Missing Content-Type header');
     });
   });
 
@@ -233,7 +233,7 @@ describe('HttpRequest', () => {
     test('should parse route parameters correctly', () => {
       // Arrange
       const rawRequest = ['GET /api/users/123/posts/456 HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
       const route: IRoute = {
         path: '/api/users/:userId/posts/:postId',
         method: HttpMethod.GET,
@@ -253,7 +253,7 @@ describe('HttpRequest', () => {
     test('should return empty object for non-matching route', () => {
       // Arrange
       const rawRequest = ['GET /api/products/123 HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
       const route: IRoute = {
         path: '/api/users/:userId',
         method: HttpMethod.GET,
@@ -270,7 +270,7 @@ describe('HttpRequest', () => {
     test('should return empty object for route without parameters', () => {
       // Arrange
       const rawRequest = ['GET /api/users HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
       const route: IRoute = {
         path: '/api/users',
         method: HttpMethod.GET,
@@ -287,7 +287,7 @@ describe('HttpRequest', () => {
     test('should handle routes with multiple parameters', () => {
       // Arrange
       const rawRequest = ['GET /api/users/123/posts/456/comments/789 HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
       const route: IRoute = {
         path: '/api/users/:userId/posts/:postId/comments/:commentId',
         method: HttpMethod.GET,
@@ -308,7 +308,7 @@ describe('HttpRequest', () => {
     test('should handle invalid route path', () => {
       // Arrange
       const rawRequest = ['GET /api/users/123 HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
       const route = {
         path: null,
         method: HttpMethod.GET,
@@ -329,7 +329,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['GET /api/users HTTP/1.1', 'Host: example.com', 'Custom-Header: value:with:colons', '', ''].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.headers['Custom-Header']).toBe('value:with:colons');
@@ -340,7 +340,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['GET /api/search?q=test%20query&filter=special%26chars HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.query).toEqual({
@@ -354,7 +354,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['GET /api/search?q=&empty HTTP/1.1', 'Host: example.com', '', ''].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.query).toEqual({
@@ -369,7 +369,7 @@ describe('HttpRequest', () => {
       const rawRequest = ['GET /api/users HTTP/1.1', 'Host: example.com', 'Content-Type: application/json', '', body].join('\r\n');
 
       // Act
-      const request = new HttpRequest(rawRequest);
+      const request = new Request(rawRequest);
 
       // Assert
       expect(request.body).toEqual({});

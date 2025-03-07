@@ -2,8 +2,8 @@ import type { Socket } from 'net';
 import type { IRoute } from '../types/Route.ts';
 import type { TErrorFunction } from '../types/Response.ts';
 import { HttpStatusCode } from '../constants/http.ts';
-import { HttpRequest } from './HttpRequest.ts';
-import { HttpResponse } from './HttpResponse.ts';
+import { Request } from './Request.ts';
+import { Response } from './Response.ts';
 import { Context as ContextClass } from './Context.ts';
 import type { MiddlewareManager } from './MiddlewareManager.ts';
 import type { RouteFinder } from './RouteFinder.ts';
@@ -33,7 +33,7 @@ export class RequestHandler {
    * @param buffer - The raw request data
    */
   async handleSocketRequest(socket: Socket, buffer: Buffer): Promise<void> {
-    const request = new HttpRequest(buffer.toString());
+    const request = new Request(buffer.toString());
 
     try {
       // Find the route for this request
@@ -57,7 +57,7 @@ export class RequestHandler {
    * @param socket - The client socket connection
    * @param response - The HTTP response to send
    */
-  private async _sendResponse(socket: Socket, response: HttpResponse): Promise<void> {
+  private async _sendResponse(socket: Socket, response: Response): Promise<void> {
     await new Promise<void>((resolve) => {
       socket.write(response.formatHttpResponse(), () => resolve());
       socket.end();
@@ -71,8 +71,8 @@ export class RequestHandler {
    * @param error - The error that occurred
    * @returns An HTTP response with error details
    */
-  private async _handleError(request: HttpRequest, error: unknown): Promise<HttpResponse> {
-    const context = new ContextClass(request, new HttpResponse(request));
+  private async _handleError(request: Request, error: unknown): Promise<Response> {
+    const context = new ContextClass(request, new Response(request));
     const errorResult = await Promise.resolve(this.errorHandler(context, error));
     context.response.setBody(errorResult);
     return context.response;
@@ -85,8 +85,8 @@ export class RequestHandler {
    * @param route - The matched route
    * @returns An HTTP response
    */
-  private async _processRequest(request: HttpRequest, route: IRoute): Promise<HttpResponse> {
-    const context = new ContextClass(request, new HttpResponse(request));
+  private async _processRequest(request: Request, route: IRoute): Promise<Response> {
+    const context = new ContextClass(request, new Response(request));
 
     // Process middleware chain
     const middlewareResult = await this._processMiddlewareChain(route, context);
@@ -111,7 +111,7 @@ export class RequestHandler {
    * @param context - The request context
    * @returns An HTTP response if middleware returns a result, otherwise undefined
    */
-  private async _processMiddlewareChain(route: IRoute, context: ContextClass): Promise<HttpResponse | undefined> {
+  private async _processMiddlewareChain(route: IRoute, context: ContextClass): Promise<Response | undefined> {
     // Process global middleware
     const beforeAllResult = await this.middlewareManager.processBeforeAll(route, context);
     if (beforeAllResult) {
@@ -142,8 +142,8 @@ export class RequestHandler {
    * @param request - The HTTP request
    * @returns A 404 Not Found HTTP response
    */
-  private _createNotFoundResponse(request: HttpRequest): HttpResponse {
-    const context = new ContextClass(request, new HttpResponse(request));
+  private _createNotFoundResponse(request: Request): Response {
+    const context = new ContextClass(request, new Response(request));
     context.response.setStatus(HttpStatusCode.NOT_FOUND);
     context.response.setBody({ success: false, message: 'Not found' });
     return context.response;
