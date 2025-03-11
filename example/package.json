@@ -1,0 +1,31 @@
+{
+  "name": "yinzerflow-example",
+  "version": "0.1.10",
+  "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
+  "license": "MIT",
+  "description": "A simple, fast, and lightweight web framework for Node and Bun",
+  "types": "index.d.ts",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "yinzerflow": "file:../"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^1.1.1",
+    "@types/ip": "^1.1.3",
+    "bun-plugin-dts": "^0.2.3",
+    "bun-types": "^1.0.3",
+    "cspell": "^8.13.2",
+    "eslint": "^9.6.0",
+    "eslint-import-resolver-typescript": "^3.6.1",
+    "eslint-plugin-import": "^2.29.1",
+    "globals": "^15.8.0",
+    "gzip-size-cli": "^5.1.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.1.6",
+    "typescript-eslint": "^8.0.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

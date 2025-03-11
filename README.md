@@ -1,375 +1,296 @@
-# YinzerJS Documentation
+# YinzerFlow
 
-## Table of Contents
+<div align="center">
+  <h3>A lightweight, modular HTTP server framework for Node.js</h3>
+  <p>Built with TypeScript. Zero dependencies. Blazing fast.</p>
+</div>
 
-1. [Overview](#overview)
-2. [Installation](#installation)
-   - [Using npm](#using-npm)
-   - [Using Bun](#using-bun)
-   - [Using Yarn](#using-yarn)
-   - [Using pnpm](#using-pnpm)
-3. [Getting Started](#getting-started)
-   - [Importing YinzerFlow](#importing-yinzerflow)
-   - [Creating an Application Instance](#creating-an-application-instance)
-   - [Defining Routes](#defining-routes)
-4. [Route Groups](#route-groups)
-5. [Response Handling](#response-handling)
-6. [Middleware](#middleware)
-   - [Global Middleware](#global-middleware)
-   - [Route-specific Middleware](#route-specific-middleware)
-7. [Starting the Server](#starting-the-server)
-8. [Request Handling Flow](#request-handling-flow)
-9. [Error Handling](#error-handling)
-10. [Examples](#examples)
-11. [Contribution](#contribution)
-12. [Conclusion](#conclusion)
+## Features
 
-## Overview
-
-YinzerFlow is a lightweight HTTP server framework built for Node.js, designed with TypeScript in mind. It leverages TypeScript's powerful type system to provide enhanced type safety and autocompletion, making it easier for developers to build robust web applications. With YinzerFlow, you can enjoy a flexible routing system, middleware support, and a straightforward interface to handle incoming requests and responses—all while benefiting from TypeScript's clear typing and error-checking capabilities. This combination allows for a smoother development experience, reducing runtime errors and improving code maintainability.
-
-```typescript
-import { YinzerFlow } from 'yinzerflow';
-
-export const app = new YinzerFlow({
-  port: 5000,
-});
-
-app.post('/example-route', (ctx) => {
-  const { body } = ctx.request;
-  return { message: 'Hello, world!' };
-});
-
-app.listen();
-```
+- 🚀 **Lightweight & Fast**: Built from scratch with performance in mind
+- 🧩 **Modular Architecture**: Easily extensible with a clean component structure
+- 🔒 **Type-Safe**: Full TypeScript support with comprehensive type definitions
+- 🧪 **Well-Tested**: Extensive test coverage for reliability
+- 📦 **Zero Dependencies**: No bloated node_modules folder
+- 🪝 **Request Lifecycle Hooks**: Powerful hooks system for request processing (formerly middleware)
+- 🛣️ **Route Groups**: Organize routes with prefixes and shared hooks
+- 🔄 **Event-Based Architecture**: Subscribe to framework events for advanced customization
+- 🌐 **Content Type Handling**: Built-in support for JSON, XML, multipart forms, and more
+- 🔌 **Connection Management**: Robust connection tracking with statistics and graceful shutdown
 
 ## Installation
 
-To get started with YinzerFlow, simply install it using your preferred package manager. YinzerFlow is available via npm, as well as other popular package managers such as Bun, Yarn, and pnpm. Follow the instructions below based on the package manager you are using:
-
-### Using npm
-
-If you are using npm, run the following command in your terminal:
-
 ```bash
 npm install yinzerflow
-```
-
-### Using Bun
-
-For those who prefer Bun, you can add YinzerFlow to your project with the following command:
-
-```bash
+# or
+yarn add yinzerflow
+# or
 bun add yinzerflow
 ```
 
-### Using Yarn
+## Quick Start
 
-If you're a Yarn user, you can easily install YinzerFlow by running:
+### JavaScript
 
-```bash
-yarn add yinzerflow
+```javascript
+const { YinzerFlow } = require('yinzerflow');
+
+const app = new YinzerFlow({ port: 3000 });
+
+app.get('/hello', ({ request }) => {
+  return { message: 'Hello, World!' };
+});
+
+app.listen();
+console.log('Server running on http://localhost:3000');
 ```
 
-### Using pnpm
-
-For developers who utilize pnpm, you can install YinzerFlow with:
-
-```bash
-pnpm add yinzerflow
-```
-
-## Getting Started
-
-### Importing YinzerFlow
+### TypeScript
 
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
-```
 
-### Creating an Application Instance
+const app = new YinzerFlow({ port: 3000 });
 
-```typescript
-const app = new YinzerFlow({ port: 5000 });
-```
-
-### Defining Routes
-
-You can define routes using the `route` method. Each route can have a path, a handler, and optional before and after handlers.
-
-```typescript
-app.get(
-  '/example',
-  ({ request, response }) => {
-    return { message: 'Hello, world!' };
-  },
-  {
-    beforeHandler: ({ request, response }) => {
-      // Logic before the main handler
-    },
-    afterHandler: ({ request, response }) => {
-      // Logic after the main handler
-    },
-  },
-);
-```
-
-**Before handler uses:**
-The before handler is a good place to perform operations such as authentication, validation, or any pre-processing logic before the main handler is executed.
-
-**After handler uses:**
-The after handler can be used for post-processing tasks like logging, modifying the response, or cleaning up resources after the main handler has completed.
-
-### Additional Route Methods and Parameters
-
-YinzerFlow supports various HTTP methods such as `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`. You can use these methods to define routes for specific HTTP requests.
-
-```typescript
-app.get('/example-route', ({ request, response }) => {
-  // Route handler logic
+app.get('/hello', ({ request }) => {
+  return { message: 'Hello, World!' };
 });
-app.patch('/example-route', ({ request, response }) => {
-  // Route handler logic
-});
-app.post('/example-route', ({ request, response }) => {
-  // Route handler logic
-});
-app.delete('/example-route', ({ request, response }) => {
-  // Route handler logic
-});
-```
 
-You can also specify route parameters using the `:param` syntax:
-
-```typescript
-app.get('/users/:id', ({ request }) => {
-  const { params } = request;
-  const { id } = params;
-  // Route handler logic
-});
-```
-
-You can also access query parameters from the request:
-
-```typescript
-app.get('/search?location=pittsburgh', ({ request, response }) => {
-  const { query } = request;
-  const { location } = query;
-  // Route handler logic
-});
-```
-
-## Route Groups
-
-You can group routes using the `group` method. This is useful for applying middleware to multiple routes at once or for organizing related routes.
-
-```typescript
-app.group('/api', () => {
-  app.get('/users', ({ request, response }) => {
-    // Route handler logic
-  });
-  app.post('/users', ({ request, response }) => {
-    // Route handler logic
-  });
-});
-```
-
-If needed, you can also apply before handlers to the entire group. This logic will run after the global middleware but before the individual route before handlers
-
-```typescript
-app.group(
-  '/api',
-  {
-    beforeHandler: ({ request, response }) => {
-      // Logic before the group
-    },
-  },
-  () => {
-    app.get('/users', ({ request, response }) => {
-      // Route handler logic
-    });
-  },
-);
-```
-
-## Response Handling
-
-The route handlers, before handlers, and middleware functions can return a response in the form of an object or a string. The headers and status code can be set using the `response` object as well. The return headers and status code will be assumed if they are not specified.
-
-```typescript
-app.get('/example-route', () => {
-  return {
-    success: true,
-    message: 'Hello, world!',
-  };
-});
-```
-
-In this example, the response status is set to `200`, and the response body is an object meaning the response headers will be set to `application/json` by default.
-
-```typescript
-app.post('/example-route', ({ response }) => {
-  response.setStatus(201);
-  return 'Hello, world!';
-});
-```
-
-For more strict control over the response, you can use the `TResponseBody` type parameter to specify the response body type:
-
-```typescript
-app.get('/example-route', (): TResponseBody<{ success: boolean; message: string }> => {
-  return {
-    success: true,
-    message: 'Hello, world!',
-  };
-});
-```
-
-In this example, the response status is set to `201`, and the response body is a string. The response headers are set to `text/plain` by default in this case.
-
-### Changing or Adding Headers
-
-You can also add or remove headers using the `response` object:
-
-```typescript
-app.get('/example-route', ({ response }) => {
-  response.addHeaders(['Content-Type: application/json']);
-  response.removeHeaders(['X-Auth-Token']);
-  return { success: true, message: 'Hello, world!' };
-});
-```
-
-## Route Validation (Coming Soon)
-
-You can validate routes using the `validate` method. This method takes a schema object and validates the request body, query parameters, or route parameters against it.
-
-```typescript
-app.post(
-  '/example-route',
-  ({ request }) => {
-    const { body } = request;
-    const { name, age } = body;
-    // Route handler logic
-  },
-  {
-    validate: {
-      body: {
-        email: { type: 'email', required: true },
-        name: { type: 'string', required: true },
-        dateOfBirth: { type: 'date' },
-        age: { type: 'number', min: 18 },
-      },
-    },
-  },
-);
-```
-
-## Middleware
-
-YinzerFlow supports middleware that can be applied globally or to specific routes. Middleware can manipulate the request and also return a response. This is useful for tasks such as authentication and throttling.
-
-### Global Middleware
-
-To apply middleware before all routes:
-
-```typescript
-app.beforeAll(({ request, response }) => {
-  // middleware logic
-});
-```
-
-To apply middleware to specific routes:
-
-```typescript
-app.beforeAll(
-  ({ request, response }) => {
-    // middleware logic
-  },
-  {
-    paths: ['/user/:id'],
-    excluded: [],
-  },
-);
-```
-
-To apply middleware to all routes except specific ones:
-
-```typescript
-app.beforeAll(
-  ({ request, response }) => {
-    // middleware logic
-  },
-  {
-    paths: 'allButExcluded',
-    excluded: ['/login', '/register'],
-  },
-);
-```
-
-### Route-specific Middleware
-
-To apply middleware to specific routes:
-
-```typescript
-app.use({ paths: ['/route1', '/route2'] }, (ctx) => {
-  // Middleware logic
-});
-```
-
-## Starting the Server
-
-To start the server, call the `listen` method:
-
-```typescript
 app.listen();
+console.log('Server running on http://localhost:3000');
 ```
 
-## Request Handling Flow
+## Core Concepts
 
-The request handling process follows this sequence:
-
-1. Incoming request
-2. Route validation
-3. Global middleware
-4. Before group middleware
-5. Before route middleware
-6. Route handler
-7. After route middleware
-8. Response sent
-
-## Error Handling
-
-### Why Use Built-in Error Handling?
-
-1. **Enhanced User Experience**: Custom error handlers provide meaningful and consistent error messages to users.
-2. **Simplified Debugging**: Built-in logging capabilities make identifying and fixing errors easier.
-3. **Improved Reliability**: Effectively catching and managing errors prevents unexpected crashes, ensuring smoother operation.
-
-### How to Set Up a Custom Error Handler
-
-Set up a custom error handler by defining it in the `errorHandler` method when creating a new instance of YinzerFlow.
-
-#### Example Usage
+### Routing
 
 ```typescript
-const app = new YinzerFlow({
-  port: 5000,
-  errorHandler: ({ response }, error): TResponseBody<unknown> => {
-    console.error('Server error: \n', error);
-    response.setStatus(<THttpStatusCode>HttpStatusCode.TOO_MANY_REQUESTS);
-    return { success: false, message: 'Internal server error' };
-  },
+// Basic routes
+app.get('/users', getAllUsersHandler);
+app.post('/users', createUserHandler);
+app.get('/users/:id', getUserByIdHandler);
+app.put('/users/:id', updateUserHandler);
+app.delete('/users/:id', deleteUserHandler);
+
+// Route groups
+app.group('/api/v1', [
+  app.get('/products', getProductsHandler),
+  app.post('/products', createProductHandler)
+], {
+  beforeGroup: authenticationHook
 });
 ```
+
+### Request Lifecycle Hooks
+
+```typescript
+// Global hook for all requests
+app.beforeAll(({ request }) => {
+  console.log(`Request received: ${request.method} ${request.path}`);
+});
+
+// Path-specific hooks
+app.beforeAll(
+  ({ request, response }) => {
+    const token = request.headers['authorization'];
+    if (!token) {
+      response.setStatus(401);
+      return { error: 'Authentication required' };
+    }
+  },
+  { paths: ['/admin/*', '/profile/*'] }
+);
+
+// Exclude specific paths
+app.beforeAll(
+  authHook,
+  { paths: 'allButExcluded', excluded: ['/login', '/register'] }
+);
+```
+
+### Content Type Handling
+
+```typescript
+// Automatically parses JSON requests
+app.post('/api/json', ({ request, response }) => {
+  if (!isJsonData(request.body)) {
+    response.setStatus(400);
+    return { error: 'Expected JSON data' };
+  }
+  
+  const { name, email } = request.body;
+  return { success: true, data: { name, email } };
+});
+
+// Handle file uploads
+app.post('/api/upload', ({ request, response }) => {
+  if (!isMultipartFormData(request.body)) {
+    response.setStatus(400);
+    return { error: 'Expected multipart form data' };
+  }
+  
+  const { fields, files } = request.body;
+  return { 
+    success: true, 
+    message: `Received ${Object.keys(files).length} files` 
+  };
+});
+```
+
+### Connection Management
+
+YinzerFlow provides a robust connection management system that allows you to track, monitor, and gracefully handle server connections:
+
+```typescript
+import { YinzerFlow } from 'yinzerflow';
+import { ConnectionEvent } from 'yinzerflow/constants/connection';
+
+const app = new YinzerFlow({ port: 3000 });
+
+// Subscribe to connection events
+app.connectionManager.on(ConnectionEvent.CONNECTION_ADDED, (socket) => {
+  console.log('New connection established');
+});
+
+app.connectionManager.on(ConnectionEvent.CONNECTION_ERROR, (socket, error) => {
+  console.error('Connection error:', error);
+});
+
+// Get connection statistics
+app.get('/admin/stats', ({ request }) => {
+  const stats = app.connectionManager.getStats();
+  return {
+    activeConnections: stats.activeConnections,
+    totalConnections: stats.totalConnections,
+    connectionErrors: stats.connectionErrors,
+    uptime: stats.uptime
+  };
+});
+
+// Graceful shutdown example
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  
+  // Give connections 5 seconds to finish before force closing
+  await app.connectionManager.closeAllConnections(5000);
+  await app.close();
+  
+  console.log('Server shut down gracefully');
+  process.exit(0);
+});
+
+app.listen();
+console.log('Server running on http://localhost:3000');
+```
+
+#### ConnectionManager API
+
+The `ConnectionManager` class provides the following methods and properties:
+
+- **Methods**:
+  - `setServer(server: Server)`: Associates the connection manager with a server instance
+  - `addConnection(socket: Socket)`: Registers a new socket connection for tracking
+  - `removeConnection(socket: Socket)`: Removes a socket from tracking when it closes
+  - `getStats()`: Returns statistics about connections (`IConnectionStats`)
+  - `closeAllConnections(gracePeriod?: number)`: Gracefully closes all active connections
+  - `on(event: ConnectionEvent, listener: Function)`: Subscribes to connection events
+  - `off(event: ConnectionEvent, listener: Function)`: Unsubscribes from connection events
+
+- **Events**:
+  - `CONNECTION_ADDED`: Fired when a new connection is established
+  - `CONNECTION_REMOVED`: Fired when a connection is closed
+  - `CONNECTION_ERROR`: Fired when a connection encounters an error
+  - `ALL_CONNECTIONS_CLOSED`: Fired when all connections have been closed
+  - `SERVER_LISTENING`: Fired when the server starts listening
+  - `SERVER_CLOSED`: Fired when the server is closed
+
+- **Statistics**:
+  - `activeConnections`: Number of currently active connections
+  - `totalConnections`: Total number of connections since server start
+  - `connectionErrors`: Number of connection errors encountered
+  - `uptime`: Server uptime in milliseconds
+
+#### Graceful Shutdown Pattern
+
+For production applications, implementing a graceful shutdown pattern is recommended:
+
+```typescript
+// Graceful shutdown handler
+const gracefulShutdown = async (signal: string) => {
+  console.log(`${signal} received, starting graceful shutdown`);
+  
+  // Step 1: Stop accepting new connections (optional)
+  server.close();
+  
+  // Step 2: Allow existing connections to finish (with timeout)
+  console.log('Closing remaining connections...');
+  await app.connectionManager.closeAllConnections(10000); // 10 second grace period
+  
+  // Step 3: Close the server completely
+  console.log('Shutting down server...');
+  await app.close();
+  
+  console.log('Shutdown complete');
+  process.exit(0);
+};
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+```
+
+This pattern ensures that your server can handle restarts and deployments without dropping active connections.
 
 ## Examples
 
-Refer to the examples folder in the YinzerFlow repository for more detailed usage examples.
+Check out the [examples](/example) directory for more detailed usage examples:
 
-## Contribution
+- [JavaScript Example](/example/javascript) - Basic server implementation in JavaScript
+- [TypeScript Example](/example/typescript) - Type-safe server implementation in TypeScript
 
-Guidelines coming soon. For now, feel free to open an issue or submit a pull request.
+## Documentation
 
-## Conclusion
+For detailed documentation, see the [docs](/docs) directory:
 
-YinzerFlow provides a straightforward way to build HTTP servers in Node.js, with support for routing and middleware. For more advanced features, consider extending the framework or integrating with other libraries.
+- [Getting Started](/docs/README.md) - Overview and quick start guide
+- [Routing System](/docs/routing.md) - Comprehensive guide to the routing system
+- [Request Lifecycle Hooks](/docs/hooks.md) - In-depth documentation of the hooks system
+- [Content Type Handling](/docs/content-types.md) - Working with different content types
+- [Error Handling](/docs/error-handling.md) - Guide to handling errors at different levels
+- [Testing Guide](/TESTING.md) - Comprehensive guide to testing the framework
+
+## Project Structure
+
+```
+yinzerflow/
+├── app/                # Source code
+├── docs/               # Documentation
+├── example/            # Usage examples
+│   ├── javascript/     # JavaScript example
+│   └── typescript/     # TypeScript example
+├── package.json        # Package configuration
+├── TESTING.md          # Testing documentation
+└── README.md           # This file
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Why "YinzerFlow"?
+
+"Yinzer" is a term for a native or inhabitant of the city of Pittsburgh, Pennsylvania. The name combines the local Pittsburgh dialect with "flow" to represent the smooth flow of HTTP requests through the framework.
+
+---
+
+Built with ❤️ in Pittsburgh

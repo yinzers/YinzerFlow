@@ -1,14 +1,16 @@
 services:
   api:
     user: bun
-    image: oven/bun:1.1.18
-    restart: unless-stopped
-    working_dir: /usr/src/app
-    command: sh -c "bun install && bun start"
-    ports:
-      - '5000:5000'
+    image: oven/bun:latest
+    container_name: yinzerflow-api
+    working_dir: /app
     volumes:
-      - ./:/usr/src/app
+      - .:/app
+    ports:
+      - "5000:5000"
+    command: sh -c "bun install && bun start"
+    tty: true
+    stdin_open: true
 
   node:
     user: node
@@ -18,3 +20,11 @@ services:
     volumes:
       - ./:/usr/src/app
       - /home/patrick/.npmrc:/home/node/.npmrc
+
+  benchmark:
+    image: williamyeh/wrk
+    restart: no
+    network_mode: host
+    command: ["-t4", "-c400", "-d10s", "http://localhost:5000/status"]
+    depends_on:
+      - api

@@ -26,7 +26,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "bun test --watch",
+    "test": "bun test --watch --coverage --ignore-coverage-for-files=app/core/__mocks__",
     "test:production": "bun test --timeout 20 --rerun-each 10 --bail 10",
     "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
     "build": "bun clean; bun build.ts",
