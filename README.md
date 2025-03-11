@@ -183,6 +183,64 @@ app.listen();
 console.log('Server running on http://localhost:3000');
 ```
 
+#### ConnectionManager API
+
+The `ConnectionManager` class provides the following methods and properties:
+
+- **Methods**:
+  - `setServer(server: Server)`: Associates the connection manager with a server instance
+  - `addConnection(socket: Socket)`: Registers a new socket connection for tracking
+  - `removeConnection(socket: Socket)`: Removes a socket from tracking when it closes
+  - `getStats()`: Returns statistics about connections (`IConnectionStats`)
+  - `closeAllConnections(gracePeriod?: number)`: Gracefully closes all active connections
+  - `on(event: ConnectionEvent, listener: Function)`: Subscribes to connection events
+  - `off(event: ConnectionEvent, listener: Function)`: Unsubscribes from connection events
+
+- **Events**:
+  - `CONNECTION_ADDED`: Fired when a new connection is established
+  - `CONNECTION_REMOVED`: Fired when a connection is closed
+  - `CONNECTION_ERROR`: Fired when a connection encounters an error
+  - `ALL_CONNECTIONS_CLOSED`: Fired when all connections have been closed
+  - `SERVER_LISTENING`: Fired when the server starts listening
+  - `SERVER_CLOSED`: Fired when the server is closed
+
+- **Statistics**:
+  - `activeConnections`: Number of currently active connections
+  - `totalConnections`: Total number of connections since server start
+  - `connectionErrors`: Number of connection errors encountered
+  - `uptime`: Server uptime in milliseconds
+
+#### Graceful Shutdown Pattern
+
+For production applications, implementing a graceful shutdown pattern is recommended:
+
+```typescript
+// Graceful shutdown handler
+const gracefulShutdown = async (signal: string) => {
+  console.log(`${signal} received, starting graceful shutdown`);
+  
+  // Step 1: Stop accepting new connections (optional)
+  server.close();
+  
+  // Step 2: Allow existing connections to finish (with timeout)
+  console.log('Closing remaining connections...');
+  await app.connectionManager.closeAllConnections(10000); // 10 second grace period
+  
+  // Step 3: Close the server completely
+  console.log('Shutting down server...');
+  await app.close();
+  
+  console.log('Shutdown complete');
+  process.exit(0);
+};
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+```
+
+This pattern ensures that your server can handle restarts and deployments without dropping active connections.
+
 ## Examples
 
 Check out the [examples](/example) directory for more detailed usage examples:
@@ -199,6 +257,7 @@ For detailed documentation, see the [docs](/docs) directory:
 - [Request Lifecycle Hooks](/docs/hooks.md) - In-depth documentation of the hooks system
 - [Content Type Handling](/docs/content-types.md) - Working with different content types
 - [Error Handling](/docs/error-handling.md) - Guide to handling errors at different levels
+- [Testing Guide](/TESTING.md) - Comprehensive guide to testing the framework
 
 ## Project Structure
 
@@ -210,6 +269,7 @@ yinzerflow/
 │   ├── javascript/     # JavaScript example
 │   └── typescript/     # TypeScript example
 ├── package.json        # Package configuration
+├── TESTING.md          # Testing documentation
 └── README.md           # This file
 ```
 

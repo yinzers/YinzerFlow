@@ -20,6 +20,10 @@ interface ServerResponse {
 // Create a new YinzerFlow instance
 export const app = new YinzerFlow({
   port: 5000,
+  connectionOptions: {
+    socketTimeout: 10000,
+    gracefulShutdownTimeout: 5000,
+  },
   errorHandler: ({ response }, error): TResponseBody<ServerResponse> => {
     console.error('Server error:', error);
     response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR as THttpStatusCode);
@@ -46,14 +50,4 @@ const { port, isListening } = app.getStatus();
 
 if (isListening) console.log(`Server running on http://localhost:${port}`);
 
-// Graceful shutdown example
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
 
-  // Give connections 5 seconds to finish before force closing
-  await app.connectionManager.closeAllConnections(5000);
-  await app.close();
-
-  console.log('Server shut down gracefully');
-  process.exit(0);
-});
