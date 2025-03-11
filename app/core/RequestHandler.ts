@@ -5,7 +5,7 @@ import { HttpStatusCode } from '../constants/http.ts';
 import { Request } from './Request.ts';
 import { Response } from './Response.ts';
 import { Context as ContextClass } from './Context.ts';
-import type { MiddlewareManager } from './MiddlewareManager.ts';
+import type { HooksManager } from './HooksManager.ts';
 import type { RouteFinder } from './RouteFinder.ts';
 
 /**
@@ -14,7 +14,7 @@ import type { RouteFinder } from './RouteFinder.ts';
  * This class is responsible for:
  * 1. Receiving HTTP requests from a socket
  * 2. Finding the appropriate route
- * 3. Processing the request through middleware
+ * 3. Processing the request through hooks
  * 4. Executing the route handler
  * 5. Sending the response back to the client
  * 6. Handling any errors that occur during processing
@@ -22,7 +22,7 @@ import type { RouteFinder } from './RouteFinder.ts';
 export class RequestHandler {
   constructor(
     private readonly routeFinder: RouteFinder,
-    private readonly middlewareManager: MiddlewareManager,
+    private readonly hooksManager: HooksManager,
     private readonly errorHandler: TErrorFunction,
   ) {}
 
@@ -79,7 +79,7 @@ export class RequestHandler {
   }
 
   /**
-   * Process a request through middleware and handlers
+   * Process a request through hooks and handlers
    *
    * @param request - The HTTP request
    * @param route - The matched route
@@ -88,46 +88,46 @@ export class RequestHandler {
   private async _processRequest(request: Request, route: IRoute): Promise<Response> {
     const context = new ContextClass(request, new Response(request));
 
-    // Process middleware chain
-    const middlewareResult = await this._processMiddlewareChain(route, context);
-    if (middlewareResult) {
-      return middlewareResult;
+    // Process hooks chain
+    const hooksResult = await this._processHooksChain(route, context);
+    if (hooksResult) {
+      return hooksResult;
     }
 
     // Process route handler
     const handlerResult = await Promise.resolve(route.handler(context));
 
     // Process afterHandler if defined
-    await this.middlewareManager.processAfterHandler(route, context);
+    await this.hooksManager.processAfterHandler(route, context);
 
     context.response.setBody(handlerResult);
     return context.response;
   }
 
   /**
-   * Process the middleware chain (beforeAll, beforeGroup, beforeHandler)
+   * Process the hooks chain (beforeAll, beforeGroup, beforeHandler)
    *
    * @param route - The matched route
    * @param context - The request context
-   * @returns An HTTP response if middleware returns a result, otherwise undefined
+   * @returns An HTTP response if a hook returns a result, otherwise undefined
    */
-  private async _processMiddlewareChain(route: IRoute, context: ContextClass): Promise<Response | undefined> {
-    // Process global middleware
-    const beforeAllResult = await this.middlewareManager.processBeforeAll(route, context);
+  private async _processHooksChain(route: IRoute, context: ContextClass): Promise<Response | undefined> {
+    // Process global hooks
+    const beforeAllResult = await this.hooksManager.processBeforeAll(route, context);
     if (beforeAllResult) {
       context.response.setBody(beforeAllResult);
       return context.response;
     }
 
-    // Process group middleware
-    const beforeGroupResult = await this.middlewareManager.processBeforeGroup(route, context);
+    // Process group hooks
+    const beforeGroupResult = await this.hooksManager.processBeforeGroup(route, context);
     if (beforeGroupResult) {
       context.response.setBody(beforeGroupResult);
       return context.response;
     }
 
-    // Process handler-specific middleware
-    const beforeHandlerResult = await this.middlewareManager.processBeforeHandler(route, context);
+    // Process handler-specific hooks
+    const beforeHandlerResult = await this.hooksManager.processBeforeHandler(route, context);
     if (beforeHandlerResult) {
       context.response.setBody(beforeHandlerResult);
       return context.response;

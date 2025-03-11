@@ -42,7 +42,18 @@ app.group('/auth', authenticationRoutes);
 
 // Start the server
 await app.listen();
-console.log(`Server running on http://localhost:${app.options.port}`);
+const { port, isListening } = app.getStatus();
 
-// Log server status
-console.log(app.getStatus());
+if (isListening) console.log(`Server running on http://localhost:${port}`);
+
+// Graceful shutdown example
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+
+  // Give connections 5 seconds to finish before force closing
+  await app.connectionManager.closeAllConnections(5000);
+  await app.close();
+
+  console.log('Server shut down gracefully');
+  process.exit(0);
+});

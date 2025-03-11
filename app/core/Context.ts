@@ -5,7 +5,7 @@ import type { Response } from './Response.ts';
  * Request/response context
  *
  * This class encapsulates the request and response objects for a single HTTP request.
- * It is passed to middleware and route handlers to provide access to the request and response.
+ * It is passed to hooks and route handlers to provide access to the request and response.
  */
 export class Context {
   request: Request;

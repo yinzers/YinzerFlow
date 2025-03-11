@@ -10,14 +10,64 @@ import type { RouteRegistry } from './RouteRegistry.ts';
  * route lookup and matching logic.
  */
 export class RouteFinder {
-  constructor(private readonly routeRegistry: RouteRegistry) {}
+  // Cache for pattern routes to avoid recomputing regex patterns
+  private readonly patternRouteCache = new Map<string, Array<{ pattern: RegExp; route: IRoute }>>();
+
+  constructor(private readonly routeRegistry: RouteRegistry) {
+    // Initialize pattern route cache
+    this.buildPatternRouteCache();
+  }
+
+  /**
+   * Builds a cache of pattern routes for faster lookup
+   * This is called on initialization and when routes are updated
+   */
+  private buildPatternRouteCache(): void {
+    const routes = this.routeRegistry.getRoutes();
+
+    // Clear existing cache
+    this.patternRouteCache.clear();
+
+    // Group pattern routes by method for faster lookup
+    for (const [, route] of routes) {
+      if (route.path.includes(':')) {
+        // This is a pattern route
+        const { method } = route;
+        const patternRoutes = this.patternRouteCache.get(method) ?? [];
+
+        // Convert route pattern to regex for matching
+        const regexPattern = this.createRouteRegex(route.path);
+
+        patternRoutes.push({
+          pattern: regexPattern,
+          route,
+        });
+
+        this.patternRouteCache.set(method, patternRoutes);
+      }
+    }
+  }
+
+  /**
+   * Creates a regex pattern from a route path
+   * @param path The route path pattern (e.g., /users/:id)
+   * @returns A RegExp object for matching paths
+   */
+  private createRouteRegex(path: string): RegExp {
+    // Replace :param with named capture groups for better parameter extraction
+    const regexPattern = path
+      .replace(/:[^/]+/g, '([^/]+)')
+      // Escape special regex characters except for the capture groups
+      .replace(/(?:[.+*?^$()[\]{}|])/g, '\\$&');
+
+    return new RegExp(`^${regexPattern}$`);
+  }
 
   /**
    * Find a route by method and path
    */
   findRoute(method: string, path: string): IRoute | undefined {
-    const routes = this.routeRegistry.getRoutes();
-    return routes.get(`${method}:${path}`);
+    return this.routeRegistry.getRoute(method, path);
   }
 
   /**
@@ -25,25 +75,22 @@ export class RouteFinder {
    * First tries exact match, then falls back to pattern matching for route parameters
    */
   findRouteFromRequest(request: Request): IRoute | undefined {
-    const routes = this.routeRegistry.getRoutes();
-
     // Normalize path by removing trailing slash (except for root path)
     const normalizedPath = request.path !== '/' && request.path.endsWith('/') ? request.path.slice(0, -1) : request.path;
 
     // First try exact match with normalized path
-    const exactKey = `${request.method}:${normalizedPath}`;
-    const exactMatch = routes.get(exactKey);
+    const exactMatch = this.findRoute(request.method, normalizedPath);
     if (exactMatch) return exactMatch;
 
-    // If no exact match, look for pattern matches
-    for (const [, route] of routes) {
-      if (route.method !== request.method) continue;
+    // If no exact match, check pattern routes for this method
+    const patternRoutes = this.patternRouteCache.get(request.method);
+    if (!patternRoutes) return undefined;
 
-      // Convert route pattern to regex
-      const pattern = route.path.replace(/:[^/]+/g, '([^/]+)');
-      const regex = new RegExp(`^${pattern}$`);
-
-      if (regex.test(normalizedPath)) return route;
+    // Try to match against pattern routes
+    for (const { pattern, route } of patternRoutes) {
+      if (pattern.test(normalizedPath)) {
+        return route;
+      }
     }
 
     return undefined;
@@ -58,39 +105,44 @@ export class RouteFinder {
   extractParamsFromPath(path: string, pattern: string): Record<string, string> {
     const params: Record<string, string> = {};
 
-    // Remove query string if present
-    const pathParts = path.split('?');
-    const pathWithoutQuery = pathParts[0] ?? '';
-
     // If there are no parameters in the pattern, return empty object
     if (!pattern.includes(':')) {
       return params;
     }
 
+    // Remove query string if present
+    const pathWithoutQuery = path.split('?')[0] ?? '';
+
     // Split the path and pattern into segments
-    const pathSegments = pathWithoutQuery.split('/');
-    const patternSegments = pattern.split('/');
+    const pathSegments = pathWithoutQuery.split('/').filter(Boolean);
+    const patternSegments = pattern.split('/').filter(Boolean);
 
     // Match each segment and extract parameters
     for (let i = 0; i < patternSegments.length; i++) {
-      if (i < patternSegments.length) {
-        const patternSegment = patternSegments[i];
+      const patternSegment = patternSegments[i];
 
-        // If this segment is a parameter (starts with :)
-        if (patternSegment?.startsWith(':')) {
-          const paramName = patternSegment.substring(1); // Remove the : prefix
+      // If this segment is a parameter (starts with :)
+      if (patternSegment?.startsWith(':')) {
+        const paramName = patternSegment.substring(1); // Remove the : prefix
 
-          if (i < pathSegments.length) {
-            const paramValue = pathSegments[i];
+        if (i < pathSegments.length) {
+          const paramValue = pathSegments[i];
 
-            if (paramValue) {
-              params[paramName] = paramValue;
-            }
+          if (paramValue) {
+            params[paramName] = decodeURIComponent(paramValue);
           }
         }
       }
     }
 
     return params;
+  }
+
+  /**
+   * Update the pattern route cache when routes are modified
+   * This should be called whenever routes are added or removed
+   */
+  updatePatternRouteCache(): void {
+    this.buildPatternRouteCache();
   }
 }

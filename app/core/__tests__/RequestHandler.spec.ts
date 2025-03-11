@@ -1,5 +1,5 @@
 import type { Socket } from 'net';
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, it, jest, mock, test } from 'bun:test';
 import { RequestHandler } from '../RequestHandler.ts';
 import { Request } from '../Request.ts';
 import { Response } from '../Response.ts';
@@ -8,56 +8,64 @@ import type { Context } from '../Context.ts';
 
 // Import reusable mocks directly from their files
 import { createMockRouteFinder } from '../__mocks__/RouteFinder.spec.ts';
-import { createMockMiddlewareManager } from '../__mocks__/MiddlewareManager.spec.ts';
-import { createMockErrorHandler } from '../__mocks__/ErrorHandler.spec.ts';
+import { createMockHooksManager } from '../__mocks__/HooksManager.spec.ts';
 import { MockSocket } from '../__mocks__/Socket.spec.ts';
+import type { RouteFinder } from '../RouteFinder.ts';
+
+// Define a partial type for the mock HooksManager
+interface MockHooksManager {
+  processBeforeAll: ReturnType<typeof mock>;
+  processBeforeGroup: ReturnType<typeof mock>;
+  processBeforeHandler: ReturnType<typeof mock>;
+  processAfterHandler: ReturnType<typeof mock>;
+  add: ReturnType<typeof mock>;
+  clear: ReturnType<typeof mock>;
+  on: ReturnType<typeof mock>;
+  emit: ReturnType<typeof mock>;
+  hooksCount: number;
+}
 
 describe('RequestHandler', () => {
   let requestHandler: RequestHandler;
+  let mockRouteFinder: RouteFinder;
+  let mockHooksManager: MockHooksManager;
+  let mockErrorHandler: jest.Mock;
   let mockSocket: MockSocket;
 
-  // Create reusable mocks
-  const { mock: mockRouteFinder, findRouteFromRequest: mockFindRouteFromRequest, reset: resetRouteFinder } = createMockRouteFinder();
-  const {
-    mock: mockMiddlewareManager,
-    processBeforeAll: mockProcessBeforeAll,
-    processBeforeGroup: mockProcessBeforeGroup,
-    processBeforeHandler: mockProcessBeforeHandler,
-    processAfterHandler: mockProcessAfterHandler,
-    reset: resetMiddlewareManager,
-  } = createMockMiddlewareManager();
-  const { mock: mockErrorHandler, reset: resetErrorHandler } = createMockErrorHandler();
-
   beforeEach(() => {
-    // Reset mocks
-    resetRouteFinder();
-    resetMiddlewareManager();
-    resetErrorHandler();
+    // Set up mocks
+    const { mock: routeFinderMock, reset: resetRouteFinder } = createMockRouteFinder();
+    const { mock: hooksManagerMock, reset: resetHooksManager } = createMockHooksManager();
 
-    // Create a new instance for each test
-    requestHandler = new RequestHandler(mockRouteFinder, mockMiddlewareManager, mockErrorHandler);
-
-    // Create a new mock socket for each test
+    mockRouteFinder = routeFinderMock;
+    mockHooksManager = hooksManagerMock as unknown as MockHooksManager;
+    mockErrorHandler = jest.fn();
     mockSocket = new MockSocket();
+
+    resetRouteFinder();
+    resetHooksManager();
+
+    // Create the request handler
+    requestHandler = new RequestHandler(mockRouteFinder as any, mockHooksManager as any, mockErrorHandler as any);
   });
 
   describe('handleSocketRequest', () => {
     test('should handle 404 when no route is found', async () => {
       // Arrange
       const requestBuffer = Buffer.from('GET /not-found HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
-      mockFindRouteFromRequest.mockImplementation(() => undefined);
+      (mockRouteFinder.findRouteFromRequest as jest.Mock).mockReturnValue(undefined);
 
       // Act
       await requestHandler.handleSocketRequest(mockSocket as unknown as Socket, requestBuffer);
 
       // Assert
-      expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
+      expect(mockRouteFinder.findRouteFromRequest).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('404 Not Found');
       expect(mockSocket.data).toContain('{"success":false,"message":"Not found"}');
       expect(mockSocket.ended).toBe(true);
     });
 
-    test('should process a request through middleware and handler when route is found', async () => {
+    test('should process a request through hooks and handler when route is found', async () => {
       // Arrange
       const requestBuffer = Buffer.from('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
 
@@ -71,18 +79,18 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      mockFindRouteFromRequest.mockImplementation(() => mockRoute);
+      (mockRouteFinder.findRouteFromRequest as jest.Mock).mockReturnValue(mockRoute);
 
       // Act
       await requestHandler.handleSocketRequest(mockSocket as unknown as Socket, requestBuffer);
 
       // Assert
-      expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeGroup).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeHandler).toHaveBeenCalledTimes(1);
+      expect(mockRouteFinder.findRouteFromRequest).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeGroup).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeHandler).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).toHaveBeenCalledTimes(1);
-      expect(mockProcessAfterHandler).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processAfterHandler).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('200 OK');
       expect(mockSocket.data).toContain('{"success":true,"message":"Test successful"}');
       expect(mockSocket.ended).toBe(true);
@@ -93,11 +101,9 @@ describe('RequestHandler', () => {
       const requestBuffer = Buffer.from('GET /error HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
 
       // Mock the error handler to return a specific response
-      mockErrorHandler.mockImplementation(() => {
-        return { success: false, message: 'Test error' };
-      });
+      mockErrorHandler.mockReturnValue({ success: false, message: 'Test error' });
 
-      mockFindRouteFromRequest.mockImplementation(() => {
+      (mockRouteFinder.findRouteFromRequest as jest.Mock).mockImplementation(() => {
         throw new Error('Test error');
       });
 
@@ -105,7 +111,7 @@ describe('RequestHandler', () => {
       await requestHandler.handleSocketRequest(mockSocket as unknown as Socket, requestBuffer);
 
       // Assert
-      expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
+      expect(mockRouteFinder.findRouteFromRequest).toHaveBeenCalledTimes(1);
       expect(mockErrorHandler).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('"success":false');
       expect(mockSocket.data).toContain('"message":"Test error"');
@@ -127,13 +133,13 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      mockFindRouteFromRequest.mockImplementation(() => mockRoute);
+      (mockRouteFinder.findRouteFromRequest as jest.Mock).mockReturnValue(mockRoute);
 
       // Act
       await requestHandler.handleSocketRequest(mockSocket as unknown as Socket, requestBuffer);
 
       // Assert
-      expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
+      expect(mockRouteFinder.findRouteFromRequest).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('200 OK');
       expect(mockSocket.data).toContain('success');
@@ -159,13 +165,13 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      mockFindRouteFromRequest.mockImplementation(() => mockRoute);
+      (mockRouteFinder.findRouteFromRequest as jest.Mock).mockReturnValue(mockRoute);
 
       // Act
       await requestHandler.handleSocketRequest(mockSocket as unknown as Socket, requestBuffer);
 
       // Assert
-      expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
+      expect(mockRouteFinder.findRouteFromRequest).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('200 OK');
       expect(mockSocket.data).toContain('"query":"test"');
@@ -197,13 +203,13 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      mockFindRouteFromRequest.mockImplementation(() => mockRoute);
+      (mockRouteFinder.findRouteFromRequest as jest.Mock).mockReturnValue(mockRoute);
 
       // Act
       await requestHandler.handleSocketRequest(mockSocket as unknown as Socket, requestBuffer);
 
       // Assert
-      expect(mockFindRouteFromRequest).toHaveBeenCalledTimes(1);
+      expect(mockRouteFinder.findRouteFromRequest).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).toHaveBeenCalledTimes(1);
       expect(mockSocket.data).toContain('200 OK');
       expect(mockSocket.data).toContain('"name":"Test User"');
@@ -213,7 +219,7 @@ describe('RequestHandler', () => {
   });
 
   describe('_processRequest', () => {
-    test('should return early if beforeAll middleware returns a result', async () => {
+    test('should return early if beforeAll hook returns a result', async () => {
       // Arrange
       const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const mockRouteHandler = mock(() => ({}));
@@ -223,22 +229,22 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      const middlewareResult = { success: false, message: 'Blocked by middleware' };
-      mockProcessBeforeAll.mockImplementation(async () => Promise.resolve(middlewareResult as unknown));
+      const hookResult = { success: false, message: 'Blocked by hook' };
+      mockHooksManager.processBeforeAll.mockImplementation(async () => Promise.resolve(hookResult));
 
       // Act
       const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
-      expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeGroup).not.toHaveBeenCalled();
-      expect(mockProcessBeforeHandler).not.toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeGroup).not.toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeHandler).not.toHaveBeenCalled();
       expect(mockRouteHandler).not.toHaveBeenCalled();
-      expect(mockProcessAfterHandler).not.toHaveBeenCalled();
-      expect(response.formatHttpResponse()).toContain(JSON.stringify(middlewareResult));
+      expect(mockHooksManager.processAfterHandler).not.toHaveBeenCalled();
+      expect(response.formatHttpResponse()).toContain(JSON.stringify(hookResult));
     });
 
-    test('should return early if beforeGroup middleware returns a result', async () => {
+    test('should return early if beforeGroup hook returns a result', async () => {
       // Arrange
       const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const mockRouteHandler = mock(() => ({}));
@@ -248,22 +254,22 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      const middlewareResult = { success: false, message: 'Blocked by group middleware' };
-      mockProcessBeforeGroup.mockImplementation(async () => Promise.resolve(middlewareResult as unknown));
+      const hookResult = { success: false, message: 'Blocked by group hook' };
+      mockHooksManager.processBeforeGroup.mockResolvedValue(hookResult);
 
       // Act
       const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
-      expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeGroup).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeHandler).not.toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeGroup).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeHandler).not.toHaveBeenCalled();
       expect(mockRouteHandler).not.toHaveBeenCalled();
-      expect(mockProcessAfterHandler).not.toHaveBeenCalled();
-      expect(response.formatHttpResponse()).toContain(JSON.stringify(middlewareResult));
+      expect(mockHooksManager.processAfterHandler).not.toHaveBeenCalled();
+      expect(response.formatHttpResponse()).toContain(JSON.stringify(hookResult));
     });
 
-    test('should return early if beforeHandler middleware returns a result', async () => {
+    test('should return early if beforeHandler hook returns a result', async () => {
       // Arrange
       const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const mockRouteHandler = mock(() => ({}));
@@ -273,22 +279,22 @@ describe('RequestHandler', () => {
         handler: mockRouteHandler,
       };
 
-      const middlewareResult = { success: false, message: 'Blocked by handler middleware' };
-      mockProcessBeforeHandler.mockImplementation(async () => Promise.resolve(middlewareResult as unknown));
+      const hookResult = { success: false, message: 'Blocked by handler hook' };
+      mockHooksManager.processBeforeHandler.mockResolvedValue(hookResult);
 
       // Act
       const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
-      expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeGroup).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeHandler).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeGroup).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeHandler).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).not.toHaveBeenCalled();
-      expect(mockProcessAfterHandler).not.toHaveBeenCalled();
-      expect(response.formatHttpResponse()).toContain(JSON.stringify(middlewareResult));
+      expect(mockHooksManager.processAfterHandler).not.toHaveBeenCalled();
+      expect(response.formatHttpResponse()).toContain(JSON.stringify(hookResult));
     });
 
-    test('should process the full request pipeline when no middleware returns early', async () => {
+    test('should process the full request pipeline when no hook returns early', async () => {
       // Arrange
       const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
       const handlerResult = { success: true, data: 'Test data' };
@@ -303,12 +309,57 @@ describe('RequestHandler', () => {
       const response = await (requestHandler as any)._processRequest(request, route);
 
       // Assert
-      expect(mockProcessBeforeAll).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeGroup).toHaveBeenCalledTimes(1);
-      expect(mockProcessBeforeHandler).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeGroup).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processBeforeHandler).toHaveBeenCalledTimes(1);
       expect(mockRouteHandler).toHaveBeenCalledTimes(1);
-      expect(mockProcessAfterHandler).toHaveBeenCalledTimes(1);
+      expect(mockHooksManager.processAfterHandler).toHaveBeenCalledTimes(1);
       expect(response.formatHttpResponse()).toContain(JSON.stringify(handlerResult));
+    });
+
+    it('should process hooks and handler', async () => {
+      // Arrange
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const handlerResult = { success: true, data: 'Test data' };
+      const mockRouteHandler = mock(() => handlerResult);
+      const route: IRoute = {
+        path: '/test',
+        method: 'GET',
+        handler: mockRouteHandler,
+      };
+
+      // Act
+      await (requestHandler as any)._processRequest(request, route);
+
+      // Verify hooks were called
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeGroup).toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeHandler).toHaveBeenCalled();
+      expect(mockHooksManager.processAfterHandler).toHaveBeenCalled();
+    });
+
+    it('should short-circuit if beforeAll hook returns a response', async () => {
+      // Arrange
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const mockRouteHandler = mock(() => ({}));
+      const testRoute: IRoute = {
+        path: '/test',
+        method: 'GET',
+        handler: mockRouteHandler,
+      };
+
+      // Mock beforeAll to return a response
+      mockHooksManager.processBeforeAll.mockResolvedValueOnce({ message: 'Stopped by beforeAll' });
+
+      // Act
+      await (requestHandler as any)._processRequest(request, testRoute);
+
+      // Verify only beforeAll was called
+      expect(mockHooksManager.processBeforeAll).toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeGroup).not.toHaveBeenCalled();
+      expect(mockHooksManager.processBeforeHandler).not.toHaveBeenCalled();
+      expect(mockRouteHandler).not.toHaveBeenCalled();
+      expect(mockHooksManager.processAfterHandler).not.toHaveBeenCalled();
     });
   });
 

@@ -1,14 +1,15 @@
 import { createServer } from 'net';
 import type { Socket } from 'net';
 import ip from 'ip';
+import { RouteRegistry } from './core/RouteRegistry.ts';
+import { RouteRegistryEvent } from './constants/route.ts';
+import { RouteFinder } from './core/RouteFinder.ts';
 import { HttpMethod, HttpStatusCode } from 'constants/http.ts';
 import type { IRoute } from 'types/Route.ts';
 import type { TErrorFunction } from 'types/Response.ts';
-import { RouteRegistry } from 'core/RouteRegistry.ts';
-import { RouteFinder } from 'core/RouteFinder.ts';
-import { MiddlewareManager } from 'core/MiddlewareManager.ts';
 import { RequestHandler } from 'core/RequestHandler.ts';
 import { ConnectionManager } from 'core/ConnectionManager.ts';
+import { HooksManager } from 'core/HooksManager.ts';
 
 /**
  * Main YinzerFlow server class
@@ -23,25 +24,67 @@ export class YinzerFlow {
   // === COMPONENT MANAGERS ===
   private readonly routeRegistry = new RouteRegistry();
   private readonly routeFinder = new RouteFinder(this.routeRegistry);
-  private readonly middlewareManager = new MiddlewareManager();
-  private readonly connectionManager = new ConnectionManager();
+  private readonly hooksManager = new HooksManager();
+  private readonly connectionManager: ConnectionManager;
   private readonly requestHandler: RequestHandler;
 
   // === SERVER CONFIGURATION ===
   private readonly _ip: string = ip.address();
   private readonly _port: number = 5000;
+  private readonly _gracefulShutdownTimeout: number = 5000;
+
+  // === PUBLIC ACCESSORS ===
+
+  /**
+   * Get the hooks manager instance
+   *
+   * This allows direct access to the hooks manager for advanced use cases,
+   * such as subscribing to hook events.
+   */
+  get hooks(): HooksManager {
+    return this.hooksManager;
+  }
+
+  /**
+   * Get the route registry instance
+   *
+   * This allows direct access to the route registry for advanced use cases,
+   * such as subscribing to route events.
+   */
+  get routes(): RouteRegistry {
+    return this.routeRegistry;
+  }
 
   /**
    * Create a new YinzerFlow server instance
    */
-  constructor(options?: { port?: number; errorHandler?: TErrorFunction }) {
+  constructor(options?: {
+    port?: number;
+    errorHandler?: TErrorFunction;
+    connectionOptions?: {
+      socketTimeout?: number;
+      gracefulShutdownTimeout?: number;
+    };
+  }) {
     if (options?.port) this._port = options.port;
+    if (options?.connectionOptions?.gracefulShutdownTimeout) {
+      this._gracefulShutdownTimeout = options.connectionOptions.gracefulShutdownTimeout;
+    }
+
+    // Initialize the connection manager with socket timeout
+    this.connectionManager = new ConnectionManager(options?.connectionOptions?.socketTimeout);
 
     // Set up the error handler
     const errorHandler = options?.errorHandler ?? this._defaultErrorHandler;
 
     // Initialize the request handler with the managers
-    this.requestHandler = new RequestHandler(this.routeFinder, this.middlewareManager, errorHandler);
+    this.requestHandler = new RequestHandler(this.routeFinder, this.hooksManager, errorHandler);
+
+    // Set up event listeners for route changes
+    this.routeRegistry.on(RouteRegistryEvent.ROUTES_CHANGED, () => {
+      // Update the route finder's pattern cache when routes change
+      this.routeFinder.updatePatternRouteCache();
+    });
   }
 
   // === ERROR HANDLING ===
@@ -131,10 +174,11 @@ export class YinzerFlow {
   // === MIDDLEWARE METHODS ===
 
   /**
-   * Register middleware to be executed before route handlers
+   * Register hooks to be executed before route handlers
    */
-  beforeAll(fn: Parameters<MiddlewareManager['add']>[0], options?: Parameters<MiddlewareManager['add']>[1]): void {
-    this.middlewareManager.add(fn, options);
+  beforeAll(fn: Parameters<HooksManager['add']>[0], options?: Parameters<HooksManager['add']>[1]): this {
+    this.hooksManager.add(fn, options);
+    return this;
   }
 
   // === SERVER LIFECYCLE METHODS ===
@@ -176,25 +220,23 @@ export class YinzerFlow {
    * Stop the server and close all connections
    */
   async close(): Promise<void> {
+    // If not listening or no server, resolve immediately
+    if (!this.connectionManager.isListening() || !this.connectionManager.getServer()) {
+      return;
+    }
+
+    // Close all existing connections with the configured grace period
+    await this.connectionManager.closeAllConnections(this._gracefulShutdownTimeout);
+
+    // Close the server
+    const server = this.connectionManager.getServer();
+    if (!server) return;
+
     return new Promise((resolve) => {
-      if (!this.connectionManager.isListening() || !this.connectionManager.getServer()) {
+      server.close(() => {
+        this.connectionManager.setListening(false);
         resolve();
-        return;
-      }
-
-      // Close all existing connections
-      this.connectionManager.closeAllConnections();
-
-      const server = this.connectionManager.getServer();
-      if (server) {
-        server.close(() => {
-          this.connectionManager.setListening(false);
-          this.connectionManager.setServer(null);
-          resolve();
-        });
-      } else {
-        resolve();
-      }
+      });
     });
   }
 

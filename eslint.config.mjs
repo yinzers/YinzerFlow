@@ -494,6 +494,9 @@ const testRules = {
 
   // Allow void expressions in tests
   '@typescript-eslint/no-confusing-void-expression': 'off',
+
+  // Allow no return type in tests
+  '@typescript-eslint/explicit-function-return-type': 'off',
 };
 
 // Include TypeScript ESLint configs directly
