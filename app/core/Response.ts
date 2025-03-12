@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
-import type { IHeaders, IResponse, THttpStatus, THttpStatusCode, TResponseBody } from '../types/http/Response.ts';
-import { calculateContentLength } from '../utils/string.utils.ts';
-import { ContentType, HttpStatus, HttpStatusCode } from '../constants/http.ts';
-import type { Request } from './Request.ts';
+import type { IHeaders, IResponse, THttpStatus, THttpStatusCode, TResponseBody } from 'types/http/Response.ts';
+import { calculateContentLength } from 'utils/string.utils.ts';
+import { ContentType, HttpStatus, HttpStatusCode } from 'constants/http.ts';
+import type { Request } from 'core/Request.ts';
 
 /**
  * Handles HTTP response creation, manipulation, and formatting
@@ -107,6 +107,8 @@ export class Response {
       [HttpStatusCode.FORBIDDEN]: { status: HttpStatus.FORBIDDEN, text: HttpStatus.FORBIDDEN },
       [HttpStatusCode.NOT_FOUND]: { status: HttpStatus.NOT_FOUND, text: HttpStatus.NOT_FOUND },
       [HttpStatusCode.METHOD_NOT_ALLOWED]: { status: HttpStatus.METHOD_NOT_ALLOWED, text: HttpStatus.METHOD_NOT_ALLOWED },
+      [HttpStatusCode.CONFLICT]: { status: HttpStatus.CONFLICT, text: HttpStatus.CONFLICT },
+      [HttpStatusCode.UNSUPPORTED_MEDIA_TYPE]: { status: HttpStatus.UNSUPPORTED_MEDIA_TYPE, text: HttpStatus.UNSUPPORTED_MEDIA_TYPE },
       [HttpStatusCode.TOO_MANY_REQUESTS]: { status: HttpStatus.TOO_MANY_REQUESTS, text: HttpStatus.TOO_MANY_REQUESTS },
       [HttpStatusCode.INTERNAL_SERVER_ERROR]: { status: HttpStatus.INTERNAL_SERVER_ERROR, text: HttpStatus.INTERNAL_SERVER_ERROR },
     };
@@ -164,12 +166,14 @@ export class Response {
     if (body === null) return 'null';
 
     // Handle different types
+    // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
     switch (typeof body) {
       case 'string':
         return body;
       case 'object':
         return JSON.stringify(body);
       default:
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         return String(body);
     }
   }

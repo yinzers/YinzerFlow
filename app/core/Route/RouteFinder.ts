@@ -1,6 +1,6 @@
-import type { IRoute } from '../types/Route.ts';
-import type { Request } from './Request.ts';
-import type { RouteRegistry } from './RouteRegistry.ts';
+import type { Request } from 'core/Request.ts';
+import type { RouteRegistry } from 'core/Route/RouteRegistry.ts';
+import type { IRoute } from 'types/Route.ts';
 
 /**
  * Handles route lookup and matching

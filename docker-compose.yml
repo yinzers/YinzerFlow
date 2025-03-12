@@ -11,6 +11,8 @@ services:
     command: sh -c "bun install && bun start"
     tty: true
     stdin_open: true
+    networks:
+      - yinzerflow-network
 
   node:
     user: node
@@ -24,7 +26,12 @@ services:
   benchmark:
     image: williamyeh/wrk
     restart: no
-    network_mode: host
-    command: ["-t4", "-c400", "-d10s", "http://localhost:5000/status"]
+    command: ["-t4", "-c400", "-d10s", "http://api:5000/status"]
     depends_on:
       - api
+    networks:
+      - yinzerflow-network
+
+networks:
+  yinzerflow-network:
+    driver: bridge

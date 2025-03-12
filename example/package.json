@@ -1,29 +1,59 @@
 {
-  "name": "yinzerflow-example",
+  "name": "yinzerflow",
   "version": "0.1.10",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
   "license": "MIT",
+  "homepage": "https://github.com/yinzers/YinzerFlow.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yinzers/YinzerFlow.git"
+  },
   "description": "A simple, fast, and lightweight web framework for Node and Bun",
+  "keywords": [
+    "http",
+    "rest",
+    "server",
+    "router",
+    "app",
+    "api",
+    "web",
+    "framework",
+    "node",
+    "bun",
+    "yinzerflow"
+  ],
   "types": "index.d.ts",
   "main": "index.js",
   "type": "module",
+  "scripts": {
+    "test": "bun test --watch --coverage --ignore-coverage-for-files=app/core/__mocks__",
+    "test:production": "bun test --timeout 20 --rerun-each 10 --bail 10",
+    "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
+    "build": "bun clean; bun build.ts",
+    "start": "bun --watch local/index.ts",
+    "lint": "eslint . --fix --quiet --color --cache",
+    "lint:format": "prettier --check .",
+    "lint:spelling": "cspell . --no-progress --unique",
+    "lint:size": "gzip-size lib/index.js --include-original",
+    "format": "prettier --write app"
+  },
   "dependencies": {
-    "yinzerflow": "file:../"
+    "yinzerflow": "file:../lib"
   },
   "devDependencies": {
-    "@eslint/compat": "^1.1.1",
+    "@eslint/compat": "^1.2.7",
     "@types/ip": "^1.1.3",
-    "bun-plugin-dts": "^0.2.3",
-    "bun-types": "^1.0.3",
-    "cspell": "^8.13.2",
-    "eslint": "^9.6.0",
-    "eslint-import-resolver-typescript": "^3.6.1",
-    "eslint-plugin-import": "^2.29.1",
-    "globals": "^15.8.0",
+    "bun-plugin-dts": "^0.3.0",
+    "bun-types": "1.0.3",
+    "cspell": "^8.17.5",
+    "eslint": "^9.22.0",
+    "eslint-import-resolver-typescript": "^3.8.5",
+    "eslint-plugin-import": "^2.31.0",
+    "globals": "^15.15.0",
     "gzip-size-cli": "^5.1.0",
-    "prettier": "^3.3.3",
-    "typescript": "^5.1.6",
-    "typescript-eslint": "^8.0.1"
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

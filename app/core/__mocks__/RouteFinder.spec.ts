@@ -1,5 +1,5 @@
 import { mock } from 'bun:test';
-import type { RouteFinder } from '../RouteFinder.ts';
+import type { RouteFinder } from '../Route/RouteFinder.ts';
 import type { Request } from '../Request.ts';
 import type { IRoute } from '../../types/Route.ts';
 

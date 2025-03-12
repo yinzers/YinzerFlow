@@ -33,13 +33,16 @@ export type TUndefinableResponseFunction = TResponseFunction | ((ctx: Context) =
  * handler function, and optional hook functions that can be executed before
  * or after the main handler.
  */
-export interface IRoute {
+export interface IRoute extends IRouteOptions {
   /** The URL path pattern for the route (can include parameters) */
   path: string;
   /** The HTTP method for the route (GET, POST, etc.) */
   method: THttpMethod;
   /** The main handler function for the route */
   handler: TResponseFunction;
+}
+
+export interface IRouteOptions {
   /** Optional hook function to execute before the main handler */
   beforeHandler?: TResponseFunction | TUndefinableResponseFunction | undefined;
   /** Optional hook function to execute after the main handler */

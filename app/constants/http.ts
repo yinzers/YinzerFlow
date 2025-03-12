@@ -18,6 +18,8 @@ export const HttpStatus = <const>{
   FORBIDDEN: 'Forbidden',
   NOT_FOUND: 'Not Found',
   METHOD_NOT_ALLOWED: 'Method Not Allowed',
+  CONFLICT: 'Conflict',
+  UNSUPPORTED_MEDIA_TYPE: 'Unsupported Media Type',
   TOO_MANY_REQUESTS: 'Too Many Requests',
   INTERNAL_SERVER_ERROR: 'Internal Server Error',
 };
@@ -35,6 +37,8 @@ export const HttpStatusCode = <const>{
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   METHOD_NOT_ALLOWED: 405,
+  CONFLICT: 409,
+  UNSUPPORTED_MEDIA_TYPE: 415,
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,
 };

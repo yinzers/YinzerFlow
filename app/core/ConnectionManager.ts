@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
-import { ConnectionEvent, DEFAULT_SOCKET_TIMEOUT } from '../constants/connection.ts';
-import type { IConnectionStats } from '../types/Connection.ts';
+import { ConnectionEvent, DEFAULT_SOCKET_TIMEOUT } from 'constants/connection.ts';
+import type { IConnectionStats } from 'types/Connection.ts';
 
 /**
  * Manages socket connections to the server

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { RouteFinder } from '../RouteFinder.ts';
-import { RouteRegistry } from '../RouteRegistry.ts';
+import { RouteFinder } from '../Route/RouteFinder.ts';
+import { RouteRegistry } from '../Route/RouteRegistry.ts';
 import { HttpMethod } from '../../constants/http.ts';
 import type { IRoute } from '../../types/Route.ts';
 import type { Request } from '../Request.ts';

@@ -1,8 +1,8 @@
-import type { IRoute } from '../types/Route.ts';
-import type { IRequest, THttpMethod, TRequestBody } from '../types/http/Request.ts';
-import { ContentType, HttpMethod } from '../constants/http.ts';
-import { divideString } from '../utils/string.utils.ts';
-import * as requestUtils from '../utils/request.utils.ts';
+import type { IRoute } from 'types/Route.ts';
+import type { IRequest, THttpMethod, TRequestBody } from 'types/http/Request.ts';
+import { ContentType, HttpMethod } from 'constants/http.ts';
+import { divideString } from 'utils/string.utils.ts';
+import * as requestUtils from 'utils/request.utils.ts';
 
 /**
  * Handles HTTP request parsing and parameter extraction

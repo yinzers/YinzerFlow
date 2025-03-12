@@ -1,5 +1,5 @@
-import type { Request } from './Request.ts';
-import type { Response } from './Response.ts';
+import type { Request } from 'core/Request.ts';
+import type { Response } from 'core/Response.ts';
 
 /**
  * Request/response context

@@ -10,7 +10,7 @@ import type { Context } from '../Context.ts';
 import { createMockRouteFinder } from '../__mocks__/RouteFinder.spec.ts';
 import { createMockHooksManager } from '../__mocks__/HooksManager.spec.ts';
 import { MockSocket } from '../__mocks__/Socket.spec.ts';
-import type { RouteFinder } from '../RouteFinder.ts';
+import type { RouteFinder } from '../Route/RouteFinder.ts';
 
 // Define a partial type for the mock HooksManager
 interface MockHooksManager {
