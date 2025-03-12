@@ -1,4 +1,4 @@
-import type { TUndefinableResponseFunction } from './Route.ts';
+import type { TUndefinableResponseFunction } from 'types/Route.ts';
 
 /**
  * Base interface for hook configurations

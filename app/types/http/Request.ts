@@ -1,6 +1,6 @@
-import type { Enum } from '../Common.ts';
-import type { HttpMethod } from '../../constants/http.ts';
-import type { IHeaders } from './Response.ts';
+import type { Enum } from 'types/Common.ts';
+import type { HttpMethod } from 'constants/http.ts';
+import type { IHeaders } from 'types/http/Response.ts';
 import type { UploadedFile } from 'utils/request.utils.ts';
 
 /**
@@ -148,7 +148,7 @@ export type TUrlEncodedJson = Record<string, string>;
 
 /**
  * Represents an HTTP request
- * 
+ *
  * This interface encapsulates all components of an HTTP request,
  * providing a unified way to access request data throughout the application.
  */

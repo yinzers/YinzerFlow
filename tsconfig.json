@@ -18,8 +18,8 @@
     "jsx": "preserve",
     "alwaysStrict": true,
     "declaration": true,
-    "outDir": "dist",
-    "declarationDir": "dist",
+    "outDir": "lib",
+    "declarationDir": "lib",
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
@@ -56,5 +56,5 @@
     "noUncheckedIndexedAccess": true,
     "strictBindCallApply": true
   },
-  "include": ["**/*"]
+  "include": ["app/**/*", "example/**/*", "local/**/*", "build.ts"]
 }

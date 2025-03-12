@@ -443,50 +443,6 @@ private async _handleError(request: Request, error: unknown): Promise<Response> 
 }
 ```
 
-#### 3. Route Methods
-
-Current implementation:
-```typescript
-get(path: IRoute['path'], handler: IRoute['handler'], options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] }): IRoute {
-  return this.routeRegistry.addRoute({
-    path,
-    handler,
-    method: HttpMethod.GET,
-    ...options,
-  });
-}
-
-post(path: IRoute['path'], handler: IRoute['handler'], options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] }): IRoute {
-  // Similar implementation
-}
-```
-
-Optimized implementation:
-```typescript
-// In separate files
-export const get = (registry: RouteRegistry) => 
-  (path: IRoute['path'], handler: IRoute['handler'], options?: RouteOptions): IRoute => 
-    registry.addRoute({ path, handler, method: HttpMethod.GET, ...options });
-
-export const post = (registry: RouteRegistry) => 
-  // Similar implementation
-```
-
-Then in the main class:
-```typescript
-import { get } from './methods/get.js';
-import { post } from './methods/post.js';
-
-export class YinzerFlow {
-  // ...
-  get = get(this.routeRegistry);
-  post = post(this.routeRegistry);
-  // Other methods only imported if used
-}
-```
-
-This allows tree shaking to remove unused HTTP method handlers.
-
 #### 4. HooksManager Optimizations
 
 Current implementation:

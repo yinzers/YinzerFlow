@@ -1,6 +1,5 @@
-import { YinzerFlow } from 'yinzerflow';
-import { MultipartFormData, JsonData, XmlData, UrlEncodedFormData, CsvData, PlainTextData } from 'yinzerflow/types/http/Request';
-import { isMultipartFormData, isJsonData, isXmlData, isUrlEncodedFormData, isCsvData, isPlainTextData } from 'yinzerflow/utils/contentType.utils';
+import { HttpStatusCode, ICsvData, IMultipartFormData, IPlainTextData, isCsvData, isJsonData, isMultipartFormData, isPlainTextData, isUrlEncodedFormData, isXmlData,  TJsonData, TUrlEncodedFormData, TXmlData, YinzerFlow } from 'yinzerflow';
+
 
 /**
  * This file demonstrates different approaches to handle various content types:
@@ -17,7 +16,7 @@ export default function setupContentHandlers(app: YinzerFlow) {
    */
   app.post('/api/json/fast', ({ request }) => {
     // Use type assertion - fast but no runtime validation
-    const body = request.body as JsonData;
+    const body = request.body as TJsonData;
 
     // Access properties directly
     const { name, email, preferences } = body;
@@ -71,7 +70,7 @@ export default function setupContentHandlers(app: YinzerFlow) {
    */
   app.post('/api/xml/fast', ({ request }) => {
     // Use type assertion - fast but no runtime validation
-    const body = request.body as XmlData;
+    const body = request.body as TXmlData;
 
     // Get the root element name (first key in the object)
     const rootElement = Object.keys(body)[0];
@@ -131,7 +130,7 @@ export default function setupContentHandlers(app: YinzerFlow) {
    */
   app.post('/api/form/fast', ({ request }) => {
     // Use type assertion - fast but no runtime validation
-    const body = request.body as UrlEncodedFormData;
+    const body = request.body as TUrlEncodedFormData;
 
     // Access form fields directly
     const username = body.username || 'anonymous';
@@ -186,7 +185,7 @@ export default function setupContentHandlers(app: YinzerFlow) {
    */
   app.post('/api/csv/fast', ({ request }) => {
     // Use type assertion - fast but no runtime validation
-    const body = request.body as CsvData;
+    const body = request.body as ICsvData;
 
     // Access CSV data directly
     const { headers, rows } = body;
@@ -242,17 +241,16 @@ export default function setupContentHandlers(app: YinzerFlow) {
    */
   app.post('/api/text/fast', ({ request }) => {
     // Use type assertion - fast but no runtime validation
-    const body = request.body as PlainTextData;
+    const body = request.body as IPlainTextData;
 
     // Access text content directly
     const { content } = body;
 
     return {
       success: true,
-      message: 'Processed text content',
-      charCount: content.length,
-      wordCount: content.split(/\s+/).length,
-      preview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+      message: 'Processed text data',
+      contentLength: content.length,
+      firstLine: content.split('\n')[0] || '',
     };
   });
 
@@ -272,8 +270,8 @@ export default function setupContentHandlers(app: YinzerFlow) {
     // TypeScript knows request.body is PlainTextData here
     const { content } = request.body;
 
-    // Validate text content
-    if (content.trim().length === 0) {
+    // Validate content
+    if (!content || content.trim().length === 0) {
       response.setStatus(400);
       return {
         success: false,
@@ -283,10 +281,9 @@ export default function setupContentHandlers(app: YinzerFlow) {
 
     return {
       success: true,
-      message: 'Processed text content',
-      charCount: content.length,
-      wordCount: content.split(/\s+/).length,
-      lineCount: content.split(/\r?\n/).length,
+      message: 'Processed text data',
+      contentLength: content.length,
+      lineCount: content.split('\n').length,
     };
   });
 
@@ -299,28 +296,17 @@ export default function setupContentHandlers(app: YinzerFlow) {
    */
   app.post('/api/multipart/fast', ({ request }) => {
     // Use type assertion - fast but no runtime validation
-    const body = request.body as MultipartFormData;
+    const body = request.body as IMultipartFormData;
 
-    // Access fields and files directly
+    // Access form fields and files
     const { fields, files } = body;
-
-    // Process fields
-    const username = fields.username || 'anonymous';
-
-    // Process files
-    const fileNames = Object.keys(files);
-    const fileSizes = fileNames.map((name) => ({
-      name,
-      size: files[name].size,
-      type: files[name].contentType,
-    }));
 
     return {
       success: true,
-      message: `Upload received for ${username}`,
+      message: 'Processed multipart form data',
       fieldCount: Object.keys(fields).length,
-      fileCount: fileNames.length,
-      files: fileSizes,
+      fileCount: Object.keys(files).length,
+      fileNames: Object.keys(files),
     };
   });
 
@@ -340,23 +326,18 @@ export default function setupContentHandlers(app: YinzerFlow) {
     // TypeScript knows request.body is MultipartFormData here
     const { fields, files } = request.body;
 
-    // Process fields
-    const username = fields.username || 'anonymous';
-
     // Process files
-    const fileNames = Object.keys(files);
-    const fileSizes = fileNames.map((name) => ({
+    const fileInfo = Object.entries(files).map(([name, file]) => ({
       name,
-      size: files[name].size,
-      type: files[name].contentType,
+      size: file.size,
+      contentType: file.contentType,
     }));
 
     return {
       success: true,
-      message: `Upload received for ${username}`,
-      fieldCount: Object.keys(fields).length,
-      fileCount: fileNames.length,
-      files: fileSizes,
+      message: 'Processed multipart form data',
+      fields,
+      files: fileInfo,
     };
   });
 
@@ -433,7 +414,7 @@ export default function setupContentHandlers(app: YinzerFlow) {
     }
 
     // Unknown content type
-    response.setStatus(415); // Unsupported Media Type
+    response.setStatus(HttpStatusCode.UNSUPPORTED_MEDIA_TYPE ); 
     return {
       error: 'Unsupported content type',
       contentType: request.headers['Content-Type'],

@@ -1,10 +1,11 @@
 import { createServer } from 'net';
 import type { Socket } from 'net';
 import ip from 'ip';
-import { RouteRegistry } from './core/RouteRegistry.ts';
-import { RouteRegistryEvent } from './constants/route.ts';
-import { RouteFinder } from './core/RouteFinder.ts';
-import { HttpMethod, HttpStatusCode } from 'constants/http.ts';
+import { addDeleteRoute, addGetRoute, addPatchRoute, addPostRoute, addPutRoute } from 'core/Route/methods/index.ts';
+import { RouteRegistry } from 'core/Route/RouteRegistry.ts';
+import { RouteRegistryEvent } from 'constants/route.ts';
+import { RouteFinder } from 'core/Route/RouteFinder.ts';
+import { HttpStatusCode } from 'constants/http.ts';
 import type { IRoute } from 'types/Route.ts';
 import type { TErrorFunction } from 'types/Response.ts';
 import { RequestHandler } from 'core/RequestHandler.ts';
@@ -95,74 +96,44 @@ export class YinzerFlow {
   };
 
   // === ROUTE DEFINITION METHODS ===
+  /**
+   * This tree shaking method is used to optimize the bundle size by including only the HTTP methods that are actually utilized.
+   * Here's the process:
+   * 1. User imports YinzerFlow: The main class is imported as before.
+   * 2. YinzerFlow loads only what's needed: Only the HTTP methods actually used are included in the bundle.
+   * 3. User API remains unchanged: Methods like app.get() and app.post() function as they did previously.
+   *
+   * Benefits to End Users:
+   * - Smaller Bundle Size: Unused methods (e.g., PUT, DELETE) won't bloat the final bundle.
+   * - Faster Startup: Less code leads to quicker parsing and execution.
+   * - Lower Memory Usage: Only essential code is loaded into memory.
+   * - Better Performance: Smaller bundles generally enhance overall performance.
+   */
 
   /**
    * Register a GET route
    */
-  get(path: IRoute['path'], handler: IRoute['handler'], options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] }): IRoute {
-    return this.routeRegistry.addRoute({
-      path,
-      handler,
-      method: HttpMethod.GET,
-      ...options,
-    });
-  }
+  get = addGetRoute(this.routeRegistry);
 
   /**
    * Register a POST route
    */
-  post(path: IRoute['path'], handler: IRoute['handler'], options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] }): IRoute {
-    return this.routeRegistry.addRoute({
-      path,
-      handler,
-      method: HttpMethod.POST,
-      ...options,
-    });
-  }
+  post = addPostRoute(this.routeRegistry);
 
   /**
    * Register a PUT route
    */
-  put(path: IRoute['path'], handler: IRoute['handler'], options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] }): IRoute {
-    return this.routeRegistry.addRoute({
-      path,
-      handler,
-      method: HttpMethod.PUT,
-      ...options,
-    });
-  }
+  put = addPutRoute(this.routeRegistry);
 
   /**
    * Register a DELETE route
    */
-  delete(
-    path: IRoute['path'],
-    handler: IRoute['handler'],
-    options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] },
-  ): IRoute {
-    return this.routeRegistry.addRoute({
-      path,
-      handler,
-      method: HttpMethod.DELETE,
-      ...options,
-    });
-  }
+  delete = addDeleteRoute(this.routeRegistry);
 
   /**
    * Register a PATCH route
    */
-  patch(
-    path: IRoute['path'],
-    handler: IRoute['handler'],
-    options?: { beforeHandler?: IRoute['beforeHandler']; afterHandler?: IRoute['afterHandler'] },
-  ): IRoute {
-    return this.routeRegistry.addRoute({
-      path,
-      handler,
-      method: HttpMethod.PATCH,
-      ...options,
-    });
-  }
+  patch = addPatchRoute(this.routeRegistry);
 
   /**
    * Register a group of routes with a common prefix

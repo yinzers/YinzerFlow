@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import type { IRoute } from '../types/Route.ts';
-import { RouteRegistryEvent } from '../constants/route.ts';
+import type { IRoute } from 'types/Route.ts';
+import { RouteRegistryEvent } from 'constants/route.ts';
 
 /**
  * Manages route registration

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
-import type { IRoute, TUndefinableResponseFunction } from '../types/Route.ts';
-import { HookManagerEvent, HookPhase, PathMatchingPattern } from '../constants/hooks.ts';
-import type { Context } from './Context.ts';
+import type { Context } from 'core/Context.ts';
+import type { IRoute, TUndefinableResponseFunction } from 'types/Route.ts';
+import { HookManagerEvent, HookPhase, PathMatchingPattern } from 'constants/hooks.ts';
 import type { TResponseBody } from 'types/http/Response.ts';
 import type { IExcludeHook, IIncludeHook, THook } from 'types/Hook.ts';
 

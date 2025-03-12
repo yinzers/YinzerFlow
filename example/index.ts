@@ -5,10 +5,10 @@
  * with routes, middleware, and error handling.
  */
 
-import { HttpStatusCode, YinzerFlow } from 'yinzerflow';
-import type { THttpStatusCode, TResponseBody } from 'yinzerflow';
 import authenticationRoutes from './routes/authentication.routes.ts';
 import setupContentHandlers from './routes/content-types.ts';
+import { HttpStatusCode, YinzerFlow } from 'yinzerflow';
+import type { THttpStatusCode, TResponseBody } from 'yinzerflow';
 
 // Define response types for better type safety
 interface ServerResponse {

@@ -1,12 +1,12 @@
 import type { Socket } from 'net';
-import type { IRoute } from '../types/Route.ts';
-import type { TErrorFunction } from '../types/Response.ts';
-import { HttpStatusCode } from '../constants/http.ts';
-import { Request } from './Request.ts';
-import { Response } from './Response.ts';
-import { Context as ContextClass } from './Context.ts';
-import type { HooksManager } from './HooksManager.ts';
-import type { RouteFinder } from './RouteFinder.ts';
+import { Request } from 'core/Request.ts';
+import { Response } from 'core/Response.ts';
+import { Context as ContextClass } from 'core/Context.ts';
+import type { HooksManager } from 'core/HooksManager.ts';
+import type { RouteFinder } from 'core/Route/RouteFinder.ts';
+import { HttpStatusCode } from 'constants/http.ts';
+import type { TErrorFunction } from 'types/Response.ts';
+import type { IRoute } from 'types/Route.ts';
 
 /**
  * Handles HTTP requests and routes them to the appropriate handler

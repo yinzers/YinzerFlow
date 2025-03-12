@@ -1,10 +1,10 @@
-import type { Enum } from '../Common.ts';
-import type { ContentType, HttpStatus, HttpStatusCode } from '../../constants/http.ts';
-import type { THttpMethod } from './Request.ts';
+import type { Enum } from 'types/Common.ts';
+import type { ContentType, HttpStatus, HttpStatusCode } from 'constants/http.ts';
+import type { THttpMethod } from 'types/http/Request.ts';
 
 /**
  * Represents an HTTP status text
- * 
+ *
  * This type is derived from the HttpStatus enum constants and ensures
  * that only valid HTTP status texts can be used throughout the application.
  */
@@ -12,7 +12,7 @@ export type THttpStatus = Enum<typeof HttpStatus>;
 
 /**
  * Represents an HTTP status code
- * 
+ *
  * This type is derived from the HttpStatusCode enum constants and ensures
  * that only valid HTTP status codes can be used throughout the application.
  */
@@ -20,7 +20,7 @@ export type THttpStatusCode = Enum<typeof HttpStatusCode>;
 
 /**
  * Represents HTTP headers
- * 
+ *
  * This interface defines all standard HTTP headers as optional properties.
  * The property names match the exact header names as they appear in HTTP requests and responses.
  */

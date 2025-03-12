@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 /* eslint-disable complexity */
 /* eslint-disable max-statements */
-import type { TRequestBody, TYamlData } from '../types/http/Request.ts';
+import type { TRequestBody, TYamlData } from 'types/http/Request.ts';
 
 /**
  * Represents a file uploaded via multipart form data
