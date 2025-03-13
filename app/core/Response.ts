@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import type { IHeaders, IResponse, THttpStatus, THttpStatusCode, TResponseBody } from 'types/http/Response.ts';
 import { calculateContentLength } from 'utils/string.utils.ts';
 import { ContentType, HttpStatus, HttpStatusCode } from 'constants/http.ts';
-import type { Request } from 'core/Request.ts';
+import type { Request } from 'core/Request/Request.ts';
 
 /**
  * Handles HTTP response creation, manipulation, and formatting

@@ -1,16 +1,17 @@
 import { createServer } from 'net';
 import type { Socket } from 'net';
 import ip from 'ip';
+
+import { ConfigManager } from './ConfigManager.ts';
 import { addDeleteRoute, addGetRoute, addPatchRoute, addPostRoute, addPutRoute } from 'core/Route/methods/index.ts';
 import { RouteRegistry } from 'core/Route/RouteRegistry.ts';
 import { RouteRegistryEvent } from 'constants/route.ts';
 import { RouteFinder } from 'core/Route/RouteFinder.ts';
-import { HttpStatusCode } from 'constants/http.ts';
 import type { IRoute } from 'types/Route.ts';
-import type { TErrorFunction } from 'types/Response.ts';
-import { RequestHandler } from 'core/RequestHandler.ts';
+import { RequestHandler } from 'core/Request/RequestHandler.ts';
 import { ConnectionManager } from 'core/ConnectionManager.ts';
 import { HooksManager } from 'core/HooksManager.ts';
+import type { IServerOptions } from 'types/Server.ts';
 
 /**
  * Main YinzerFlow server class
@@ -28,6 +29,7 @@ export class YinzerFlow {
   private readonly hooksManager = new HooksManager();
   private readonly connectionManager: ConnectionManager;
   private readonly requestHandler: RequestHandler;
+  private readonly configManager: ConfigManager;
 
   // === SERVER CONFIGURATION ===
   private readonly _ip: string = ip.address();
@@ -57,29 +59,31 @@ export class YinzerFlow {
   }
 
   /**
+   * Get the config manager instance
+   *
+   * This allows direct access to the configuration for advanced use cases.
+   */
+  get config(): ConfigManager {
+    return this.configManager;
+  }
+
+  /**
    * Create a new YinzerFlow server instance
    */
-  constructor(options?: {
-    port?: number;
-    errorHandler?: TErrorFunction;
-    connectionOptions?: {
-      socketTimeout?: number;
-      gracefulShutdownTimeout?: number;
-    };
-  }) {
+  constructor(options?: IServerOptions) {
     if (options?.port) this._port = options.port;
     if (options?.connectionOptions?.gracefulShutdownTimeout) {
       this._gracefulShutdownTimeout = options.connectionOptions.gracefulShutdownTimeout;
     }
 
+    // Initialize the config manager with all options
+    this.configManager = new ConfigManager(options);
+
     // Initialize the connection manager with socket timeout
     this.connectionManager = new ConnectionManager(options?.connectionOptions?.socketTimeout);
 
-    // Set up the error handler
-    const errorHandler = options?.errorHandler ?? this._defaultErrorHandler;
-
     // Initialize the request handler with the managers
-    this.requestHandler = new RequestHandler(this.routeFinder, this.hooksManager, errorHandler);
+    this.requestHandler = new RequestHandler(this.routeFinder, this.hooksManager, this.configManager);
 
     // Set up event listeners for route changes
     this.routeRegistry.on(RouteRegistryEvent.ROUTES_CHANGED, () => {
@@ -87,13 +91,6 @@ export class YinzerFlow {
       this.routeFinder.updatePatternRouteCache();
     });
   }
-
-  // === ERROR HANDLING ===
-  private readonly _defaultErrorHandler: TErrorFunction = ({ response }, error): unknown => {
-    console.error('Server error: \n', error);
-    response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR);
-    return { success: false, message: 'Internal server error' };
-  };
 
   // === ROUTE DEFINITION METHODS ===
   /**

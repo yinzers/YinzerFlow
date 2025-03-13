@@ -6,20 +6,6 @@ YinzerFlow provides robust support for parsing and handling various content type
 
 In web applications, HTTP requests and responses can contain data in various formats, such as JSON, XML, form data, and more. YinzerFlow automatically detects and parses these formats based on the `Content-Type` header, making it easy to work with different types of data.
 
-### Content Type Detection
-
-YinzerFlow uses the `Content-Type` header to determine how to parse the request body:
-
-```
-Content-Type: application/json
-Content-Type: application/xml
-Content-Type: multipart/form-data
-Content-Type: application/x-www-form-urlencoded
-Content-Type: text/csv
-Content-Type: text/plain
-Content-Type: application/yaml
-```
-
 ### Type Safety
 
 YinzerFlow provides TypeScript interfaces and type guards for each supported content type, allowing you to work with request bodies in a type-safe manner.
@@ -31,13 +17,8 @@ YinzerFlow supports the following content types out of the box:
 | Content Type | MIME Type | Type Interface | Type Guard | Description |
 |--------------|-----------|----------------|------------|-------------|
 | JSON | `application/json` | `TJsonData` | `isJsonData` | JSON data as a generic object |
-| XML | `application/xml` | `TXmlData` | `isXmlData` | XML data with elements, attributes, and children |
-| Multipart Form | `multipart/form-data` | `IMultipartFormData` | `isMultipartFormData` | Form data with fields and file uploads |
-| URL-encoded Form | `application/x-www-form-urlencoded` | `TUrlEncodedFormData` | `isUrlEncodedFormData` | Form data as key-value pairs |
-| URL-encoded JSON | `application/x-www-form-urlencoded+json` | `TUrlEncodedJson` | `isUrlEncodedJson` | URL-encoded data with JSON values |
-| CSV | `text/csv` | `ICsvData` | `isCsvData` | CSV data with headers and rows |
-| Plain Text | `text/plain` | `IPlainTextData` | `isPlainTextData` | Text data with a content property |
-| YAML | `application/yaml` | `TYamlData` | `isYamlData` | YAML data as a structured object |
+| XML (Coming Soon) | `application/xml` | `TXmlData` | `isXmlData` | XML data with elements, attributes, and children |
+| Multipart Form | `multipart/form-data` | `IMultipartFormData` | `isMultipartFormData` | Form data with fields and file uploads ([See Supported File Parsers](./file-parsers.md)) |
 
 ## Working with Content Types
 
@@ -104,10 +85,10 @@ For more details on handling errors, including content type validation errors, r
 JSON is one of the most common formats for API requests and responses:
 
 ```typescript
-import { isJsonData } from 'yinzerflow/types/http/Request';
+import { isJsonData } from 'yinzerflow';
 
 app.post('/api/users', ({ request, response }) => {
-  if (!isJsonData(request.body)) {
+  if (!isJsonData<{ name: string; email: string; age?: number }>(request.body)) {
     response.setStatus(400);
     return { error: 'Expected JSON data' };
   }
@@ -140,12 +121,10 @@ app.post('/api/users', ({ request, response }) => {
 
 ```typescript
 // The JSON data type
-type TJsonData = Record<string, unknown>;
+type TJsonData<T = unknown> = Record<string, unknown> & T;
 
 // Type guard for JSON data
-function isJsonData(data: unknown): data is TJsonData {
-  return data !== null && typeof data === 'object' && !Array.isArray(data);
-}
+const isJsonData = <T = unknown>(body: TRequestBody): body is TJsonData<T> => !isMultipartFormData(body) && typeof body === 'object';
 ```
 
 ### Multipart Form Data (File Uploads)
@@ -153,12 +132,12 @@ function isJsonData(data: unknown): data is TJsonData {
 Multipart form data is used for file uploads and complex forms:
 
 ```typescript
-import { isMultipartFormData } from 'yinzerflow/types/http/Request';
+import { isMultipartFormData } from 'yinzerflow';
 import { saveFile } from './file-service';
 
 app.post('/api/upload', ({ request, response }) => {
   if (!isMultipartFormData(request.body)) {
-    response.setStatus(400);
+    response.setStatus(415);
     return { error: 'Expected multipart form data' };
   }
   
@@ -173,7 +152,7 @@ app.post('/api/upload', ({ request, response }) => {
   
   // Process uploaded files
   const uploadedFiles = [];
-  for (const [fieldName, file] of Object.entries(files)) {
+  for (const file of files) {
     // Check file type
     if (!file.contentType.startsWith('image/')) {
       response.setStatus(400);
@@ -217,79 +196,26 @@ interface IMultipartFormData {
 
 // The uploaded file interface
 interface UploadedFile {
-  name: string;
-  path: string;
-  size: number;
+  /** Original filename provided by the client */
+  filename: string;
+  /** MIME type of the file */
   contentType: string;
+  /** Size of the file in bytes */
+  size: number;
+  /** file content */
+  content: TYamlData | string;
+  /** Additional metadata about the file */
+  metadata?: Record<string, string>;
 }
 
-// Type guard for multipart form data
-function isMultipartFormData(data: unknown): data is IMultipartFormData {
-  return (
-    data !== null &&
-    typeof data === 'object' &&
-    'fields' in data &&
-    'files' in data &&
-    typeof (data as any).fields === 'object' &&
-    typeof (data as any).files === 'object'
-  );
-}
+// Type guard for JSON data
+const isMultipartFormData = (body: TRequestBody): body is IMultipartFormData =>
+  body !== null && typeof body === 'object' && 'fields' in body && 'files' in body && Array.isArray(body.files) && typeof (<any>body.fields) === 'object';
 ```
 
-### XML Data
+### XML Data (Coming Soon)
 
 XML is commonly used in enterprise systems and SOAP APIs:
-
-```typescript
-import { isXmlData } from 'yinzerflow/types/http/Request';
-
-app.post('/api/orders', ({ request, response }) => {
-  if (!isXmlData(request.body)) {
-    response.setStatus(400);
-    return { error: 'Expected XML data' };
-  }
-  
-  // Validate required elements
-  const orderElement = request.body.elements.find(el => el.name === 'order');
-  if (!orderElement) {
-    response.setStatus(400);
-    return { error: 'Missing order element' };
-  }
-  
-  // Process the order...
-  
-  response.setStatus(201);
-  return { success: true, orderId: generatedOrderId };
-});
-```
-
-### CSV Data
-
-CSV is useful for importing and exporting tabular data:
-
-```typescript
-import { isCsvData } from 'yinzerflow/types/http/Request';
-
-app.post('/api/import-users', ({ request, response }) => {
-  if (!isCsvData(request.body)) {
-    response.setStatus(400);
-    return { error: 'Expected CSV data' };
-  }
-  
-  // Validate required columns
-  const requiredColumns = ['name', 'email', 'role'];
-  for (const column of requiredColumns) {
-    if (!request.body.headers.includes(column)) {
-      response.setStatus(400);
-      return { error: `Missing required column: ${column}` };
-    }
-  }
-  
-  // Process the CSV data...
-  
-  return { success: true, importedCount: request.body.rows.length };
-});
-```
 
 ## Best Practices
 
@@ -416,20 +342,9 @@ app.post('/api/users', ({ request, response }) => {
 
 ## Advanced Topics
 
-### Custom Content Type Parsers
+### Custom Content Type Parsers (Future Idea)
 
 YinzerFlow allows you to register custom content type parsers:
-
-```typescript
-import { registerContentTypeParser } from 'yinzerflow';
-
-// Register a custom parser for application/protobuf
-registerContentTypeParser('application/protobuf', (body, contentType) => {
-  // Parse the protobuf data
-  const parsedData = decodeProtobuf(body);
-  return parsedData;
-});
-```
 
 ### Content Negotiation
 
@@ -467,109 +382,9 @@ app.get('/api/users/:id', ({ request, response }) => {
 
 ### Handling Binary Data
 
-For binary data like images or PDFs:
+For binary data like images or PDFs we only support uploads using from-data at this time
 
-```typescript
-app.get('/api/files/:id', ({ request, response }) => {
-  const file = getFileById(request.params.id);
-  if (!file) {
-    response.setStatus(404);
-    return { error: 'File not found' };
-  }
-  
-  // Return binary data
-  response.modifyHeader('Content-Type', file.contentType);
-  response.modifyHeader('Content-Disposition', `attachment; filename="${file.name}"`);
-  return file.data;
-});
-```
 
 ## Conclusion
 
 YinzerFlow's content type handling system provides a flexible and type-safe way to work with various data formats in your web applications. By following the best practices outlined in this document, you can build robust APIs that handle different content types correctly and provide a great developer experience. 
-
-// Find and update all remaining examples that use response helper methods
-
-// Example for form data validation
-app.post('/api/contact', ({ request, response }) => {
-  if (!isUrlEncodedFormData(request.body)) {
-    response.setStatus(400);
-    return { error: 'Expected form data' };
-  }
-  
-  // Validate required fields
-  const { name, email, message } = request.body;
-  if (!name || !email || !message) {
-    response.setStatus(400);
-    return { error: 'Name, email, and message are required' };
-  }
-  
-  // Validate email format
-  if (!isValidEmail(email)) {
-    response.setStatus(400);
-    return { error: 'Invalid email format' };
-  }
-  
-  // Process the contact form...
-  
-  return { success: true, message: 'Your message has been sent' };
-});
-
-// Example for file upload validation
-app.post('/api/documents', ({ request, response }) => {
-  if (!isMultipartFormData(request.body)) {
-    response.setStatus(400);
-    return { error: 'Expected multipart form data' };
-  }
-  
-  const { files } = request.body;
-  
-  // Check number of files
-  if (Object.keys(files).length > 10) {
-    response.setStatus(400);
-    return { error: 'Maximum 10 files allowed' };
-  }
-  
-  // Validate each file
-  for (const [fieldName, file] of Object.entries(files)) {
-    if (file.size > 10 * 1024 * 1024) {
-      response.setStatus(400);
-      return { error: `File ${file.name} exceeds the 10MB limit` };
-    }
-    
-    // Process the file...
-  }
-  
-  response.setStatus(201);
-  return { success: true, message: 'Files uploaded successfully' };
-});
-
-// Example for retrieving a user
-app.get('/api/users/:id', ({ request, response }) => {
-  const userId = request.params.id;
-  const user = findUserById(userId);
-  
-  if (!user) {
-    response.setStatus(404);
-    return { error: 'User not found' };
-  }
-  
-  return user;
-});
-
-// Example for retrieving a file
-app.get('/api/files/:id', ({ request, response }) => {
-  const fileId = request.params.id;
-  const file = findFileById(fileId);
-  
-  if (!file) {
-    response.setStatus(404);
-    return { error: 'File not found' };
-  }
-  
-  // Set appropriate content type for the file
-  response.modifyHeader('Content-Type', file.contentType);
-  
-  // Return the file content
-  return file.content;
-}); 

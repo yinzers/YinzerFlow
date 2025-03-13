@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { Request } from '../Request.ts';
-import { HttpMethod } from '../../constants/http.ts';
-import type { IRoute } from '../../types/Route.ts';
+import { HttpMethod } from '../../../constants/http.ts';
+import type { IRoute } from '../../../types/Route.ts';
 
 describe('HttpRequest', () => {
   describe('constructor', () => {

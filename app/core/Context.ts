@@ -1,4 +1,4 @@
-import type { Request } from 'core/Request.ts';
+import type { Request } from 'core/Request/Request.ts';
 import type { Response } from 'core/Response.ts';
 
 /**
@@ -16,8 +16,3 @@ export class Context {
     this.response = response;
   }
 }
-
-/**
- * Type for request body
- */
-export type TRequestBody<T = unknown> = Record<string, T>;

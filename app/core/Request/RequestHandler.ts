@@ -1,5 +1,5 @@
 import type { Socket } from 'net';
-import { Request } from 'core/Request.ts';
+import { Request } from 'core/Request/Request.ts';
 import { Response } from 'core/Response.ts';
 import { Context as ContextClass } from 'core/Context.ts';
 import type { HooksManager } from 'core/HooksManager.ts';
@@ -7,6 +7,7 @@ import type { RouteFinder } from 'core/Route/RouteFinder.ts';
 import { HttpStatusCode } from 'constants/http.ts';
 import type { TErrorFunction } from 'types/Response.ts';
 import type { IRoute } from 'types/Route.ts';
+import type { ConfigManager } from 'core/ConfigManager.ts';
 
 /**
  * Handles HTTP requests and routes them to the appropriate handler
@@ -20,11 +21,17 @@ import type { IRoute } from 'types/Route.ts';
  * 6. Handling any errors that occur during processing
  */
 export class RequestHandler {
-  constructor(
-    private readonly routeFinder: RouteFinder,
-    private readonly hooksManager: HooksManager,
-    private readonly errorHandler: TErrorFunction,
-  ) {}
+  private readonly routeFinder: RouteFinder;
+  private readonly hooksManager: HooksManager;
+  private readonly errorHandler: TErrorFunction;
+  private readonly configManager: ConfigManager;
+
+  constructor(routeFinder: RouteFinder, hooksManager: HooksManager, configManager: ConfigManager) {
+    this.routeFinder = routeFinder;
+    this.hooksManager = hooksManager;
+    this.configManager = configManager;
+    this.errorHandler = configManager.errorHandler ?? this._defaultErrorHandler;
+  }
 
   /**
    * Main handler for incoming HTTP requests from a socket
@@ -33,7 +40,7 @@ export class RequestHandler {
    * @param buffer - The raw request data
    */
   async handleSocketRequest(socket: Socket, buffer: Buffer): Promise<void> {
-    const request = new Request(buffer.toString());
+    const request = new Request(buffer.toString(), this.configManager.parserOptions);
 
     try {
       // Find the route for this request
@@ -50,6 +57,15 @@ export class RequestHandler {
       await this._sendResponse(socket, errorResponse);
     }
   }
+
+  /**
+   * Default error handler if none is provided
+   */
+  private readonly _defaultErrorHandler: TErrorFunction = ({ response }, error): unknown => {
+    console.error('Server error: \n', error);
+    response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR);
+    return { success: false, message: 'Internal server error' };
+  };
 
   /**
    * Sends an HTTP response through the socket

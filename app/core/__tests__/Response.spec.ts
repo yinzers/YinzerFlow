@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/dot-notation */
 import { describe, expect, test } from 'bun:test';
 import { Response } from '../Response.ts';
-import { MockRequest } from '../__mocks__/Request.spec.ts';
+import { MockRequest } from '../Request/__mocks__/Request.spec.ts';
 import { ContentType, HttpStatus, HttpStatusCode } from '../../constants/http.ts';
 import { calculateContentLength } from '../../utils/string.utils.ts';
 

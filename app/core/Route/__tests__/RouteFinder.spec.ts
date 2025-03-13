@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { RouteFinder } from '../Route/RouteFinder.ts';
-import { RouteRegistry } from '../Route/RouteRegistry.ts';
-import { HttpMethod } from '../../constants/http.ts';
-import type { IRoute } from '../../types/Route.ts';
-import type { Request } from '../Request.ts';
-import { createMockRequest } from '../__mocks__/Request.spec.ts';
+import { beforeEach, describe, expect, test } from 'bun:test';
+
+import { RouteFinder } from '../RouteFinder.ts';
+import { RouteRegistry } from '../RouteRegistry.ts';
+import { HttpMethod } from '../../../constants/http.ts';
 import { createMockHandler } from '../__mocks__/RouteHandler.spec.ts';
+import { createMockRequest } from 'core/Request/__mocks__/Request.spec.ts';
 
 describe('RouteFinder', () => {
   let routeRegistry: RouteRegistry;

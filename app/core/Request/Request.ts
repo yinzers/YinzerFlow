@@ -1,9 +1,9 @@
+import { parseApplicationJson, parseMultipartFormData } from 'core/Request/index.ts';
 import type { IRoute } from 'types/Route.ts';
 import type { IRequest, THttpMethod, TRequestBody } from 'types/http/Request.ts';
 import { ContentType, HttpMethod } from 'constants/http.ts';
 import { divideString } from 'utils/string.utils.ts';
-import * as requestUtils from 'utils/request.utils.ts';
-
+import type { IServerOptions } from 'types/Server.ts';
 /**
  * Handles HTTP request parsing and parameter extraction
  */
@@ -14,10 +14,12 @@ export class Request {
   readonly headers: IRequest['headers'];
   readonly body: IRequest['body'];
   readonly query: IRequest['query'];
+
   params: IRequest['params'];
 
-  constructor(request: string) {
-    const { protocol, method, path, headers, body, query, params } = this._parseRequest(request);
+  constructor(request: string, parserOptions: IServerOptions['parserOptions']) {
+    const { protocol, method, path, headers, body, query, params } = this._parseRequest(request, parserOptions);
+
     this.protocol = protocol;
     this.method = method;
     this.path = path;
@@ -69,7 +71,7 @@ export class Request {
     return params;
   };
 
-  private _parseRequest(request: string): IRequest {
+  private readonly _parseRequest = (request: string, parserOptions: IServerOptions['parserOptions']): IRequest => {
     /**
      * Validate the request
      */
@@ -89,7 +91,7 @@ export class Request {
 
     let parsedBody: IRequest['body'] = {};
     if (bodyRaw && method !== HttpMethod.GET && method !== HttpMethod.HEAD) {
-      parsedBody = this._parseBody(parsedHeaders, bodyRaw);
+      parsedBody = this._parseBody(parsedHeaders, bodyRaw, parserOptions);
     }
 
     return {
@@ -101,7 +103,7 @@ export class Request {
       query: parsedQuery,
       params: {},
     };
-  }
+  };
 
   /**
    * Parse request body based on Content-Type
@@ -111,7 +113,8 @@ export class Request {
    * @returns Parsed request body object
    * @throws Error if Content-Type is missing or body format is invalid
    */
-  private readonly _parseBody = (headers: IRequest['headers'], body: string): TRequestBody => {
+
+  private readonly _parseBody = (headers: IRequest['headers'], body: string, parserOptions: IServerOptions['parserOptions']): TRequestBody => {
     if (!headers['Content-Type']) {
       throw new Error('Missing Content-Type header');
     }
@@ -120,39 +123,16 @@ export class Request {
 
     // Use a more efficient approach with early returns
     if (contentType === ContentType.JSON) {
-      return requestUtils.handleApplicationJson(body);
-    }
-
-    if (contentType === ContentType.FORM) {
-      return requestUtils.handleXwwwFormUrlencoded(body);
+      if (parserOptions?.json?.raw) return body;
+      return parseApplicationJson(body);
     }
 
     if (contentType.includes(ContentType.MULTIPART)) {
-      return requestUtils.handleMultipartFormData(body);
+      return parseMultipartFormData(body, parserOptions);
     }
 
-    if (contentType === ContentType.XML || contentType === 'text/xml') {
-      return requestUtils.handleXml(body);
-    }
-
-    if (contentType === ContentType.TEXT) {
-      return requestUtils.handlePlainText(body);
-    }
-
-    if (contentType === ContentType.URL_ENCODED_JSON) {
-      return requestUtils.handleUrlEncodedJson(body);
-    }
-
-    if (contentType === ContentType.CSV || contentType === 'application/csv') {
-      return requestUtils.handleCsv(body);
-    }
-
-    if (contentType === ContentType.YAML || contentType === 'application/x-yaml' || contentType === 'text/yaml') {
-      return requestUtils.handleYaml(body);
-    }
-
-    // Default case - return empty object for unsupported content types
-    return {};
+    // Default case - return raw body
+    return body;
   };
 
   /**

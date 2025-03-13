@@ -8,7 +8,7 @@ services:
       - .:/app
     ports:
       - "5000:5000"
-    command: sh -c "bun install && bun start"
+    command: sh -c "bun install && bun start:dev"
     tty: true
     stdin_open: true
     networks:

@@ -5,5 +5,5 @@
  * to provide a cleaner import experience while maintaining tree-shakability.
  */
 
-// Content Type Utilities
-export { isJsonData, isXmlData, isUrlEncodedFormData, isCsvData, isPlainTextData, isMultipartFormData } from './contentType.utils.ts';
+export { calculateContentLength } from 'utils/string.utils.ts';
+

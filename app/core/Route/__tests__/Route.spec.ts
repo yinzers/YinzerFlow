@@ -1,4 +1,4 @@
-import type { IRoute } from '../../types/Route.ts';
+import type { IRoute } from '../../../types/Route.ts';
 
 /**
  * Creates a mock Route object for testing

@@ -69,6 +69,7 @@ export const ContentType = <const>{
   XML: 'application/xml',
   TEXT: 'text/plain',
   CSV: 'text/csv',
-  YAML: 'application/yaml',
+  YAML_APPLICATION: 'application/yaml',
+  YAML_TEXT: 'text/yaml',
   URL_ENCODED_JSON: 'application/x-www-form-urlencoded+json',
 };

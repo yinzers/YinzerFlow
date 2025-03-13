@@ -2,15 +2,15 @@ import type { Socket } from 'net';
 import { beforeEach, describe, expect, it, jest, mock, test } from 'bun:test';
 import { RequestHandler } from '../RequestHandler.ts';
 import { Request } from '../Request.ts';
-import { Response } from '../Response.ts';
-import type { IRoute } from '../../types/Route.ts';
-import type { Context } from '../Context.ts';
+import { Response } from '../../Response.ts';
+import type { IRoute } from '../../../types/Route.ts';
+import type { Context } from '../../Context.ts';
 
 // Import reusable mocks directly from their files
-import { createMockRouteFinder } from '../__mocks__/RouteFinder.spec.ts';
-import { createMockHooksManager } from '../__mocks__/HooksManager.spec.ts';
-import { MockSocket } from '../__mocks__/Socket.spec.ts';
-import type { RouteFinder } from '../Route/RouteFinder.ts';
+import { createMockRouteFinder } from '../../Route/__mocks__/RouteFinder.spec.ts';
+import { createMockHooksManager } from '../../__mocks__/HooksManager.spec.ts';
+import { MockSocket } from '../../__mocks__/Socket.spec.ts';
+import type { RouteFinder } from '../../Route/RouteFinder.ts';
 
 // Define a partial type for the mock HooksManager
 interface MockHooksManager {

@@ -452,26 +452,19 @@ const testRules = {
   '@typescript-eslint/no-explicit-any': 'off',
 
   // Allow longer functions in tests
-  'max-lines-per-function': [
-    'error',
-    {
-      max: 500,
-      skipBlankLines: true,
-      skipComments: true,
-    },
-  ],
+  'max-lines-per-function': 'off',
 
   // Allow more lines in test files
-  'max-lines': ['error', 1500],
+  'max-lines': 'off',
 
   // Allow more statements in test functions
-  'max-statements': ['error', 30],
+  'max-statements': 'off',
 
   // Allow more parameters in test functions
-  'max-params': ['error', 5],
+  'max-params': 'off',
 
   // Allow more nested functions in test files
-  'max-nested-callbacks': ['error', 5],
+  'max-nested-callbacks': 'off',
 
   // Allow type assertions in tests
   '@typescript-eslint/no-unsafe-assignment': 'off',

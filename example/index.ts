@@ -24,6 +24,13 @@ export const app = new YinzerFlow({
     socketTimeout: 10000,
     gracefulShutdownTimeout: 5000,
   },
+  parserOptions: {
+    maxFileSize: 1024 * 1024 * 5, // 5MB
+    maxFiles: 10,
+    yaml: {
+      raw: true,
+    },
+  },
   errorHandler: ({ response }, error): TResponseBody<ServerResponse> => {
     console.error('Server error:', error);
     response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR as THttpStatusCode);

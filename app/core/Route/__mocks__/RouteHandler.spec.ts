@@ -1,4 +1,4 @@
-import type { TResponseFunction } from '../../types/Route.ts';
+import type { TResponseFunction } from '../../../types/Route.ts';
 
 /**
  * Creates a mock route handler that returns a simple message

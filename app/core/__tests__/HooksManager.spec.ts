@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { HooksManager } from '../HooksManager.ts';
-import { HookPhase, PathMatchingPattern } from '../../constants/hooks.ts';
-import type { Context } from '../Context.ts';
 import type { IRoute } from '../../types/Route.ts';
 import { createMockContext } from '../__mocks__/Context.spec.ts';
-import { createMockRoute } from '../__mocks__/Route.spec.ts';
+import { createMockRoute } from '../Route/__tests__/Route.spec.ts';
 import { createErrorHook, createInterruptingHook, createPassthroughHook } from '../__mocks__/Hook.spec.ts';
-import { createMockHandler } from '../__mocks__/RouteHandler.spec.ts';
+import { createMockHandler } from '../Route/__mocks__/RouteHandler.spec.ts';
+import { PathMatchingPattern } from 'constants/hooks.ts';
 
 describe('HooksManager', () => {
   let hooksManager: HooksManager;

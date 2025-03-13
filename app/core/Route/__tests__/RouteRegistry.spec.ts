@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { RouteRegistry } from '../Route/RouteRegistry.ts';
-import { HttpMethod } from '../../constants/http.ts';
-import type { IRoute } from '../../types/Route.ts';
+import { RouteRegistry } from '../RouteRegistry.ts';
+import { HttpMethod } from '../../../constants/http.ts';
+import type { IRoute } from '../../../types/Route.ts';
 import { createMockHandler } from '../__mocks__/RouteHandler.spec.ts';
-import { createPassthroughHook } from '../__mocks__/Hook.spec.ts';
+import { createPassthroughHook } from '../../__mocks__/Hook.spec.ts';
 
 describe('RouteRegistry', () => {
   let routeRegistry: RouteRegistry;

@@ -1,4 +1,4 @@
-import type { Request } from 'core/Request.ts';
+import type { Request } from 'core/Request/Request.ts';
 import type { RouteRegistry } from 'core/Route/RouteRegistry.ts';
 import type { IRoute } from 'types/Route.ts';
 

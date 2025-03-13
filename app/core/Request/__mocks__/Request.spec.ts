@@ -1,4 +1,4 @@
-import { HttpMethod } from '../../constants/http.ts';
+import { HttpMethod } from '../../../constants/http.ts';
 import type { Request } from '../Request.ts';
 
 /**
