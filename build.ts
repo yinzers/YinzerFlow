@@ -17,8 +17,8 @@ if (!existsSync('lib')) {
   console.log('Created output directory.');
 }
 
-// Build the JavaScript files with TypeScript declarations
-console.log('Building JavaScript files and TypeScript declarations...');
+// Build the Main app
+console.log('Building Main app...');
 try {
   await Bun.build({
     entrypoints: ['./app/index.ts'],
@@ -30,12 +30,12 @@ try {
       dts({
         output: {
           noBanner: true,
-          exportReferencedTypes: true,
+          exportReferencedTypes: false,
         },
       }),
     ],
   });
-  console.log('JavaScript files and TypeScript declarations built successfully.');
+  console.log('Main app built successfully.');
 } catch (error: unknown) {
   console.error('Error during build:');
   if (error instanceof Error) {
@@ -45,6 +45,67 @@ try {
     console.error(String(error));
   }
   process.exit(1);
+}
+
+// Build the Constants
+console.log('Building Constants...');
+try {
+  await Bun.build({
+    entrypoints: ['./app/constants/index.ts'],
+    outdir: './lib/constants',
+    target: 'node',
+    minify: true,
+    sourcemap: 'external',
+    plugins: [
+      dts({
+        output: {
+          noBanner: true,
+          exportReferencedTypes: false,
+        },
+      }),
+    ],
+  });
+  console.log('Constants built successfully.');
+} catch (error: unknown) {
+  console.error('Error during build:');
+  if (error instanceof Error) {
+    console.error(error.message);
+    console.error(error.stack);
+  } else {
+    console.error(String(error));
+  }
+  process.exit(1);
+}
+
+// Process the generated files to fix imports
+console.log('Processing generated files...');
+try {
+  // Fix imports in the main index.js
+  const indexJsFile = Bun.file(`${import.meta.dir}/lib/index.js`);
+  if (await indexJsFile.exists()) {
+    const writer = indexJsFile.writer();
+    let content = await indexJsFile.text();
+
+    // Fix import paths to use package path - handle different import formats
+    content = content
+      .replace(/from\s*['"]constants\/(?<file>[^'"]+)(?:\.ts)?['"]/g, () => `from "yinzerflow/constants/index.js"`)
+      .replace(
+        /import\s*{(?<imports>[^}]+)}\s*from\s*['"]constants\/(?<file>[^'"]+)(?:\.ts)?['"]/g,
+        (_match, imports) => `import {${imports}} from "yinzerflow/constants/index.js"`,
+      );
+
+    writer.write(content);
+    await writer.end();
+  }
+
+  console.log('Files processed successfully.');
+} catch (error: unknown) {
+  console.warn('Warning: Could not process generated files.');
+  if (error instanceof Error) {
+    console.warn(error.message);
+  } else {
+    console.warn(String(error));
+  }
 }
 
 // Process the generated d.ts file to fix any issues

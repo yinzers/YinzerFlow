@@ -10,12 +10,6 @@ if [ $SIZE -gt 50000 ]; then
     exit 1
 fi
 
-# Copy required files
-cp package.json lib/
-cp README.md lib/
-cp LICENSE lib/
-cp .npmignore lib/
-
 # Publish
 cd lib
 npm publish --access public --verbose

@@ -7,3 +7,6 @@
 
 // HTTP constants
 export { HttpMethod, HttpStatusCode, HttpStatus, ContentType } from './http.ts';
+export { RouteRegistryEvent } from './route.ts';
+export { HookPhase, HookManagerEvent, PathMatchingPattern } from './hooks.ts';
+export { ConnectionEvent, DEFAULT_SOCKET_TIMEOUT } from './connection.ts';

@@ -25,9 +25,10 @@ export const app = new YinzerFlow({
     gracefulShutdownTimeout: 5000,
   },
   parserOptions: {
-    maxFileSize: 1024 * 1024 * 5, // 5MB
-    maxFiles: 10,
     yaml: {
+      raw: true,
+    },
+    json: {
       raw: true,
     },
   },
