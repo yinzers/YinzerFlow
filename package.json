@@ -1,6 +1,6 @@
 {
   "name": "yinzerflow",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
   "license": "MIT",
   "homepage": "https://github.com/yinzers/YinzerFlow.git",
@@ -26,7 +26,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "bun test --watch --coverage --ignore-coverage-for-files=app/core/__mocks__",
+    "test": "bun test --watch",
     "test:production": "bun test --timeout 20 --rerun-each 10 --bail 10",
     "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
     "build": "bun clean; bun build.ts",

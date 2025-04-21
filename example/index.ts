@@ -21,8 +21,10 @@ interface ServerResponse {
 export const app = new YinzerFlow({
   port: 5000,
   connectionOptions: {
-    socketTimeout: 10000,
+    socketTimeout: 30000,
     gracefulShutdownTimeout: 5000,
+    keepAliveTimeout: 10000,
+    headersTimeout: 30000,
   },
   parserOptions: {
     yaml: {

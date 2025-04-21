@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
-import { ConnectionEvent, DEFAULT_SOCKET_TIMEOUT } from 'constants/connection.ts';
+import type { ConfigManager } from './ConfigManager.ts';
+import { ConnectionEvent } from 'constants/connection.ts';
 import type { IConnectionStats } from 'types/Connection.ts';
 
 /**
@@ -25,17 +26,17 @@ export class ConnectionManager extends EventEmitter {
   private _totalConnections = 0;
   /** Total connection errors */
   private _connectionErrors = 0;
-  /** Default socket timeout in milliseconds */
-  private readonly _socketTimeout: number;
+  /** Config manager instance */
+  private readonly _configManager: ConfigManager;
 
   /**
    * Creates a new ConnectionManager instance
    *
-   * @param socketTimeout Optional socket timeout in milliseconds (default: 2 minutes)
+   * @param configManager The config manager instance
    */
-  constructor(socketTimeout?: number) {
+  constructor(configManager: ConfigManager) {
     super();
-    this._socketTimeout = socketTimeout ?? DEFAULT_SOCKET_TIMEOUT;
+    this._configManager = configManager;
   }
 
   /**
@@ -57,12 +58,17 @@ export class ConnectionManager extends EventEmitter {
    * Adds a socket connection to the manager and sets up event listeners
    *
    * @param socket The client socket connection
-   * @param timeout Optional timeout for this specific connection
    */
-  addConnection(socket: Socket, timeout?: number): void {
+  addConnection(socket: Socket): void {
     try {
+      // Get socket timeout from config
+      const { socketTimeout, keepAliveTimeout } = this._configManager.connectionOptions;
+
       // Configure socket timeout
-      socket.setTimeout(timeout ?? this._socketTimeout);
+      socket.setTimeout(socketTimeout);
+
+      // Enable TCP keepalive
+      socket.setKeepAlive(true, keepAliveTimeout);
 
       // Add to active connections
       this._connections.add(socket);
@@ -83,7 +89,7 @@ export class ConnectionManager extends EventEmitter {
       });
 
       socket.on('timeout', () => {
-        // Destroy the socket on timeout
+        // Send HTTP timeout response before closing
         socket.end('HTTP/1.1 408 Request Timeout\r\n\r\n');
         socket.destroy();
       });
@@ -164,10 +170,9 @@ export class ConnectionManager extends EventEmitter {
   /**
    * Closes all active connections gracefully
    *
-   * @param gracePeriod Optional grace period in milliseconds before forcefully closing connections
    * @returns Promise that resolves when all connections are closed
    */
-  async closeAllConnections(gracePeriod?: number): Promise<void> {
+  async closeAllConnections(): Promise<void> {
     // If there are no connections, resolve immediately
     if (this._connections.size === 0) {
       this.emit(ConnectionEvent.ALL_CONNECTIONS_CLOSED);
@@ -177,8 +182,11 @@ export class ConnectionManager extends EventEmitter {
     // Create a copy of the connections to avoid modification during iteration
     const connections = [...this._connections];
 
+    // Get graceful shutdown timeout from config
+    const { gracefulShutdownTimeout } = this._configManager.connectionOptions;
+
     // If grace period is provided, attempt graceful shutdown
-    if (gracePeriod !== undefined && gracePeriod > 0) {
+    if (gracefulShutdownTimeout > 0) {
       // End each connection with a proper HTTP response
       for (const socket of connections) {
         try {
@@ -190,7 +198,7 @@ export class ConnectionManager extends EventEmitter {
 
       // Wait for the grace period
       await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), gracePeriod);
+        setTimeout(() => resolve(), gracefulShutdownTimeout);
       });
     }
 

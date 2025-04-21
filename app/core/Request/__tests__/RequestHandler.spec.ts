@@ -5,6 +5,7 @@ import { Request } from '../Request.ts';
 import { Response } from '../../Response.ts';
 import type { IRoute } from '../../../types/Route.ts';
 import type { Context } from '../../Context.ts';
+import type { ConfigManager } from '../../ConfigManager.ts';
 
 // Import reusable mocks directly from their files
 import { createMockRouteFinder } from '../../Route/__mocks__/RouteFinder.spec.ts';
@@ -31,6 +32,7 @@ describe('RequestHandler', () => {
   let mockHooksManager: MockHooksManager;
   let mockErrorHandler: jest.Mock;
   let mockSocket: MockSocket;
+  let mockConfigManager: ConfigManager;
 
   beforeEach(() => {
     // Set up mocks
@@ -41,12 +43,16 @@ describe('RequestHandler', () => {
     mockHooksManager = hooksManagerMock as unknown as MockHooksManager;
     mockErrorHandler = jest.fn();
     mockSocket = new MockSocket();
+    mockConfigManager = {
+      parserOptions: {},
+      errorHandler: mockErrorHandler,
+    } as unknown as ConfigManager;
 
     resetRouteFinder();
     resetHooksManager();
 
     // Create the request handler
-    requestHandler = new RequestHandler(mockRouteFinder as any, mockHooksManager as any, mockErrorHandler as any);
+    requestHandler = new RequestHandler(mockRouteFinder as any, mockHooksManager as any, mockConfigManager);
   });
 
   describe('handleSocketRequest', () => {
@@ -221,7 +227,7 @@ describe('RequestHandler', () => {
   describe('_processRequest', () => {
     test('should return early if beforeAll hook returns a result', async () => {
       // Arrange
-      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
       const mockRouteHandler = mock(() => ({}));
       const route: IRoute = {
         path: '/test',
@@ -246,7 +252,7 @@ describe('RequestHandler', () => {
 
     test('should return early if beforeGroup hook returns a result', async () => {
       // Arrange
-      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
       const mockRouteHandler = mock(() => ({}));
       const route: IRoute = {
         path: '/test',
@@ -271,7 +277,7 @@ describe('RequestHandler', () => {
 
     test('should return early if beforeHandler hook returns a result', async () => {
       // Arrange
-      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
       const mockRouteHandler = mock(() => ({}));
       const route: IRoute = {
         path: '/test',
@@ -296,7 +302,7 @@ describe('RequestHandler', () => {
 
     test('should process the full request pipeline when no hook returns early', async () => {
       // Arrange
-      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
       const handlerResult = { success: true, data: 'Test data' };
       const mockRouteHandler = mock(() => handlerResult);
       const route: IRoute = {
@@ -319,7 +325,7 @@ describe('RequestHandler', () => {
 
     it('should process hooks and handler', async () => {
       // Arrange
-      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
       const handlerResult = { success: true, data: 'Test data' };
       const mockRouteHandler = mock(() => handlerResult);
       const route: IRoute = {
@@ -340,7 +346,7 @@ describe('RequestHandler', () => {
 
     it('should short-circuit if beforeAll hook returns a response', async () => {
       // Arrange
-      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /test HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
       const mockRouteHandler = mock(() => ({}));
       const testRoute: IRoute = {
         path: '/test',
@@ -366,7 +372,7 @@ describe('RequestHandler', () => {
   describe('_createNotFoundResponse', () => {
     test('should return a 404 response with the correct body', () => {
       // Arrange
-      const request = new Request('GET /not-found HTTP/1.1\r\nHost: localhost:3000\r\n\r\n');
+      const request = new Request('GET /not-found HTTP/1.1\r\nHost: localhost:3000\r\n\r\n', mockConfigManager.parserOptions);
 
       // Act
       const response = (requestHandler as any)._createNotFoundResponse(request);

@@ -30,7 +30,7 @@ export class RequestHandler {
     this.routeFinder = routeFinder;
     this.hooksManager = hooksManager;
     this.configManager = configManager;
-    this.errorHandler = configManager.errorHandler ?? this._defaultErrorHandler;
+    this.errorHandler = configManager.errorHandler;
   }
 
   /**
@@ -58,14 +58,7 @@ export class RequestHandler {
     }
   }
 
-  /**
-   * Default error handler if none is provided
-   */
-  private readonly _defaultErrorHandler: TErrorFunction = ({ response }, error): unknown => {
-    console.error('Server error: \n', error);
-    response.setStatus(HttpStatusCode.INTERNAL_SERVER_ERROR);
-    return { success: false, message: 'Internal server error' };
-  };
+
 
   /**
    * Sends an HTTP response through the socket

@@ -26,7 +26,7 @@ services:
   benchmark:
     image: williamyeh/wrk
     restart: no
-    command: ["-t4", "-c400", "-d10s", "http://api:5000/status"]
+    command: ["-t20", "-c400", "-d10s", "http://api:5000/status"]
     depends_on:
       - api
     networks:

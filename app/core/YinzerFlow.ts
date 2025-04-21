@@ -33,8 +33,6 @@ export class YinzerFlow {
 
   // === SERVER CONFIGURATION ===
   private readonly _ip: string = ip.address();
-  private readonly _port: number = 5000;
-  private readonly _gracefulShutdownTimeout: number = 5000;
 
   // === PUBLIC ACCESSORS ===
 
@@ -46,16 +44,6 @@ export class YinzerFlow {
    */
   get hooks(): HooksManager {
     return this.hooksManager;
-  }
-
-  /**
-   * Get the route registry instance
-   *
-   * This allows direct access to the route registry for advanced use cases,
-   * such as subscribing to route events.
-   */
-  get routes(): RouteRegistry {
-    return this.routeRegistry;
   }
 
   /**
@@ -71,16 +59,11 @@ export class YinzerFlow {
    * Create a new YinzerFlow server instance
    */
   constructor(options?: IServerOptions) {
-    if (options?.port) this._port = options.port;
-    if (options?.connectionOptions?.gracefulShutdownTimeout) {
-      this._gracefulShutdownTimeout = options.connectionOptions.gracefulShutdownTimeout;
-    }
-
     // Initialize the config manager with all options
     this.configManager = new ConfigManager(options);
 
-    // Initialize the connection manager with socket timeout
-    this.connectionManager = new ConnectionManager(options?.connectionOptions?.socketTimeout);
+    // Initialize the connection manager with the config manager
+    this.connectionManager = new ConnectionManager(this.configManager);
 
     // Initialize the request handler with the managers
     this.requestHandler = new RequestHandler(this.routeFinder, this.hooksManager, this.configManager);
@@ -156,7 +139,12 @@ export class YinzerFlow {
    */
   async listen(): Promise<void> {
     return new Promise((resolve) => {
-      const server = createServer().listen(this._port, this._ip);
+      const { port } = this.configManager;
+      const server = createServer();
+
+      // Start listening
+      server.listen(port, this._ip);
+
       this.connectionManager.setServer(server);
 
       server.on('listening', () => {
@@ -165,6 +153,7 @@ export class YinzerFlow {
       });
 
       server.on('connection', (socket: Socket) => {
+        // Add the connection to the connection manager
         this.connectionManager.addConnection(socket);
 
         socket.on('data', (buffer) => {
@@ -194,7 +183,7 @@ export class YinzerFlow {
     }
 
     // Close all existing connections with the configured grace period
-    await this.connectionManager.closeAllConnections(this._gracefulShutdownTimeout);
+    await this.connectionManager.closeAllConnections();
 
     // Close the server
     const server = this.connectionManager.getServer();
@@ -214,7 +203,7 @@ export class YinzerFlow {
   getStatus(): { isListening: boolean; port: number; ip: string } {
     return {
       isListening: this.connectionManager.isListening(),
-      port: this._port,
+      port: this.configManager.port,
       ip: this._ip,
     };
   }
