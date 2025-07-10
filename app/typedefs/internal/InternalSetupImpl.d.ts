@@ -4,7 +4,7 @@ import type { InternalRouteRegistryImpl, InternalRouteRegistryOptions } from '@t
 import type { InternalServerConfiguration } from '@typedefs/internal/InternalConfiguration.js';
 import type { Setup } from '@typedefs/public/Setup.js';
 
-export type InternalSetupMethod = (path: string, handler: HandlerCallback, options?: InternalRouteRegistryOptions) => void;
+export type InternalSetupMethod = (path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions) => void;
 
 export interface InternalSetupImpl extends Setup {
   readonly _configuration: InternalServerConfiguration;

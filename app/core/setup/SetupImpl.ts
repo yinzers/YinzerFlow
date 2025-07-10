@@ -110,19 +110,19 @@ export class SetupImpl implements InternalSetupImpl {
    * allowing for more flexibility to include hook modification, conditional
    * hook execution, and better debugging.
    */
-  beforeAll(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
+  beforeAll(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
     this._hooks._addBeforeHooks(handlers, options);
   }
 
-  afterAll(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
+  afterAll(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
     this._hooks._addAfterHooks(handlers, options);
   }
 
-  onError(handler: HandlerCallback): void {
+  onError(handler: HandlerCallback<any>): void {
     this._hooks._addOnError(handler);
   }
 
-  onNotFound(handler: HandlerCallback): void {
+  onNotFound(handler: HandlerCallback<any>): void {
     this._hooks._addOnNotFound(handler);
   }
 }
