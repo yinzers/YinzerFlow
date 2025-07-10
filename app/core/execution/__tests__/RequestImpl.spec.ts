@@ -26,7 +26,7 @@ describe('RequestImpl', () => {
   });
 
   describe('Route integration', () => {
-    it('should extract route parameters when route matches', () => {
+    it('should have empty params during request parsing (route matching moved to handler)', () => {
       const rawRequest = createRawRequest('GET /users/123/posts/456 HTTP/1.1\r\nHost: example.com\r\n\r\n');
       const setup = new SetupImpl();
 
@@ -35,10 +35,8 @@ describe('RequestImpl', () => {
 
       const request = new RequestImpl(rawRequest, setup);
 
-      expect(request.params).toEqual({
-        userId: '123',
-        postId: '456',
-      });
+      // Route parameters are now extracted during request handling, not during parsing
+      expect(request.params).toEqual({});
     });
 
     it('should have empty params when no route matches', () => {

@@ -40,7 +40,10 @@ export class ResponseImpl implements InternalResponseImpl {
 
     // Example: HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Hello, world!</h1></body></html>
     this._encoding = encoding;
-    this._stringBody = `${statusLine}\n${headerLines.join('\n')}\n\n${body}`;
+
+    // Fix: Handle the case when there are no headers properly
+    const headersSection = headerLines.length > 0 ? `${headerLines.join('\n')}\n` : '';
+    this._stringBody = `${statusLine}\n${headersSection}\n${body}`;
 
     const contentLength = determineContentLength(this._stringBody, this._encoding);
     this._setHeadersIfNotSet({

@@ -54,7 +54,6 @@ export class RequestImpl implements InternalRequestImpl {
 
     const { method, path, protocol, headersRaw, rawBody } = parseHttpRequest(request);
 
-    const route = this._setup._routeRegistry._findRoute(method, path);
     const headers = parseRequestHeaders(headersRaw);
 
     // Extract content type and boundary for body parsing
@@ -73,7 +72,7 @@ export class RequestImpl implements InternalRequestImpl {
         config: this._setup._configuration.bodyParser,
       }),
       query: parseQuery(path),
-      params: route?.params ?? {},
+      params: {}, // Route params will be set in RequestHandlerImpl when route is matched
       rawBody,
     };
   }

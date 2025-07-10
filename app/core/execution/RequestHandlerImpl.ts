@@ -27,19 +27,25 @@ export class RequestHandlerImpl {
   async handle(context: InternalContextImpl): Promise<void> {
     try {
       // 1. Handle CORS before anything else. The cors handler will handle return true if it was a preflight request, otherwise it will return false.
-      if (handleCors(context, this.setup._configuration.cors)) {
+      const corsResult = handleCors(context, this.setup._configuration.cors);
+
+      if (corsResult) {
         context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
         return void 0;
       }
 
       // 2. Match route based on context.request.method + context.request.path
       const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, context.request.path);
+
       if (!matchedRoute) {
         const notFoundResponse = await this.setup._hooks._onNotFound(context);
         context._response._setBody(notFoundResponse);
         context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
         return void 0;
       }
+
+      // Set route params in the request context
+      context.request.params = matchedRoute.params;
 
       const { handler, options } = matchedRoute;
       const { beforeHooks, afterHooks } = options;
@@ -55,7 +61,12 @@ export class RequestHandlerImpl {
       // 5. Execute route handler.
       // * We are saving the response to a variable because in this case we might not
       // * send a response to the client until after the after hooks since the after hooks might modify the response.
-      const routeResponse = await handler(context);
+      let routeResponse: unknown = null;
+      try {
+        routeResponse = await handler(context);
+      } catch (handlerError) {
+        throw handlerError;
+      }
 
       // 6. Run afterRoute hooks and afterGroup hooks
       // * The after group hooks and afterRoute hooks are in the same array and ordered on route registration.
@@ -77,6 +88,7 @@ export class RequestHandlerImpl {
       // 11. Add default framework headers and parse the body into a string
       // This is done when we call context._response._parseResponseIntoString()
       context._response._parseResponseIntoString();
+
       return void 0;
     } catch (error) {
       // Use the error handler from setup
@@ -89,9 +101,8 @@ export class RequestHandlerImpl {
    * The error handler returns a response object that we apply to the context
    */
   private async handleError(context: InternalContextImpl, error: unknown): Promise<void> {
-    log.error('Request handling error', error);
-
     try {
+      log.error('Error in request handler', error);
       // Get the error handler (user-defined or default)
       const errorHandler = this.setup._hooks._onError;
 

@@ -56,7 +56,7 @@ export const handleCors = (context: InternalContextImpl, config: CorsConfigurati
     });
   }
 
-  return true;
+  return false; // Let normal request processing continue
 };
 
 /**

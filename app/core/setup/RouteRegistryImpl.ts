@@ -88,7 +88,12 @@ export class RouteRegistryImpl implements InternalRouteRegistryImpl {
     }
 
     // PARAMETERIZED PATH: Check routes with parameters
-    return this._findParameterizedRoute(method, normalizedPath);
+    const parameterizedRoute = this._findParameterizedRoute(method, normalizedPath);
+    if (parameterizedRoute) {
+      return parameterizedRoute;
+    }
+
+    return undefined;
   }
 
   /**

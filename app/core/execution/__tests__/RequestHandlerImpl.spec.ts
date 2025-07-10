@@ -471,8 +471,8 @@ describe('RequestHandler', () => {
         await requestHandler.handle(context);
 
         // SECURITY: With secure CORS implementation, non-OPTIONS requests from authorized origins
-        // now correctly get CORS headers set
-        expect(context._response._body).toBe(''); // Default body value
+        // now correctly get CORS headers set and allow normal processing to continue
+        expect(context._response._body).toBe(null); // HEAD requests have body set to null
         expect(context._response._statusCode).toBe(200); // Default status code
         // CORS headers are now correctly set for non-OPTIONS requests from authorized origins
         expect(context._response._headers['Access-Control-Allow-Origin']).toBe('https://example.com');
@@ -758,15 +758,17 @@ describe('RequestHandler', () => {
       // Test HEAD request
       const headContext = new ContextImpl(createHeadRequest('/api/data'), setup) as InternalContextImpl;
       await requestHandler.handle(headContext);
-      // With CORS enabled, HEAD requests return early from CORS handler, so body remains default value
-      expect(headContext._response._body).toBe('');
+      // With CORS enabled, HEAD requests should have body null, status 200, and CORS headers set
+      expect(headContext._response._body).toBe(null);
       expect(headContext._response._statusCode).toBe(httpStatusCode.ok);
+      expect(headContext._response._headers['Access-Control-Allow-Origin']).toBe('*');
 
       // Test CORS preflight
       const preflightContext = new ContextImpl(createOptionsRequest('/api/data', { 'Access-Control-Request-Method': 'GET' }), setup) as InternalContextImpl;
       await requestHandler.handle(preflightContext);
       expect(preflightContext._response._statusCode).toBe(204);
       expect(preflightContext._response._body).toEqual('');
+      expect(preflightContext._response._headers['Access-Control-Allow-Origin']).toBe('*');
 
       // Test regular OPTIONS route
       const optionsContext = new ContextImpl(createOptionsRequest('/api/info'), setup) as InternalContextImpl;

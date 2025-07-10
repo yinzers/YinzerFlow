@@ -63,14 +63,14 @@ describe('CORS Functionality', () => {
   });
 
   describe('Non-OPTIONS Request Handling', () => {
-    it('should return true for non-OPTIONS requests when CORS is enabled', () => {
+    it('should return false for non-OPTIONS requests when CORS is enabled', () => {
       const config = createCorsConfig();
       const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
 
       methods.forEach((method) => {
         const context = createTestContext(method);
         const result = handleCors(context, config);
-        expect(result).toBe(true);
+        expect(result).toBe(false);
       });
     });
 
@@ -84,7 +84,7 @@ describe('CORS Functionality', () => {
 
       const result = handleCors(context, config);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(context._response._statusCode).toBe(initialStatusCode);
       expect(context._response._body).toBe(initialBody);
 
@@ -103,7 +103,7 @@ describe('CORS Functionality', () => {
 
       const result = handleCors(context, config);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(context._response._statusCode).toBe(initialStatusCode);
       expect(context._response._body).toBe(initialBody);
 
@@ -118,7 +118,7 @@ describe('CORS Functionality', () => {
 
       const result = handleCors(context, config);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
 
       // SECURITY: For specific origins, echo back the validated origin
       expect(context._response._headers['Access-Control-Allow-Origin']).toBe('https://trusted.com');
@@ -415,7 +415,7 @@ describe('CORS Functionality', () => {
 
       const result = handleCors(context, config);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(context._response._headers['Access-Control-Allow-Origin']).toBeUndefined();
       expect(context._response._headers['Access-Control-Allow-Credentials']).toBeUndefined();
     });
@@ -431,7 +431,7 @@ describe('CORS Functionality', () => {
 
       const result = handleCors(context, config);
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(context._response._headers['Access-Control-Allow-Origin']).toBe('https://allowed.com');
       expect(context._response._headers['Access-Control-Allow-Credentials']).toBe('true');
     });
@@ -462,7 +462,7 @@ describe('CORS Functionality', () => {
         const context = createTestContext('GET', '/', { origin });
         const result = handleCors(context, config);
 
-        expect(result).toBe(true);
+        expect(result).toBe(false);
         expect(context._response._headers['Access-Control-Allow-Origin']).toBe(origin);
       });
     });
@@ -508,7 +508,7 @@ describe('CORS Functionality', () => {
         origin: 'https://api.trusted.com',
       });
       const authorizedResult = handleCors(authorizedContext, config);
-      expect(authorizedResult).toBe(true);
+      expect(authorizedResult).toBe(false);
       expect(authorizedContext._response._headers['Access-Control-Allow-Origin']).toBe('https://api.trusted.com');
 
       // Test unauthorized domain
@@ -516,7 +516,7 @@ describe('CORS Functionality', () => {
         origin: 'https://api.malicious.com',
       });
       const unauthorizedResult = handleCors(unauthorizedContext, config);
-      expect(unauthorizedResult).toBe(true);
+      expect(unauthorizedResult).toBe(false);
       expect(unauthorizedContext._response._headers['Access-Control-Allow-Origin']).toBeUndefined();
     });
 
