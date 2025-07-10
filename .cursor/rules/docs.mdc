@@ -1,0 +1,200 @@
+---
+description: 
+globs: *.md,*.MD
+alwaysApply: false
+---
+
+# Documentation Standards for YinzerFlow
+
+When creating or updating documentation, follow these standards to ensure consistency, clarity, and completeness.
+
+## Documentation Structure Template
+
+All documentation should follow this hierarchical structure:
+
+```markdown
+# [Feature Name]
+
+Brief 1-2 sentence description of what this feature does.
+
+## Configuration (if applicable)
+
+Basic setup example showing minimal configuration:
+
+```typescript
+// Example configuration
+```
+
+### Configuration Options (if applicable)
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `option1` | `type` | `default` | What it does |
+
+## Examples (if applicable)
+
+### Basic Example
+```typescript
+// Simplest possible example
+```
+
+### Alternate Exammple
+```typscript
+// Other more niche examples
+```
+
+## Common Use Cases (if applicable)
+- **Use Case 1**: Brief description with action-oriented name
+- **Use Case 2**: Brief description with action-oriented name
+- **Use Case 3**: Brief description with action-oriented name
+
+### Methods
+### Properties
+### Events
+
+## Error Handling (if applicable)
+
+Common errors and how they're handled.
+
+## Security Considerations (if applicable)
+
+Security features and best practices implemented.
+```
+
+## Content Guidelines
+
+### Writing Style
+- **Concise but complete**: Every section should be thorough but not verbose
+- **User-focused**: Write from the developer's perspective
+- **Action-oriented**: Use active voice and clear instructions
+- **Consistent terminology**: Use the same terms throughout YinzerFlow docs
+
+### Code Examples
+- **Runnable**: All code examples should be copy-pasteable and functional
+- **Progressive complexity**: Start simple, build to advanced
+- **Real-world relevant**: Use examples that solve actual problems
+- **TypeScript first**: Always show TypeScript examples with proper typing
+
+### Required Sections
+
+#### 1. Configuration Section
+**When to include**: Any feature that can be configured
+**Format**: 
+- Start with basic setup example
+- Follow with options table
+- Include validation rules if applicable
+
+#### 2. Examples Section  
+**When to include**: All features (no exceptions)
+**Required examples**:
+- **Basic Example**: Minimal working code
+- **Advanced Example**: Real-world complexity
+
+#### 2.5. Common Use Cases Section
+**When to include**: All features (no exceptions)
+**Format**: 3-6 action-oriented use cases showing practical applications
+
+#### 3. Security Considerations Section
+**When to include**: Any feature that handles:
+- User input
+- Network requests
+- Authentication/authorization
+- File operations
+- Data validation
+- Cross-origin requests
+
+**Format**:
+```markdown
+## Security Considerations
+
+YinzerFlow implements several security measures for [feature]:
+
+### 🛡️ [Security Feature Name]
+- **Problem**: Description of the security issue
+- **YinzerFlow Solution**: How we solve it
+
+### 🛡️ [Another Security Feature]
+- **Problem**: Another security issue
+- **YinzerFlow Solution**: Our implementation
+```
+
+## Documentation Checklist
+
+Before submitting documentation, verify:
+
+### Content Completeness
+- [ ] Clear, concise opening description
+- [ ] Configuration section (if applicable)
+- [ ] At least 2 code examples
+- [ ] Common use cases section (3-6 practical scenarios)
+- [ ] Security considerations (if applicable)
+- [ ] All code examples are tested and functional
+
+### Quality Standards
+- [ ] All TypeScript examples include proper types
+- [ ] Examples progress from simple to complex
+- [ ] Security features are highlighted with 🛡️ emoji
+- [ ] Tables use consistent formatting
+- [ ] Code blocks specify language (```typescript)
+
+### YinzerFlow Standards
+- [ ] Follows established terminology
+- [ ] Shows YinzerFlow advantages over alternatives
+- [ ] Includes error handling where relevant
+- [ ] Demonstrates best practices
+- [ ] Links to related documentation
+
+## AI Assistant Instructions
+
+When creating documentation for YinzerFlow:
+
+1. **Always start with the template structure above**
+2. **Include ALL applicable sections** - don't skip Configuration, Examples, Common Use Cases, or Security
+3. **Use the 🛡️ emoji for security features** to make them stand out
+4. **Write security sections in Problem/Solution format** to show YinzerFlow's advantages
+5. **Make examples progressively complex** - Basic → Common Use Cases → Advanced → Real-world
+6. **Write action-oriented use cases** - Start with verbs like "Extract", "Handle", "Process", "Validate"
+7. **Include TypeScript types in all examples**
+8. **End security sections with**: "These security measures ensure YinzerFlow's [feature] implementation follows security best practices and prevents common attack vectors while maintaining spec compliance."
+
+## Example Security Section Format
+
+```markdown
+## Security Considerations
+
+YinzerFlow implements several security measures to prevent common [feature] vulnerabilities:
+
+### 🛡️ Input Validation
+- **Problem**: Malicious input can cause security vulnerabilities
+- **YinzerFlow Solution**: All inputs are validated against strict schemas
+
+### 🛡️ Output Sanitization  
+- **Problem**: Unsanitized output can lead to injection attacks
+- **YinzerFlow Solution**: All output is automatically sanitized using proven libraries
+
+### 🛡️ Rate Limiting
+- **Problem**: Abuse and DoS attacks through unlimited requests
+- **YinzerFlow Solution**: Built-in rate limiting with configurable thresholds
+
+These security measures ensure YinzerFlow's [feature] implementation follows security best practices and prevents common attack vectors while maintaining spec compliance.
+```
+
+## Consistency Requirements
+
+### Terminology
+- Use "YinzerFlow" (not "yinzerflow" or "Yinzer Flow")
+- Use "configuration" (not "config" in formal docs)
+- Use "TypeScript" (not "TS")
+- Use "JavaScript" (not "JS")
+
+### Formatting
+- Headers: Use Title Case for major sections
+- Code: Always specify language in fenced blocks
+- Tables: Always include headers and consistent spacing
+- Lists: Use bullet points for features, numbered for steps
+
+### Voice and Tone
+- **Professional but friendly**: Technical but approachable
+- **Confident**: Highlight YinzerFlow's strengths
+- **Helpful**: Focus on solving developer problems
+- **Security-conscious**: Always mention security when relevant 

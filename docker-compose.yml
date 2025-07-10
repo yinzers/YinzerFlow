@@ -1,0 +1,29 @@
+services:
+  app:
+    user: bun
+    image: oven/bun:1.2.17
+    working_dir: /app
+    volumes:
+      - ./:/app
+
+      # This is the example / test directory that is copied in the build.ts file
+      # so when the app builds it includes the example directory
+      - ../yinzerflow-testing:/app/example
+    command: sh -c 'bun install && bun build:watch'
+    tty: true
+    stdin_open: true
+    networks:
+      - yinzerflow-network
+
+  node:
+    user: node
+    image: node:latest
+    restart: no
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - /home/patrick/.npmrc:/home/node/.npmrc
+
+networks:
+  yinzerflow-network:
+    driver: bridge

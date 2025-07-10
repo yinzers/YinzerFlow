@@ -1,0 +1,25 @@
+# Development files
+real-world-tests/
+app/
+build.ts
+build-watch.ts
+tsconfig.json
+eslint.config.mjs
+.prettierrc
+cspell.json
+FUTURE_IDEAS.md
+SECURITY.md
+publish.sh
+
+# Build artifacts
+lib/
+
+# Dependencies
+node_modules/
+.git/
+.cursor/
+.vscode/
+.eslintcache
+
+# Docker
+docker-compose.yml

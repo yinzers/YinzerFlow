@@ -1,0 +1,173 @@
+---
+description: 
+globs: *.spec.*,*.test.*
+alwaysApply: false
+---
+# TypeScript Testing Standards
+
+## Coverage Strategy
+### Comprehensive but Efficient Coverage
+- Tests must cover both typical cases and edge cases, including invalid inputs and error conditions
+- **Avoid redundant tests**: If multiple test cases validate the same underlying logic, consolidate them or use parameterized tests
+- Focus on testing business logic and public interfaces; avoid testing implementation details
+- Consider all possible scenarios for each method or behavior, but eliminate overlapping coverage
+
+## Mocking Philosophy
+### Default to Real Implementations
+**CRITICAL**: Always use actual classes, methods, and functions unless explicitly listed below
+
+### Never Mock Internal Code
+- Services, utilities, helpers, validators, parsers, etc. should use real implementations
+- **If you can import it and call it directly without side effects, USE THE REAL THING**
+- Mocks are for crossing application boundaries, not for testing internal logic
+
+### Only Mock External Boundaries
+- Database connections/queries (Sequelize models, raw SQL)
+- Redis/cache operations
+- HTTP requests to external APIs
+- File system operations (fs module)
+- Third-party libraries that make network calls
+
+### Mock Detection Checklist
+Before creating ANY mock, ask:
+1. Is this code I wrote/control? → Use real implementation
+2. Does this make network calls outside my app? → Mock acceptable
+3. Does this touch external storage (DB/files)? → Mock acceptable
+4. Is this a utility/helper function? → Use real implementation
+5. Is this another service in my app? → Use real implementation
+
+### Anti-Patterns to Avoid
+```typescript
+// ❌ DON'T DO THIS - mocking internal code
+const mockUserService = jest.fn();
+const mockValidator = { validate: jest.fn() };
+
+// ✅ DO THIS - use real implementations
+const userService = new UserService(mockDatabase);
+const validator = new Validator();
+```
+
+### Acceptable Mocks
+```typescript
+// ✅ These are acceptable mocks
+const mockDatabase: jest.Mocked<DatabaseService> = {
+  findUser: jest.fn(),
+  saveUser: jest.fn()
+};
+
+const mockHttpClient: jest.Mocked<HttpClient> = {
+  get: jest.fn(),
+  post: jest.fn()
+};
+```
+
+## Test Organization
+### Structure and Grouping
+- **Group related functionality**: Use nested `describe` blocks to organize tests by feature or component (e.g., "ErrorHandler" → "when handling validation errors" → "should return 400 status")
+- Use `describe` blocks for classes/modules and nested `describe` or `context` for different scenarios
+- Use clear, descriptive test names that explain the expected behavior
+- **File naming**: Always use `.spec.ts` extension for test files (e.g., `src/utils/parser.ts` → `tests/utils/parser.spec.ts`)
+- Keep test files co-located or mirror the source structure
+- Group related assertions within single tests when they test the same behavior
+
+### Data Management and Reusability
+- **Create reusable test data objects**: Define const objects or factory functions for common test scenarios
+- **Use parameterized tests**: Leverage `test.each()` or `describe.each()` for testing multiple inputs against the same logic
+- **Implement test data builders**: Create builder patterns for complex object construction
+- **Loop over test cases**: When testing similar scenarios with different inputs, use loops or test tables
+
+### Readability and Clarity
+- Use TypeScript's type system to ensure test data matches expected interfaces
+- Prefer `beforeEach` for setup that applies to multiple tests, but keep it minimal
+- Use helper functions to reduce boilerplate while maintaining test clarity
+- Include comments only when the test logic or business rule being tested is complex
+
+## Type Safety in Testing
+### Mock Creation with Types
+- **Mock with interfaces**: Use `jest.Mocked<YourInterface>` or equivalent to ensure mocks implement the correct contract
+- **Type test data**: Define interfaces for test data objects to catch schema mismatches early
+- **Leverage TypeScript compiler**: Let TypeScript catch mock mismatches during development, not at runtime
+
+## Example Patterns
+
+### Type-safe Mock Creation
+```typescript
+interface DatabaseService {
+  findUser(id: string): Promise<User>;
+  saveUser(user: User): Promise<void>;
+}
+
+const mockDatabase: jest.Mocked<DatabaseService> = {
+  findUser: jest.fn(),
+  saveUser: jest.fn()
+};
+```
+
+### Reusable Test Data
+```typescript
+const validUsers = [
+  { name: 'John', age: 25, email: 'john@example.com' },
+  { name: 'Jane', age: 30, email: 'jane@example.com' }
+];
+```
+
+### Grouped Test Structure
+```typescript
+describe('ErrorHandler', () => {
+  describe('when handling validation errors', () => {
+    test('should return 400 status for invalid email', () => {
+      // test implementation
+    });
+    
+    test('should include error details in response', () => {
+      // test implementation
+    });
+  });
+  
+  describe('when handling database errors', () => {
+    test('should return 500 status for connection failures', () => {
+      // test implementation
+    });
+    
+    test('should log error details for debugging', () => {
+      // test implementation
+    });
+  });
+});
+```
+
+### Parameterized Testing
+```typescript
+describe.each(validUsers)('User validation with $name', (userData) => {
+  test('should create valid user', () => {
+    const user = new User(userData);
+    expect(user.isValid()).toBe(true);
+  });
+});
+```
+
+### Test Data Builder
+```typescript
+interface CreateUserOptions {
+  name?: string;
+  age?: number;
+  email?: string;
+  isActive?: boolean;
+}
+
+const createTestUser = (overrides: CreateUserOptions = {}): User => ({
+  name: 'Default User',
+  age: 25,
+  email: 'default@example.com',
+  isActive: true,
+  ...overrides
+});
+```
+
+## Team Productivity
+### Best Practices
+- Write tests that clearly communicate intent and business requirements
+- Ensure tests fail meaningfully with descriptive error messages
+- Make tests easy to maintain by avoiding brittle assertions on implementation details
+- Focus on testing behavior and outcomes rather than internal state when possible
+- **Use nested describe blocks** to create a clear hierarchy that makes it easy to understand what component/feature is being tested and under what conditions
