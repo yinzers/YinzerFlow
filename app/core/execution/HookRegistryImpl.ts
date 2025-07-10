@@ -1,4 +1,5 @@
 import { httpStatusCode } from '@constants/http.ts';
+import { log } from '@core/utils/log.ts';
 import type { InternalGlobalHookOptions, InternalHookRegistryImpl } from '@typedefs/internal/InternalHookRegistryImpl.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 
@@ -17,7 +18,8 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   constructor() {
     this._beforeAll = new Set();
     this._afterAll = new Set();
-    this._onError = (ctx): unknown => {
+    this._onError = (ctx, error: unknown): unknown => {
+      log.error('Error while handeling your request: ', error);
       ctx.response.setStatusCode(httpStatusCode.internalServerError);
       return { success: false, message: 'Internal Server Error' };
     };

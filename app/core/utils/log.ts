@@ -161,7 +161,7 @@ const logWithStyle = (level: 'error' | 'info' | 'warn', ...args: Array<unknown>)
   let emoji = '✅ ';
   let color: string = colors.cyan;
   let phraseType: 'negative' | 'neutral' | 'positive' = 'positive';
-  let consoleMethod: 'error' | 'log' | 'warn' = 'log';
+  let consoleMethod: 'error' | 'info' | 'warn' = 'info';
 
   if (level === 'error') {
     emoji = '❌ ';
@@ -177,7 +177,7 @@ const logWithStyle = (level: 'error' | 'info' | 'warn', ...args: Array<unknown>)
     emoji = '✅ ';
     color = colors.cyan;
     phraseType = 'positive';
-    consoleMethod = 'log';
+    consoleMethod = 'info';
   }
 
   const phrase = getRandomPhrase(phraseType);

@@ -19,4 +19,5 @@ export interface Context<T extends InternalHandlerCallbackGenerics = InternalHan
  */
 export type HandlerCallback<T extends InternalHandlerCallbackGenerics = InternalHandlerCallbackGenerics> = (
   ctx: Context<T>,
+  error?: unknown,
 ) => Promise<T['response'] | void> | T['response'] | void;

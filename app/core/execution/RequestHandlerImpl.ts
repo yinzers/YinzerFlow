@@ -102,12 +102,11 @@ export class RequestHandlerImpl {
    */
   private async handleError(context: InternalContextImpl, error: unknown): Promise<void> {
     try {
-      log.error('Error in request handler', error);
       // Get the error handler (user-defined or default)
       const errorHandler = this.setup._hooks._onError;
 
       // Call the error handler - it returns a response object
-      const errorResponse = await errorHandler(context);
+      const errorResponse = await errorHandler(context, error);
 
       // Apply the response to the context
       context._response._setBody(errorResponse);
@@ -123,7 +122,7 @@ export class RequestHandlerImpl {
       });
     } catch (errorHandlerError) {
       // If the error handler itself fails, fall back to basic response
-      log.error('Error handler failed', errorHandlerError);
+      log.error('Error handler failed, this might be an internal error in the YinzerFlow framework: ', errorHandlerError);
 
       context.response.setStatusCode(500);
       context._response._setBody({

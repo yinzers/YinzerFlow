@@ -81,7 +81,7 @@ export class YinzerFlow extends SetupImpl {
   }): Promise<void> {
     const startTime = Date.now();
 
-    log.info('Processing incoming request', { clientAddress, dataSize: data.length });
+    log.info('Processing incoming request', `Client: ${clientAddress}, Data Size: ${data.length}`);
 
     const context = new ContextImpl(data, this, clientAddress);
 
