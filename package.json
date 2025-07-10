@@ -3,7 +3,7 @@
   "version": "0.2.6",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
   "license": "MIT",
-  "homepage": "https://github.com/yinzers/YinzerFlow.git/docs/start-here.md",
+  "homepage": "https://github.com/yinzers/YinzerFlow/blob/main/docs/start-here.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yinzers/YinzerFlow.git"
