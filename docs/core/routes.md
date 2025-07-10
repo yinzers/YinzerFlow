@@ -30,54 +30,9 @@ YinzerFlow's routing system includes built-in security and performance optimizat
 | **Hook System** | Optional | Before/after hooks for middleware |
 | **Route Groups** | Optional | Organized route prefixes and shared hooks |
 
-## Basic Example
+## Basic Examples
 
-```typescript
-import { YinzerFlow } from 'yinzerflow';
-
-const app = new YinzerFlow({ port: 3000 });
-
-// Simple GET route
-app.get('/api/health', ({ response }) => {
-  return { status: 'healthy', timestamp: new Date().toISOString() };
-});
-
-// POST route with body parsing
-app.post('/api/users', ({ request }) => {
-  const userData = request.body;
-  const clientIp = request.ipAddress;
-  
-  return {
-    message: 'User created',
-    data: userData,
-    clientIp
-  };
-});
-
-// Route with parameters
-app.get('/api/users/:id', ({ request }) => {
-  const userId = request.params.id;
-  const includeProfile = request.query.include_profile;
-  
-  return {
-    userId,
-    includeProfile,
-    message: 'User details retrieved'
-  };
-});
-```
-
-For detailed information about the request and response objects, see [Request Documentation](./request.md) and [Response Documentation](./response.md).
-
-## Common Use Cases
-
-- **API Endpoints**: Create RESTful APIs with proper HTTP methods and status codes
-- **File Uploads**: Handle multipart form data with automatic parsing and validation
-- **Authentication**: Implement middleware hooks for token validation and user sessions
-- **Rate Limiting**: Add before hooks to limit request frequency and prevent abuse
-- **Logging**: Use after hooks to log request/response data for monitoring
-- **CORS Handling**: Configure cross-origin requests with proper headers and preflight handling
-- **Route Organization**: Group related routes with shared prefixes and middleware
+For common routing patterns and examples, see [Shared Examples](./examples.md).
 
 ## HTTP Methods
 
@@ -524,46 +479,9 @@ await app.listen();
 
 ## Error Handling
 
-YinzerFlow provides comprehensive error handling for routes:
+YinzerFlow provides comprehensive error handling with automatic error catching and custom error handlers. The framework automatically catches all errors thrown in route handlers, hooks, and middleware.
 
-### Custom Error Handlers
-```typescript
-// Global error handler
-app.onError(({ request, response }) => {
-  console.error('Unhandled error:', request.path);
-  response.setStatusCode(500);
-  return { error: 'Internal server error' };
-});
-
-// Custom not found handler
-app.onNotFound(({ request, response }) => {
-  response.setStatusCode(404);
-  return { 
-    error: 'Route not found',
-    path: request.path,
-    method: request.method
-  };
-});
-```
-
-### Route-Specific Error Handling
-```typescript
-app.get('/api/users/:id', ({ request, response }) => {
-  try {
-    const userId = request.params.id;
-    
-    // Simulate database lookup
-    if (userId === '999') {
-      throw new Error('User not found');
-    }
-    
-    return { userId, name: 'John Doe' };
-  } catch (error) {
-    response.setStatusCode(404);
-    return { error: 'User not found' };
-  }
-});
-```
+For detailed error handling documentation including advanced patterns, security considerations, and best practices, see [Error Handling Documentation](./error-handling.md).
 
 ## HandlerCallback Interface
 
@@ -619,38 +537,21 @@ Using the interface is optional but encouraged for better type safety and develo
 
 ## Security Considerations
 
-YinzerFlow implements several security measures to prevent common routing vulnerabilities:
+YinzerFlow implements several security measures to prevent common routing vulnerabilities. For detailed security documentation, see:
 
-### 🛡️ Route Parameter Validation
-- **Problem**: Malicious route parameters can cause injection attacks or bypass security controls
-- **YinzerFlow Solution**: Automatic parameter validation and sanitization prevents injection attacks
+- **[Body Parsing Security](../security/body-parsing.md)** - Protection against DoS attacks and malicious payloads
+- **[CORS Security](../security/cors.md)** - Cross-origin request validation and protection
+- **[IP Security](../security/ip-security.md)** - Client IP validation and spoofing protection
 
-### 🛡️ Path Traversal Protection
-- **Problem**: Directory traversal attacks through URL paths can access unauthorized files
-- **YinzerFlow Solution**: Comprehensive path normalization and validation prevents traversal attempts
+### Key Security Features
 
-### 🛡️ Query Parameter Sanitization
-- **Problem**: Malicious query parameters can cause injection attacks or bypass validation
-- **YinzerFlow Solution**: Automatic query parameter parsing with built-in sanitization
-
-### 🛡️ Request Body Validation
-- **Problem**: Malformed request bodies can cause parsing errors or security vulnerabilities
-- **YinzerFlow Solution**: Comprehensive body parsing with size limits and validation - see [Body Parsing Documentation](./body-parsing.md)
-
-### 🛡️ Hook Execution Security
-- **Problem**: Malicious hooks can modify responses or bypass security controls
-- **YinzerFlow Solution**: Hook execution is isolated and errors are handled gracefully
-
-### 🛡️ Route Collision Prevention
-- **Problem**: Duplicate routes can cause unexpected behavior or security bypasses
-- **YinzerFlow Solution**: Automatic detection and prevention of route conflicts during registration
-
-### 🛡️ Method Validation
-- **Problem**: Invalid HTTP methods can cause parsing errors or security issues
-- **YinzerFlow Solution**: Strict validation of HTTP methods against RFC specifications
-
-### 🛡️ Response Header Security
-- **Problem**: Malicious response headers can cause client-side vulnerabilities
-- **YinzerFlow Solution**: Automatic security headers and header validation - see [Response Documentation](./response.md)
+- **Route Parameter Validation**: Automatic validation and sanitization prevents injection attacks
+- **Path Traversal Protection**: Comprehensive path normalization prevents directory traversal
+- **Query Parameter Sanitization**: Built-in sanitization with configurable limits
+- **Request Body Validation**: Size limits and content validation prevent DoS attacks
+- **Hook Execution Security**: Isolated hook execution with graceful error handling
+- **Route Collision Prevention**: Automatic detection and prevention of route conflicts
+- **Method Validation**: Strict HTTP method validation against RFC specifications
+- **Response Header Security**: Automatic security headers and validation
 
 These security measures ensure YinzerFlow's routing implementation follows security best practices and prevents common attack vectors while maintaining HTTP compliance and performance.

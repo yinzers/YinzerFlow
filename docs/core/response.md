@@ -30,46 +30,7 @@ YinzerFlow's response handling includes built-in security protections that are a
 
 ## Basic Example
 
-```typescript
-import { YinzerFlow } from 'yinzerflow';
-
-const app = new YinzerFlow({ port: 3000 });
-
-app.get('/api/users/:id', ({ request, response }) => {
-  const userId = request.params.id;
-  
-  // Set successful status code
-  response.setStatusCode(200);
-  
-  // Add custom headers
-  response.addHeaders({
-    'X-User-ID': userId,
-    'Cache-Control': 'max-age=3600',
-    'X-API-Version': '1.0'
-  });
-  
-  // Return JSON response body (Content-Type automatically set)
-  return {
-    id: userId,
-    name: 'John Doe',
-    email: 'john@example.com',
-    timestamp: new Date().toISOString()
-  };
-});
-
-app.post('/api/files', ({ request, response }) => {
-  // Set created status
-  response.setStatusCode(201);
-  
-  // Add location header for created resource
-  response.addHeaders({
-    'Location': '/api/files/12345',
-    'X-Upload-Size': request.headers['content-length'] || '0'
-  });
-  
-  return { fileId: '12345', status: 'uploaded' };
-});
-```
+See [Response Control Pattern](./examples.md#response-control-pattern) for a complete example showing how to control the response.
 
 ## Response Body Handling
 

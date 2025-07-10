@@ -40,44 +40,11 @@ These limits are built into the framework and cannot be disabled, ensuring consi
 
 ### Basic Example
 
-```typescript
-import { YinzerFlow } from 'yinzerflow';
-
-const app = new YinzerFlow({ port: 3000 });
-
-app.post('/api/users/:id', ({ request }) => {
-  // Access route parameters
-  const userId = request.params.id;
-  
-  // Access query parameters
-  const includeProfile = request.query.include_profile;
-  
-  // Access headers
-  const contentType = request.headers['content-type'];
-  const authorization = request.headers['authorization'];
-  
-  // Access request body
-  const userData = request.body;
-  
-  // Access raw body for manual parsing when needed
-  const rawBody = request.rawBody;
-
-  const clientIp = request.ipAddress
-  
-  return {
-    message: 'Request processed successfully',
-    userId,
-    includeProfile,
-    contentType,
-    hasAuth: !!authorization,
-    receivedData: userData
-  };
-});
-```
+See [Request Access Pattern](./examples.md#request-access-pattern) for a complete example showing how to access request properties.
 
 ### Body Parsing Example
 
-YinzerFlow automatically parses request bodies (JSON, file uploads, forms) with built-in security protections. Parsed data is available on `request.body` - see [Body Parsing Documentation](./body-parsing.md) for detailed configuration options, examples, and security considerations.
+YinzerFlow automatically parses request bodies (JSON, file uploads, forms) with built-in security protections. Parsed data is available on `request.body` - see [Body Parsing Documentation](../security/body-parsing.md) for detailed configuration options, examples, and security considerations.
 
 ```typescript
 app.post('/api/users', ({ request, response }) => {
@@ -155,7 +122,7 @@ YinzerFlow automatically handles request parsing errors and provides clear error
 - `Header value too long: maximum 8192 characters allowed`
 - `Header value contains invalid control characters`
 
-**Body parsing errors:** See [Body Parsing Documentation](./body-parsing.md) for detailed error handling
+**Body parsing errors:** See [Body Parsing Documentation](../security/body-parsing.md) for detailed error handling
 
 These errors automatically result in appropriate HTTP status codes (400 Bad Request) and prevent malformed requests from reaching your application handlers.
 

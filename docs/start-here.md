@@ -13,6 +13,8 @@ YinzerFlow is designed for developers who want:
 
 ## Quick Start
 
+For a complete quick reference with all common patterns, see [Quick Reference](./quick-reference.md).
+
 ### Installation
 
 ```bash
@@ -106,17 +108,21 @@ For custom shutdown handling, see [Advanced Configuration](./advanced-configurat
 
 ### Core Features
 
-- **[Routes](./routes.md)** - Comprehensive routing system with HTTP methods, parameters, hooks, and groups
-- **[Request Object](./request.md)** - Access headers, body, query parameters, route parameters, and raw body
-- **[Response Object](./response.md)** - Set status codes, headers, and return various response types
-- **[Body Parsing](./body-parsing.md)** - Secure parsing of JSON, file uploads, and form data with DoS protection
+- **[Routes](./core/routes.md)** - Comprehensive routing system with HTTP methods, parameters, hooks, and groups
+- **[Context Object](./core/context.md)** - Central interface for request data, response controls, and request lifecycle
+- **[Request Object](./core/request.md)** - Access headers, body, query parameters, route parameters, and raw body
+- **[Response Object](./core/response.md)** - Set status codes, headers, and return various response types
+- **[Error Handling](./core/error-handling.md)** - Automatic error catching, custom error handlers, and comprehensive error management
 
 ### Security & Configuration
 
-- **[Advanced Configuration](./advanced-configuration-options.md)** - Fine-tune security, performance, and functionality
-- **[IP Security](./ip-security.md)** - Client IP validation and spoofing protection for load balancers and CDNs
-- **[CORS](./cors.md)** - Cross-Origin Resource Sharing with comprehensive security measures
-- **[Logging](./logging.md)** - Flexible logging with custom logger support and Pittsburgh personality
+- **[Security Overview](./security/security-overview.md)** - Comprehensive security features and configuration patterns
+- **[Body Parsing](./security/body-parsing.md)** - Secure parsing of JSON, file uploads, and form data with DoS protection
+- **[CORS](./security/cors.md)** - Cross-Origin Resource Sharing with comprehensive security measures
+- **[IP Security](./security/ip-security.md)** - Client IP validation and spoofing protection for load balancers and CDNs
+- **[Logging](./security/logging.md)** - Flexible logging with custom logger support and Pittsburgh personality
+- **[Configuration Patterns](./configuration/configuration-patterns.md)** - Common configuration patterns and best practices
+- **[Advanced Configuration](./configuration/advanced-configuration-options.md)** - Fine-tune security, performance, and functionality
 
 ### Common Use Cases
 

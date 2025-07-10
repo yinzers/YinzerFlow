@@ -2,6 +2,8 @@
 
 YinzerFlow provides advanced configuration options for fine-tuning security, performance, and functionality. These options allow you to customize the framework's behavior for specific use cases while maintaining robust security defaults.
 
+For common configuration patterns and best practices, see [Configuration Patterns](./configuration-patterns.md).
+
 ## Body Parser Configuration
 
 Body parsing handles all incoming request data with built-in security protections against DoS attacks, prototype pollution, and memory exhaustion vulnerabilities. See [Body Parsing Documentation](./body-parsing.md) for detailed setup, configuration options, and security considerations.

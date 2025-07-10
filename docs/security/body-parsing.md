@@ -1,6 +1,8 @@
-# Body Parsing
+# Body Parsing Security
 
 YinzerFlow provides comprehensive body parsing with built-in security protections against DoS attacks, prototype pollution, and memory exhaustion vulnerabilities. The body parser automatically handles JSON, file uploads, and URL-encoded form data with configurable security limits.
+
+For an overview of all security features, see [Security Overview](./security-overview.md).
 
 ## Configuration
 

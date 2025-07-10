@@ -1,6 +1,8 @@
-# CORS (Cross-Origin Resource Sharing)
+# CORS Security
 
 YinzerFlow provides built-in CORS support to handle cross-origin requests securely and efficiently.
+
+For an overview of all security features, see [Security Overview](./security-overview.md).
 
 ## Configuration
 

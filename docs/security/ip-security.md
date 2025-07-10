@@ -1,6 +1,8 @@
-# IP Address Security
+# IP Security
 
 YinzerFlow provides comprehensive IP address validation and security protection against IP spoofing attacks, supporting multiple header formats with trusted proxy validation.
+
+For an overview of all security features, see [Security Overview](./security-overview.md).
 
 ## Configuration
 
