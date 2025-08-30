@@ -58,7 +58,14 @@ const eslintRules = {
   'logical-assignment-operators': 'error',
   'max-classes-per-file': ['error', 1],
   'max-depth': ['error', 6],
-  'max-lines': ['error', 400],
+  'max-lines': [
+    'error',
+    {
+      max: 400,
+      skipBlankLines: true,
+      skipComments: true,
+    },
+  ],
   'max-lines-per-function': [
     'error',
     {

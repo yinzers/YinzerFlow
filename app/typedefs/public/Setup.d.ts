@@ -5,36 +5,36 @@ import type { HttpMethodHandlers, RouteGroupMethod } from '@core/setup/utils/rou
 
 /**
  * Route group instance that provides HTTP method handlers and nested group support.
- * 
+ *
  * @see {@link InternalGroupApp} for internal implementation details
  */
 export type RouteGroup = InternalGroupApp;
 
 /**
  * Main setup interface for configuring YinzerFlow routes, hooks, and middleware.
- * 
+ *
  * The Setup interface provides methods for:
  * - **Route Registration**: HTTP method handlers (GET, POST, PUT, etc.)
  * - **Route Grouping**: Organized route prefixes with shared hooks
  * - **Global Hooks**: beforeAll/afterAll hooks that run for all routes
  * - **Error Handling**: Custom error and not-found handlers
- * 
+ *
  * @example
  * ```typescript
  * import { YinzerFlow } from 'yinzerflow';
- * 
+ *
  * const app = new YinzerFlow({ port: 3000 });
- * 
+ *
  * // Register routes
  * app.get('/api/users', async (ctx) => {
  *   return { users: ['John', 'Jane'] };
  * });
- * 
+ *
  * app.post('/api/users', async (ctx) => {
  *   const userData = ctx.request.body;
  *   return { message: 'User created', data: userData };
  * });
- * 
+ *
  * // Set up global hooks
  * app.beforeAll([
  *   async (ctx) => {
@@ -42,7 +42,7 @@ export type RouteGroup = InternalGroupApp;
  *     ctx.state.timestamp = Date.now();
  *   }
  * ]);
- * 
+ *
  * app.afterAll([
  *   async (ctx, result) => {
  *     ctx.response.addHeaders({
@@ -51,7 +51,7 @@ export type RouteGroup = InternalGroupApp;
  *     });
  *   }
  * ]);
- * 
+ *
  * // Create route groups
  * app.group('/api/v1', (api) => {
  *   api.group('/admin', (admin) => {
@@ -60,19 +60,19 @@ export type RouteGroup = InternalGroupApp;
  *     });
  *   });
  * });
- * 
+ *
  * // Custom error handlers
  * app.onError(async (ctx, error) => {
  *   ctx.response.setStatusCode(500);
  *   return { error: 'Internal server error', message: error.message };
  * });
- * 
+ *
  * app.onNotFound(async (ctx) => {
  *   ctx.response.setStatusCode(404);
  *   return { error: 'Not found', path: ctx.request.url };
  * });
  * ```
- * 
+ *
  * @see {@link HttpMethodHandlers} for HTTP method registration methods
  * @see {@link RouteGroupMethod} for route group creation method
  * @see {@link InternalGlobalHookOptions} for global hook configuration options

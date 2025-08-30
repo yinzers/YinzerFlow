@@ -765,7 +765,7 @@ describe('SetupImpl', () => {
       expect(route).toBeDefined();
     });
 
-    it('should support typed state with generics', async () => {
+    it('should support typed state with generics', () => {
       const setup = new SetupImpl();
 
       // Define typed state interface
@@ -776,7 +776,7 @@ describe('SetupImpl', () => {
         };
       }
 
-      setup.get('/typed', async (ctx: any) => {
+      setup.get('/typed', (ctx: any) => {
         // Set typed state
         ctx.state.user = { id: 1, name: 'Admin' };
         ctx.state.permissions = ['read', 'write', 'delete'];
@@ -795,12 +795,12 @@ describe('SetupImpl', () => {
       expect(route).toBeDefined();
     });
 
-    it('should allow state access in before and after hooks', async () => {
+    it('should allow state access in before and after hooks', () => {
       const setup = new SetupImpl();
 
       // Global hooks that set and access state
       setup.beforeAll([
-        async (ctx) => {
+        (ctx) => {
           // Set initial state
           ctx.state.requestId = 'req-123';
           ctx.state.timestamp = Date.now();
@@ -808,7 +808,7 @@ describe('SetupImpl', () => {
       ]);
 
       setup.afterAll([
-        async (ctx, result) => {
+        (ctx, result) => {
           // Access state and modify response based on result
           expect(ctx.state.requestId).toBe('req-123');
           expect(typeof ctx.state.timestamp).toBe('number');
@@ -825,7 +825,7 @@ describe('SetupImpl', () => {
       setup.get(
         '/hook-test',
         // Route handler
-        async (ctx) => {
+        (ctx) => {
           // Access state from all previous hooks
           expect(ctx.state.requestId).toBe('req-123');
           expect(ctx.state.routeAccessed).toBe(true);
@@ -839,7 +839,7 @@ describe('SetupImpl', () => {
         // Route options with hooks
         {
           beforeHooks: [
-            async (ctx) => {
+            (ctx) => {
               // Access state from global hooks
               expect(ctx.state.requestId).toBe('req-123');
 
@@ -849,7 +849,7 @@ describe('SetupImpl', () => {
             },
           ],
           afterHooks: [
-            async (ctx, result) => {
+            (ctx, result) => {
               // Access state from all previous stages
               expect(ctx.state.requestId).toBe('req-123');
               expect(ctx.state.routeAccessed).toBe(true);

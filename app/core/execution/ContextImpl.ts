@@ -6,50 +6,49 @@ import type { InternalRequestImpl } from '@typedefs/internal/InternalRequestImpl
 import type { InternalResponseImpl } from '@typedefs/internal/InternalResponseImpl.js';
 import type { Request } from '@typedefs/public/Request.ts';
 import type { Response } from '@typedefs/public/Response.ts';
-import type { Context } from '@typedefs/public/Context.ts';
 
 /**
  * ContextImpl is the core class that handles the building of the context.
  * It is responsible for building the request and response objects, plus
  * managing user-defined state data.
- * 
+ *
  * ## What is ContextImpl?
- * 
+ *
  * ContextImpl is the concrete implementation of the Context interface. It's
  * automatically created for each incoming request and provides a unified
  * interface for accessing request data, controlling responses, and managing
  * request-scoped state.
- * 
+ *
  * ## How ContextImpl Works
- * 
+ *
  * 1. **Construction**: Creates RequestImpl and ResponseImpl instances
  * 2. **State Initialization**: Initializes empty state object for user data
  * 3. **Request Processing**: Handles raw request data and builds structured request
  * 4. **Response Control**: Provides methods to control HTTP response behavior
  * 5. **State Management**: Allows middleware and handlers to store custom data
  * 6. **Cleanup**: Automatically manages memory and resource cleanup
- * 
+ *
  * @example
  * ```typescript
  * // ContextImpl is automatically created for each request
  * const context = new ContextImpl(rawRequest, setup, clientAddress);
- * 
+ *
  * // Access request data
  * const userId = context.request.params.id;
  * const userData = context.request.body;
- * 
+ *
  * // Store custom state
  * context.state.user = { id: userId, name: 'John' };
  * context.state.requestId = generateRequestId();
- * 
+ *
  * // Control response
  * context.response.setStatusCode(200);
  * context.response.addHeaders({ 'X-User-ID': userId });
- * 
+ *
  * // Return response data
  * return { success: true, user: context.state.user };
  * ```
- * 
+ *
  * @see {@link Context} for the public interface
  * @see {@link RequestImpl} for request implementation details
  * @see {@link ResponseImpl} for response implementation details
