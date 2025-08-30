@@ -402,4 +402,273 @@ describe('SetupImpl', () => {
       }
     });
   });
+
+  describe('Nested Route Groups', () => {
+    it('should support nested groups with proper path building', () => {
+      const setup = new SetupImpl();
+
+      setup.group('/api/v1', (api) => {
+        api.group('/users', (users) => {
+          users.get('/', () => ({ users: ['John', 'Jane'] }));
+          users.get('/:id', () => ({ user: 'John Doe' }));
+        });
+
+        api.group('/admin', (admin) => {
+          admin.group('/users', (adminUsers) => {
+            adminUsers.get('/', () => ({ adminUsers: ['Admin1', 'Admin2'] }));
+            adminUsers.post('/', () => ({ created: true }));
+          });
+        });
+      });
+
+      // Verify nested paths are correctly built
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users/:id')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/admin/users')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.post, '/api/v1/admin/users')).toBeDefined();
+
+      // Verify HEAD routes are auto-registered for GET routes
+      expect(setup._routeRegistry._findRoute(httpMethod.head, '/api/v1/users')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.head, '/api/v1/users/:id')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.head, '/api/v1/admin/users')).toBeDefined();
+    });
+
+    it('should handle path joining correctly with and without leading slashes', () => {
+      const setup = new SetupImpl();
+
+      setup.group('/api', (api) => {
+        api.group('v1', (v1) => {
+          // No leading slash
+          v1.group('/users', (users) => {
+            // With leading slash
+            users.get('list', () => ({})); // No leading slash
+            users.get('/details', () => ({})); // With leading slash
+          });
+        });
+      });
+
+      // Verify paths are correctly joined regardless of slash usage
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users/list')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users/details')).toBeDefined();
+    });
+
+    it('should merge hooks from parent groups to child groups', () => {
+      const setup = new SetupImpl();
+      const globalHook = () => console.log('global');
+      const apiHook = () => console.log('api');
+      const v1Hook = () => console.log('v1');
+      const adminHook = () => console.log('admin');
+      const routeHook = () => console.log('route');
+
+      setup.group(
+        '/api',
+        (api) => {
+          api.group(
+            '/v1',
+            (v1) => {
+              v1.group(
+                '/admin',
+                (admin) => {
+                  admin.get('/dashboard', () => ({}), {
+                    beforeHooks: [routeHook],
+                  });
+                },
+                {
+                  beforeHooks: [adminHook],
+                },
+              );
+            },
+            {
+              beforeHooks: [v1Hook],
+            },
+          );
+        },
+        {
+          beforeHooks: [apiHook],
+        },
+      );
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/admin/dashboard');
+      expect(route).toBeDefined();
+
+      if (route) {
+        // Hooks should be merged in order: global -> api -> v1 -> admin -> route
+        expect(route.options.beforeHooks).toContain(apiHook);
+        expect(route.options.beforeHooks).toContain(v1Hook);
+        expect(route.options.beforeHooks).toContain(adminHook);
+        expect(route.options.beforeHooks).toContain(routeHook);
+
+        // Verify order (parent hooks first, then child hooks)
+        const hookIndexes = {
+          api: route.options.beforeHooks.indexOf(apiHook),
+          v1: route.options.beforeHooks.indexOf(v1Hook),
+          admin: route.options.beforeHooks.indexOf(adminHook),
+          route: route.options.beforeHooks.indexOf(routeHook),
+        };
+
+        expect(hookIndexes.api).toBeLessThan(hookIndexes.v1);
+        expect(hookIndexes.v1).toBeLessThan(hookIndexes.admin);
+        expect(hookIndexes.admin).toBeLessThan(hookIndexes.route);
+      }
+    });
+
+    it('should merge afterHooks in reverse order (child first, then parent)', () => {
+      const setup = new SetupImpl();
+      const apiAfterHook = () => console.log('api after');
+      const v1AfterHook = () => console.log('v1 after');
+      const routeAfterHook = () => console.log('route after');
+
+      setup.group(
+        '/api',
+        (api) => {
+          api.group(
+            '/v1',
+            (v1) => {
+              v1.get('/users', () => ({}), {
+                afterHooks: [routeAfterHook],
+              });
+            },
+            {
+              afterHooks: [v1AfterHook],
+            },
+          );
+        },
+        {
+          afterHooks: [apiAfterHook],
+        },
+      );
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users');
+      expect(route).toBeDefined();
+
+      if (route) {
+        // After hooks should be merged in reverse order: route -> v1 -> api
+        expect(route.options.afterHooks).toContain(routeAfterHook);
+        expect(route.options.afterHooks).toContain(v1AfterHook);
+        expect(route.options.afterHooks).toContain(apiAfterHook);
+
+        // Verify order (child hooks first, then parent hooks)
+        const hookIndexes = {
+          route: route.options.afterHooks.indexOf(routeAfterHook),
+          v1: route.options.afterHooks.indexOf(v1AfterHook),
+          api: route.options.afterHooks.indexOf(apiAfterHook),
+        };
+
+        expect(hookIndexes.route).toBeLessThan(hookIndexes.v1);
+        expect(hookIndexes.v1).toBeLessThan(hookIndexes.api);
+      }
+    });
+
+    it('should return the group app for method chaining', () => {
+      const setup = new SetupImpl();
+
+      const groupApp = setup.group('/api', (api) => {
+        api.get('/users', () => ({}));
+      });
+
+      expect(groupApp).toBeDefined();
+      expect(typeof groupApp.get).toBe('function');
+      expect(typeof groupApp.post).toBe('function');
+      expect(typeof groupApp.group).toBe('function');
+    });
+
+    it('should support deep nesting with complex path structures', () => {
+      const setup = new SetupImpl();
+
+      setup.group('/api', (api) => {
+        api.group('/v1', (v1) => {
+          v1.group('/admin', (admin) => {
+            admin.group('/users', (users) => {
+              users.group('/management', (management) => {
+                management.group('/permissions', (permissions) => {
+                  permissions.get('/', () => ({ permissions: [] }));
+                  permissions.post('/', () => ({ created: true }));
+                });
+              });
+            });
+          });
+        });
+      });
+
+      // Verify deeply nested paths work correctly
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/admin/users/management/permissions')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.post, '/api/v1/admin/users/management/permissions')).toBeDefined();
+    });
+
+    it('should handle empty groups gracefully', () => {
+      const setup = new SetupImpl();
+
+      // Empty group should not cause errors
+      expect(() => {
+        setup.group('/api', (api) => {
+          // No routes defined
+        });
+      }).not.toThrow();
+
+      // Nested empty groups should also work
+      expect(() => {
+        setup.group('/api', (api) => {
+          api.group('/v1', (v1) => {
+            v1.group('/users', (users) => {
+              // No routes defined
+            });
+          });
+        });
+      }).not.toThrow();
+    });
+
+    it('should support all HTTP methods in nested groups', () => {
+      const setup = new SetupImpl();
+
+      setup.group('/api/v1', (api) => {
+        api.group('/users', (users) => {
+          users.get('/', () => ({}));
+          users.post('/', () => ({}));
+          users.put('/:id', () => ({}));
+          users.patch('/:id', () => ({}));
+          users.delete('/:id', () => ({}));
+          users.options('/', () => ({}));
+          // Note: HEAD is auto-registered for GET routes, so we don't register it manually
+        });
+      });
+
+      // Verify all HTTP methods work in nested groups
+      expect(setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.post, '/api/v1/users')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.put, '/api/v1/users/:id')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.patch, '/api/v1/users/:id')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.delete, '/api/v1/users/:id')).toBeDefined();
+      expect(setup._routeRegistry._findRoute(httpMethod.options, '/api/v1/users')).toBeDefined();
+
+      // Verify HEAD was auto-registered for GET route
+      expect(setup._routeRegistry._findRoute(httpMethod.head, '/api/v1/users')).toBeDefined();
+    });
+
+    it('should handle group options with undefined hooks gracefully', () => {
+      const setup = new SetupImpl();
+
+      setup.group(
+        '/api',
+        (api) => {
+          api.group('/v1', (v1) => {
+            v1.get('/users', () => ({}));
+          });
+        },
+        {
+          // Undefined hooks should not cause errors
+          beforeHooks: undefined,
+          afterHooks: undefined,
+        },
+      );
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users');
+      expect(route).toBeDefined();
+
+      if (route) {
+        // Should have empty arrays for hooks
+        expect(route.options.beforeHooks).toEqual([]);
+        expect(route.options.afterHooks).toEqual([]);
+      }
+    });
+  });
 });

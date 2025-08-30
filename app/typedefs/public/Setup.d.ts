@@ -1,9 +1,10 @@
-import type { InternalHttpMethod } from '@typedefs/constants/http.ts';
 import type { InternalSetupMethod } from '@typedefs/internal/InternalSetupImpl.d.ts';
 import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.ts';
+import type { InternalRouteRegistryOptions } from '@typedefs/internal/InternalRouteRegistryImpl.js';
+import type { InternalGroupApp } from '@core/setup/GroupApp.js';
 
-export type RouteGroup = Record<Lowercase<InternalHttpMethod>, InternalSetupMethod>;
+export type RouteGroup = InternalGroupApp;
 
 export interface Setup {
   get: InternalSetupMethod;
@@ -12,7 +13,7 @@ export interface Setup {
   patch: InternalSetupMethod;
   delete: InternalSetupMethod;
   options: InternalSetupMethod;
-  group: (prefix: string, callback: (group: RouteGroup) => void, options?: InternalRouteRegistryOptions) => void;
+  group: (prefix: string, callback: (group: InternalGroupApp) => void, options?: InternalRouteRegistryOptions) => InternalGroupApp;
   beforeAll: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
   afterAll: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
   onError: (handler: HandlerCallback) => void;

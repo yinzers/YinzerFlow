@@ -305,10 +305,11 @@ Global hooks are executed in the following order:
 
 ## Route Groups
 
-Organize related routes with shared prefixes and hooks. Groups automatically merge hooks from the group level with individual route hooks:
+Route groups allow you to organize related routes under a common prefix and apply shared middleware or hooks to all routes within the group. Groups can be nested to create hierarchical route structures.
+
+### Basic Group Usage
 
 ```typescript
-// API v1 routes with authentication
 app.group('/api/v1', (group) => {
   group.get('/users', ({ response }) => {
     return { users: ['John', 'Jane'] };
@@ -331,49 +332,134 @@ app.group('/api/v1', (group) => {
     }
   ]
 });
+```
 
-// Admin routes with admin authentication
-app.group('/admin', (group) => {
-  group.get('/dashboard', ({ response }) => {
-    return { message: 'Admin dashboard' };
+### Nested Groups
+
+Groups can be nested to create hierarchical route structures like `/api/v1/admin/users`:
+
+```typescript
+app.group('/api/v1', (api) => {
+  // /api/v1/users
+  api.group('/users', (users) => {
+    users.get('/', ({ response }) => {
+      return { users: ['John', 'Jane'] };
+    });
+    
+    users.get('/:id', ({ request }) => {
+      const userId = request.params.id;
+      return { userId, name: 'John Doe' };
+    });
   });
   
-  group.post('/settings', ({ request }) => {
-    const settings = request.body;
-    return { message: 'Settings updated', settings };
-  });
-}, {
-  beforeHooks: [
-    ({ request, response }) => {
-      // Admin authentication
-      const adminToken = request.headers['x-admin-token'];
-      if (!adminToken) {
-        response.setStatusCode(403);
-        return { error: 'Admin access required' };
-      }
-    }
-  ]
-});
-
-// Nested groups with complex hook merging
-app.group('/api/v1', (v1Group) => {
-  v1Group.group('/admin', (adminGroup) => {
-    adminGroup.get('/users', ({ response }) => {
-      return { message: 'Admin users endpoint' };
+  // /api/v1/admin
+  api.group('/admin', (admin) => {
+    // /api/v1/admin/users
+    admin.group('/users', (adminUsers) => {
+      adminUsers.get('/', ({ response }) => {
+        return { adminUsers: ['Admin1', 'Admin2'] };
+      });
+      
+      adminUsers.post('/', ({ request }) => {
+        const userData = request.body;
+        return { message: 'Admin user created', data: userData };
+      });
+    }, {
+      beforeHooks: [
+        ({ request }) => {
+          // Admin authentication check
+          if (!request.headers.authorization) {
+            throw new Error('Unauthorized');
+          }
+        }
+      ]
     });
   }, {
     beforeHooks: [
-      () => {
-        // Admin-specific hook
-        console.log('Admin group hook');
+      ({ request }) => {
+        // Admin role verification
+        console.log('Admin route accessed');
       }
     ]
   });
 }, {
   beforeHooks: [
-    () => {
-      // API v1 hook
-      console.log('API v1 group hook');
+    ({ request }) => {
+      // Global API logging
+      console.log(`API request to: ${request.url}`);
+    }
+  ]
+});
+```
+
+### Hook Inheritance
+
+Hooks are inherited and merged from parent groups to child groups:
+
+```typescript
+app.group('/api', (api) => {
+  // This group inherits the 'api' beforeHooks
+  
+  api.group('/v1', (v1) => {
+    // This group inherits both 'api' and 'v1' beforeHooks
+    
+    v1.group('/admin', (admin) => {
+      // This group inherits 'api', 'v1', and 'admin' beforeHooks
+      
+      admin.get('/dashboard', ({ response }) => {
+        // All three beforeHooks will execute in order
+        return { message: 'Admin dashboard' };
+      });
+    }, {
+      beforeHooks: [
+        ({ request }) => {
+          // Admin-specific hook
+          console.log('Admin route accessed');
+        }
+      ]
+    });
+  }, {
+    beforeHooks: [
+      ({ request }) => {
+        // Version-specific hook
+        console.log('API v1 accessed');
+      }
+    ]
+  });
+}, {
+  beforeHooks: [
+    ({ request }) => {
+      // Global API hook
+      console.log('API request');
+    }
+  ]
+});
+```
+
+### Group Options
+
+Groups support the same options as individual routes:
+
+```typescript
+app.group('/api/v1', (group) => {
+  group.get('/public', ({ response }) => {
+    return { message: 'Public endpoint' };
+  });
+  
+  group.get('/private', ({ response }) => {
+    return { message: 'Private endpoint' };
+  });
+}, {
+  beforeHooks: [
+    ({ request }) => {
+      // Global group hooks
+      console.log('API v1 request');
+    }
+  ],
+  afterHooks: [
+    ({ response }) => {
+      // Global group after hooks
+      response.headers.set('X-API-Version', 'v1');
     }
   ]
 });
