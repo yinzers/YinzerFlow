@@ -144,6 +144,83 @@ app.get('/users/:userId/posts/:postId', ({ request }) => {
 - Use consistent naming conventions
 - Avoid generic names that could cause confusion
 
+## Context State
+
+YinzerFlow provides a powerful context state system that allows you to store and share custom data throughout the request lifecycle. This is perfect for authentication, middleware data, request-scoped variables, and custom context information.
+
+### Quick Reference
+
+The context state is accessible via `ctx.state` and can store any data you need:
+
+```typescript
+app.get('/api/users', async (ctx) => {
+  // Store custom data in state
+  ctx.state.user = { id: 1, name: 'John' };
+  ctx.state.requestId = generateRequestId();
+  
+  // Access the data later
+  console.log(ctx.state.user.name);        // "John"
+  console.log(ctx.state.requestId);        // "req-123"
+  
+  return { users: ['John', 'Jane'] };
+});
+```
+
+### Middleware Integration
+
+State is perfect for middleware that needs to pass data to route handlers:
+
+```typescript
+// Authentication middleware
+const authMiddleware: HandlerCallback = async (ctx) => {
+  const token = ctx.request.headers.authorization;
+  const user = await validateToken(token);
+  
+  // Store user data in state for route handlers
+  ctx.state.user = user;
+  ctx.state.permissions = await getUserPermissions(user.id);
+};
+
+// Route that uses the authenticated state
+app.get('/api/admin/users', authMiddleware, async (ctx) => {
+  const { user, permissions } = ctx.state;
+  
+  if (!permissions.includes('admin')) {
+    throw new Error('Insufficient permissions');
+  }
+  
+  return { message: 'Admin access granted', user };
+});
+```
+
+### Route Group State
+
+State can be shared across route groups and inherited by nested routes:
+
+```typescript
+app.group('/api/v1', (api) => {
+  api.beforeAll([async (ctx) => {
+    ctx.state.apiVersion = 'v1';
+    ctx.state.environment = process.env.NODE_ENV;
+  }]);
+  
+  api.group('/admin', (admin) => {
+    admin.beforeAll([async (ctx) => {
+      ctx.state.requiresAuth = true;
+      ctx.state.adminOnly = true;
+    }]);
+    
+    // Routes inherit all state from parent groups
+    admin.get('/users', async (ctx) => {
+      const { apiVersion, environment, requiresAuth, adminOnly } = ctx.state;
+      return { users: ['Admin1', 'Admin2'] };
+    });
+  });
+});
+```
+
+**📚 For comprehensive Context State documentation including TypeScript patterns, security considerations, and best practices, see [Context State Documentation](./context.md#context-state).**
+
 ## Query Parameters
 
 URL query strings are automatically parsed and available in `ctx.request.query`:

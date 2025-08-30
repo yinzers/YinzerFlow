@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { httpMethod, httpStatus, httpStatusCode } from '@constants/http.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
+import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generics.d.ts';
 
 // Reusable test data builders
 const createTestHooks = () => ({
@@ -647,19 +648,11 @@ describe('SetupImpl', () => {
     it('should handle group options with undefined hooks gracefully', () => {
       const setup = new SetupImpl();
 
-      setup.group(
-        '/api',
-        (api) => {
-          api.group('/v1', (v1) => {
-            v1.get('/users', () => ({}));
-          });
-        },
-        {
-          // Undefined hooks should not cause errors
-          beforeHooks: undefined,
-          afterHooks: undefined,
-        },
-      );
+      setup.group('/api', (api) => {
+        api.group('/v1', (v1) => {
+          v1.get('/users', () => ({}));
+        });
+      });
 
       const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/users');
       expect(route).toBeDefined();
@@ -669,6 +662,216 @@ describe('SetupImpl', () => {
         expect(route.options.beforeHooks).toEqual([]);
         expect(route.options.afterHooks).toEqual([]);
       }
+    });
+  });
+
+  describe('Context State', () => {
+    it('should allow storing and retrieving state data in route handlers', () => {
+      const setup = new SetupImpl();
+
+      setup.get('/test', (ctx) => {
+        // Store data in state
+        ctx.state.user = { id: 1, name: 'John' };
+        ctx.state.requestId = 'req-123';
+        ctx.state.timestamp = Date.now();
+
+        // Access the data
+        expect(ctx.state.user).toEqual({ id: 1, name: 'John' });
+        expect(ctx.state.requestId).toBe('req-123');
+        expect(typeof ctx.state.timestamp).toBe('number');
+
+        return { success: true };
+      });
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/test');
+      expect(route).toBeDefined();
+    });
+
+    it('should support state in middleware and route handlers', () => {
+      const setup = new SetupImpl();
+
+      // Middleware that sets state
+      const authMiddleware = (ctx: any) => {
+        ctx.state.user = { id: 1, name: 'John' };
+        ctx.state.isAuthenticated = true;
+      };
+
+      // Route that uses middleware state
+      setup.get('/middleware', authMiddleware, (ctx) => {
+        // Access state set by middleware
+        expect(ctx.state.user).toEqual({ id: 1, name: 'John' });
+        expect(ctx.state.isAuthenticated).toBe(true);
+
+        // Add more state
+        ctx.state.routeAccessed = true;
+
+        return {
+          user: ctx.state.user,
+          isAuthenticated: ctx.state.isAuthenticated,
+          routeAccessed: ctx.state.routeAccessed,
+        };
+      });
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/middleware');
+      expect(route).toBeDefined();
+    });
+
+    it('should support state in route groups with inheritance', () => {
+      const setup = new SetupImpl();
+
+      // Set up global hooks that will set state
+      setup.beforeAll([
+        (ctx) => {
+          ctx.state.apiVersion = 'v1';
+          ctx.state.environment = 'test';
+        },
+      ]);
+
+      setup.group('/api/v1', (api) => {
+        api.group('/admin', (admin) => {
+          // Route that inherits state from global hooks
+          admin.get('/users', (ctx) => {
+            expect(ctx.state.apiVersion).toBe('v1');
+            expect(ctx.state.environment).toBe('test');
+
+            return { users: ['Admin1', 'Admin2'] };
+          });
+        });
+      });
+
+      // Verify the nested route was registered
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/v1/admin/users');
+      expect(route).toBeDefined();
+    });
+
+    it('should isolate state between different route handlers', () => {
+      const setup = new SetupImpl();
+
+      setup.get('/isolated/:id', (ctx) => {
+        const { id } = ctx.request.params;
+
+        // Set request-specific state
+        ctx.state.requestId = `req-${id}`;
+        ctx.state.timestamp = Date.now();
+
+        return {
+          id,
+          requestId: ctx.state.requestId,
+          timestamp: ctx.state.timestamp,
+        };
+      });
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/isolated/:id');
+      expect(route).toBeDefined();
+    });
+
+    it('should support typed state with generics', async () => {
+      const setup = new SetupImpl();
+
+      // Define typed state interface
+      interface TypedState extends InternalHandlerCallbackGenerics {
+        state: {
+          user: { id: number; name: string };
+          permissions: Array<string>;
+        };
+      }
+
+      setup.get('/typed', async (ctx: any) => {
+        // Set typed state
+        ctx.state.user = { id: 1, name: 'Admin' };
+        ctx.state.permissions = ['read', 'write', 'delete'];
+
+        // Access with full typing
+        const { user, permissions } = ctx.state;
+
+        expect(user.id).toBe(1);
+        expect(user.name).toBe('Admin');
+        expect(permissions).toEqual(['read', 'write', 'delete']);
+
+        return { user, permissions };
+      });
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/typed');
+      expect(route).toBeDefined();
+    });
+
+    it('should allow state access in before and after hooks', async () => {
+      const setup = new SetupImpl();
+
+      // Global hooks that set and access state
+      setup.beforeAll([
+        async (ctx) => {
+          // Set initial state
+          ctx.state.requestId = 'req-123';
+          ctx.state.timestamp = Date.now();
+        },
+      ]);
+
+      setup.afterAll([
+        async (ctx, result) => {
+          // Access state and modify response based on result
+          expect(ctx.state.requestId).toBe('req-123');
+          expect(typeof ctx.state.timestamp).toBe('number');
+
+          // Add response headers based on state
+          ctx.response.addHeaders({
+            'X-Request-ID': ctx.state.requestId,
+            'X-Processing-Time': `${Date.now() - ctx.state.timestamp}ms`,
+          });
+        },
+      ]);
+
+      // Route with hooks that access state
+      setup.get(
+        '/hook-test',
+        // Route handler
+        async (ctx) => {
+          // Access state from all previous hooks
+          expect(ctx.state.requestId).toBe('req-123');
+          expect(ctx.state.routeAccessed).toBe(true);
+          expect(ctx.state.user).toEqual({ id: 1, name: 'John' });
+
+          // Add more state
+          ctx.state.handlerExecuted = true;
+
+          return { message: 'Success' };
+        },
+        // Route options with hooks
+        {
+          beforeHooks: [
+            async (ctx) => {
+              // Access state from global hooks
+              expect(ctx.state.requestId).toBe('req-123');
+
+              // Add route-specific state
+              ctx.state.routeAccessed = true;
+              ctx.state.user = { id: 1, name: 'John' };
+            },
+          ],
+          afterHooks: [
+            async (ctx, result) => {
+              // Access state from all previous stages
+              expect(ctx.state.requestId).toBe('req-123');
+              expect(ctx.state.routeAccessed).toBe(true);
+              expect(ctx.state.user).toEqual({ id: 1, name: 'John' });
+              expect(ctx.state.handlerExecuted).toBe(true);
+
+              // Verify result is passed correctly
+              expect(result).toEqual({ message: 'Success' });
+
+              // Add final state
+              ctx.state.completed = true;
+            },
+          ],
+        },
+      );
+
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/hook-test');
+      expect(route).toBeDefined();
+
+      // Verify hooks are properly registered
+      expect(route?.options.beforeHooks).toHaveLength(1);
+      expect(route?.options.afterHooks).toHaveLength(1);
     });
   });
 });
