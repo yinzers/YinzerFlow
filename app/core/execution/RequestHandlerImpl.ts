@@ -48,7 +48,7 @@ export class RequestHandlerImpl {
       context.request.params = matchedRoute.params;
 
       const { handler, options } = matchedRoute;
-      const { beforeHooks, afterHooks } = options;
+      const { beforeHooks = [], afterHooks = [] } = options;
 
       // 3. Run beforeAll hooks
       const beforeAllHooks = this.setup._hooks._beforeAll;

@@ -9,8 +9,8 @@ export interface InternalRouteRegistryImpl {
 }
 
 export interface InternalRouteRegistryOptions {
-  beforeHooks: Array<HandlerCallback>;
-  afterHooks: Array<HandlerCallback>;
+  beforeHooks?: Array<HandlerCallback>;
+  afterHooks?: Array<HandlerCallback>;
 }
 
 export interface InternalRouteRegistry {

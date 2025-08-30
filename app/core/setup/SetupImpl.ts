@@ -10,6 +10,7 @@ import { RouteRegistryImpl } from '@core/setup/RouteRegistryImpl.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { GroupApp } from '@core/setup/GroupApp.ts';
 import type { InternalGroupApp } from '@core/setup/GroupApp.ts';
+import { ensureCompleteRouteOptions } from '@core/setup/utils/routeUtils.js';
 
 export class SetupImpl implements InternalSetupImpl {
   readonly _configuration: InternalServerConfiguration;
@@ -22,7 +23,7 @@ export class SetupImpl implements InternalSetupImpl {
 
   //   ===== Route Registration =====
   get(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    const routeOptions = options ?? { beforeHooks: [], afterHooks: [] };
+    const routeOptions = ensureCompleteRouteOptions(options);
     // Register GET route
     this._routeRegistry._register({ method: httpMethod.get, handler, path, options: routeOptions, params: {} });
     // Automatically register corresponding HEAD route
@@ -30,27 +31,27 @@ export class SetupImpl implements InternalSetupImpl {
   }
 
   head(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    this._routeRegistry._register({ method: httpMethod.head, handler, path, options: options ?? { beforeHooks: [], afterHooks: [] }, params: {} });
+    this._routeRegistry._register({ method: httpMethod.head, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
   post(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    this._routeRegistry._register({ method: httpMethod.post, handler, path, options: options ?? { beforeHooks: [], afterHooks: [] }, params: {} });
+    this._routeRegistry._register({ method: httpMethod.post, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
   put(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    this._routeRegistry._register({ method: httpMethod.put, handler, path, options: options ?? { beforeHooks: [], afterHooks: [] }, params: {} });
+    this._routeRegistry._register({ method: httpMethod.put, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
   patch(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    this._routeRegistry._register({ method: httpMethod.patch, handler, path, options: options ?? { beforeHooks: [], afterHooks: [] }, params: {} });
+    this._routeRegistry._register({ method: httpMethod.patch, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
   delete(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    this._routeRegistry._register({ method: httpMethod.delete, handler, path, options: options ?? { beforeHooks: [], afterHooks: [] }, params: {} });
+    this._routeRegistry._register({ method: httpMethod.delete, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
   options(path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions): void {
-    this._routeRegistry._register({ method: httpMethod.options, handler, path, options: options ?? { beforeHooks: [], afterHooks: [] }, params: {} });
+    this._routeRegistry._register({ method: httpMethod.options, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
   group(prefix: string, callback: (group: InternalGroupApp) => void, options?: InternalRouteRegistryOptions): InternalGroupApp {
