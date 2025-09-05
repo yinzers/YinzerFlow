@@ -1,3 +1,6 @@
+import type { CreateEnum } from '@typedefs/internal/Generics.ts';
+import type { logLevels } from '@constants/log.ts';
+
 /**
  * YinzerFlow Logging Levels
  *
@@ -9,9 +12,4 @@
  *
  * Network logging is controlled separately via boolean networkLogging config.
  */
-export const logLevels = {
-  off: 'off',
-  error: 'error',
-  warn: 'warn',
-  info: 'info',
-} as const;
+export type LogLevel = CreateEnum<typeof logLevels>;

@@ -443,7 +443,7 @@ For detailed configuration options, see:
 - **[Body Parsing Security](../security/body-parsing.md)** - Body parser configuration
 - **[CORS Security](../security/cors.md)** - CORS configuration
 - **[IP Security](../security/ip-security.md)** - IP security configuration
-- **[Logging Security](../security/logging.md)** - Logging configuration
+- **[Logging Security](../core/logging.md)** - Logging configuration
 
 ## Common Issues and Solutions
 

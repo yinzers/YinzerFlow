@@ -1,6 +1,3 @@
-/* eslint-disable max-lines */
-import type { CreateEnum } from '@typedefs/internal/Generics.js';
-import type { logLevels } from '@constants/log.js';
 import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { Logger } from '@typedefs/public/Logger.js';
 
@@ -349,20 +346,16 @@ export interface InternalServerConfiguration {
   host: string;
 
   /**
-   * Application logging level for YinzerFlow server
-   * - 'off': No application logging (silent mode)
-   * - 'error': Only error messages
-   * - 'warn': Warning and error messages
-   * - 'info': All application logging with Pittsburgh personality
-   * @default 'warn'
-   */
-  logLevel: CreateEnum<typeof logLevels>;
-
-  /**
-   * Custom logger implementation
-   * If provided, this logger will be used instead of the built-in YinzerFlow logger
-   * Must implement the Logger interface
-   * @default undefined (uses built-in logger)
+   * Custom logger instance
+   *
+   * Use createLogger() to create logger instances with custom configuration
+   * @default undefined (uses built-in logger with default settings)
+   *
+   * @example
+   * ```typescript
+   * const logger = createLogger({ prefix: 'APP', logLevel: 'info' });
+   * new YinzerFlow({ logger });
+   * ```
    */
   logger?: Logger;
 

@@ -1,6 +1,5 @@
 import type { ServerConfiguration } from '@typedefs/public/Configuration.js';
 import type { InternalServerConfiguration } from '@typedefs/internal/InternalConfiguration.js';
-import { logLevels } from '@constants/log.ts';
 import { httpStatusCode } from '@constants/http.ts';
 import { log } from '@core/utils/log.ts';
 
@@ -64,7 +63,6 @@ const DEFAULT_IP_SECURITY_CONFIG = {
 const DEFAULT_CONFIGURATION: InternalServerConfiguration = {
   port: 5000,
   host: '0.0.0.0',
-  logLevel: logLevels.warn,
   networkLogs: false,
   cors: {
     enabled: false, // Disabled by default

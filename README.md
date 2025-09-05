@@ -41,7 +41,7 @@ await app.listen();
 - **[Getting Started](docs/start-here.md)** - Complete guide and examples
 - **[Routes](docs/routes.md)** - Routing system and handlers
 - **[Request/Response](docs/request.md)** - Request and response objects
-- **[Logging](docs/logging.md)** - Logging configuration and customization
+- **[Logging](docs/core/logging.md)** - Logging configuration and customization
 - **[Advanced Configuration](docs/advanced-configuration-options.md)** - Detailed configuration options
 
 ## 🛡️ Security

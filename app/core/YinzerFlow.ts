@@ -5,8 +5,9 @@ import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { log } from '@core/utils/log.ts';
-import { colors, networkLog } from '@core/utils/networkLog.ts';
 import type { ServerConfiguration } from '@typedefs/public/Configuration.js';
+import { getStatusEmoji, logPerformanceDetails, networkLog } from '@core/utils/networkLog.ts';
+import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInBytes.ts';
 
 /**
  * Main YinzerFlow application class for building HTTP servers.
@@ -138,27 +139,16 @@ export class YinzerFlow extends SetupImpl {
   constructor(configuration?: ServerConfiguration) {
     super(configuration);
 
-    // Set custom logger if provided (routes all log calls to user's logger)
+    // Replace global logger if custom logger is provided
     if (this._configuration.logger) {
-      log.setCustomLogger(this._configuration.logger);
+      // Replace the global log instance with the custom logger
+      Object.assign(log, this._configuration.logger);
     }
-
-    // Set log level on built-in logger (always available)
-    log.setLogLevel(this._configuration.logLevel);
-
-    // Configure network logging - simple boolean toggle
-    networkLog.setEnabled(this._configuration.networkLogs);
 
     // Set network logger if provided (optional - can be same as app logger or different)
-    if (this._configuration.networkLogger) {
-      networkLog.setNetworkLogger(this._configuration.networkLogger);
+    if (this._configuration.networkLogs) {
+      networkLog.enable(this._configuration.networkLogger);
     }
-
-    // This will route to custom logger if set, otherwise use built-in styling
-    log.info(
-      'YinzerFlow initialized with logging enabled',
-      `${colors.green}level: ${this._configuration.logLevel}, networkLogs: ${this._configuration.networkLogs}${colors.reset}`,
-    );
 
     // Setup automatic graceful shutdown if enabled
     if (this._configuration.autoGracefulShutdown) {
@@ -173,13 +163,13 @@ export class YinzerFlow extends SetupImpl {
     if (!this._server) return;
 
     this._server.on('error', (error: Error) => {
-      networkLog.serverError(this._configuration.port, this._configuration.host, error.message);
+      networkLog.log.error(`YinzerFlow server error at ${this._configuration.host}:${this._configuration.port} - ${error.message}`);
       reject(error);
     });
 
     this._server.on('listening', () => {
       this._isListening = true;
-      networkLog.serverStart(this._configuration.port, this._configuration.host);
+      networkLog.log.info(`YinzerFlow server at ${this._configuration.host}:${this._configuration.port} is up and running`);
       resolve();
     });
 
@@ -204,7 +194,8 @@ export class YinzerFlow extends SetupImpl {
   }): Promise<void> {
     const startTime = Date.now();
 
-    log.info('Processing incoming request', `Client: ${clientAddress}, Data Size: ${data.length}`);
+    // Log incoming request
+    networkLog.log.info('Incoming request', `${clientAddress} ${calculateContentSizeInBytes(data)}bytes`);
 
     const context = new ContextImpl(data, this, clientAddress);
 
@@ -216,41 +207,117 @@ export class YinzerFlow extends SetupImpl {
     const endTime = Date.now();
     const processingTime = endTime - startTime;
 
-    // Log request
-    networkLog.request(context, startTime, endTime);
-    if (processingTime > 500) {
-      log.warn('Slow request detected', {
-        method: context.request.method,
-        path: context.request.path,
-        statusCode: context._response._statusCode,
-        responseTime: `${processingTime}ms`,
-        clientAddress,
-      });
-    }
+    // Log request response
+    networkLog.log.info(
+      `${getStatusEmoji(context._response._statusCode)} ${clientAddress} "${context.request.method} ${context.request.path} ${context.request.protocol}" ${context._response._statusCode} ${calculateContentSizeInBytes(context._response._body)}bytes "${context.request.headers.referer ?? '-'}" "${context.request.headers['user-agent'] ?? '-'}" ${processingTime}ms`,
+    );
+    logPerformanceDetails(processingTime);
   }
 
   /**
-   * Handle socket connection and all its events
+   * Handle incoming TCP socket connections and their complete lifecycle
+   *
+   * This method manages both legitimate HTTP requests and various types of probes:
+   * - Health checks from monitoring tools (Datadog, New Relic, etc.)
+   * - Load balancer health probes
+   * - API testing tools connectivity checks (Postman, Apidog, etc.)
+   * - Potential security probes or DoS attempts
    */
   private _handleConnection(socket: Socket, requestHandler: RequestHandlerImpl): void {
+    // Extract client information for logging and security tracking
     const clientAddress = socket.remoteAddress ?? 'unknown';
+    const connectionStartTime = Date.now();
 
-    networkLog.connection('connect', clientAddress);
+    // Track connection state to distinguish between probes and real requests
+    let hasReceivedData = false;
+    let dataReceiveTime: number | null = null;
 
+    /**
+     * Log every TCP connection for comprehensive network monitoring
+     * This helps identify connection patterns, DoS attempts, and client behavior
+     */
+    networkLog.log.info(`New visitor from ${clientAddress}`);
+
+    /**
+     * Handle incoming data on the socket
+     * This fires when the client sends HTTP request data
+     */
     socket.on('data', (data) => {
+      // Track first data receipt for timing analysis
+      if (!hasReceivedData) {
+        hasReceivedData = true;
+        dataReceiveTime = Date.now();
+        const connectionToDataDelay = dataReceiveTime - connectionStartTime;
+
+        /**
+         * Flag connections with unusual delays between connect and data
+         * Normal HTTP clients send data immediately after connecting
+         * Delays >100ms might indicate:
+         * - Slow/problematic clients
+         * - Potential reconnaissance attempts
+         * - Network issues
+         */
+        if (connectionToDataDelay > 100) {
+          networkLog.log.warn(`Delayed data from ${clientAddress} (${connectionToDataDelay}ms connection delay)`);
+        }
+      }
+
+      /**
+       * Process the HTTP request data
+       * This handles parsing, routing, middleware, and response generation
+       */
       this._processRequest({ data, socket, requestHandler, clientAddress }).catch((error: unknown) => {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        networkLog.connection('error', clientAddress, `Unexpected error: ${errorMessage}`);
-        socket.destroy();
+        networkLog.log.error(`Visitor from ${clientAddress} experienced an error during request processing: ${errorMessage}`, error);
+        socket.destroy(); // Force close on processing errors
       });
     });
 
+    /**
+     * Handle socket errors (network issues, malformed connections, etc.)
+     * These are typically infrastructure problems, not application errors
+     */
     socket.on('error', (error: Error) => {
-      networkLog.connection('error', clientAddress, error.message);
+      networkLog.log.error(`Visitor from ${clientAddress} experienced an error during socket connection: ${error.message}`, error);
     });
 
+    /**
+     * Handle socket closure - both graceful and forced disconnections
+     * This is where we analyze connection patterns for security and diagnostics
+     */
     socket.on('close', () => {
-      networkLog.connection('disconnect', clientAddress);
+      const connectionDuration = Date.now() - connectionStartTime;
+
+      if (hasReceivedData) {
+        /**
+         * Normal HTTP request lifecycle completed
+         * Log successful completion with total connection time
+         */
+        networkLog.log.info(`Visitor from ${clientAddress} headed out (${connectionDuration}ms total)`);
+        return;
+      }
+
+      // Connection closed without sending HTTP data - analyze the pattern
+      if (connectionDuration < 10) {
+        /**
+         * Fast disconnect (< 10ms) = likely legitimate health check
+         * Common with:
+         * - Monitoring tools (Datadog, New Relic, Prometheus)
+         * - Load balancers (AWS ALB, nginx, HAProxy)
+         * - API testing tools (Postman, Apidog, Insomnia)
+         */
+        networkLog.log.info(`${clientAddress} quick connectivity check (${connectionDuration}ms) - health probe`);
+      } else {
+        /**
+         * Slower disconnect without data = potentially suspicious
+         * Could indicate:
+         * - Port scanning attempts
+         * - DoS reconnaissance
+         * - Misconfigured clients
+         * - Network connectivity issues
+         */
+        networkLog.log.warn(`${clientAddress} disconnected without sending data (${connectionDuration}ms) - potential probe`);
+      }
     });
   }
 
@@ -282,7 +349,7 @@ export class YinzerFlow extends SetupImpl {
 
       this._server.close(() => {
         this._isListening = false;
-        networkLog.serverStop(this._configuration.port, this._configuration.host);
+        networkLog.log.warn(`YinzerFlow server at ${this._configuration.host}:${this._configuration.port} is shutting down - See yinz later`);
         resolve();
       });
     });

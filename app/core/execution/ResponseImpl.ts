@@ -8,7 +8,7 @@ import { httpEncoding, httpStatus, httpStatusCode } from '@constants/http.ts';
 import type { InternalHttpEncoding, InternalHttpHeaders, InternalHttpStatus, InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { Request } from '@typedefs/public/Request.ts';
 import type { InternalResponseImpl } from '@typedefs/internal/InternalResponseImpl.d.ts';
-import { determineContentLength } from '@core/execution/utils/determineContentLength.ts';
+import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInBytes.ts';
 
 export class ResponseImpl implements InternalResponseImpl {
   readonly _request: Request;
@@ -45,10 +45,10 @@ export class ResponseImpl implements InternalResponseImpl {
     const headersSection = headerLines.length > 0 ? `${headerLines.join('\n')}\n` : '';
     this._stringBody = `${statusLine}\n${headersSection}\n${body}`;
 
-    const contentLength = determineContentLength(this._stringBody, this._encoding);
+    const contentLength = calculateContentSizeInBytes(this._stringBody);
     this._setHeadersIfNotSet({
       Date: dayjs().format('ddd, DD MMM YYYY HH:mm:ss [GMT]'),
-      'Content-Length': contentLength,
+      'Content-Length': String(contentLength),
     });
   }
 

@@ -124,7 +124,7 @@ app.onError(({ response }, error) => {
 ### 🛡️ Logging Security
 **Protection**: Log injection, sensitive data exposure
 **Implementation**: Structured logging, sensitive data filtering
-**Documentation**: [Logging Security](./logging.md)
+**Documentation**: [Logging Security](../core/logging.md)
 
 ```typescript
 const secureApp = new YinzerFlow({
@@ -272,7 +272,7 @@ For detailed security documentation:
 - **[Body Parsing](./body-parsing.md)** - File upload and JSON parsing security
 - **[CORS](./cors.md)** - Cross-origin request security
 - **[IP Security](./ip-security.md)** - Client IP validation and protection
-- **[Logging](./logging.md)** - Secure logging practices
+- **[Logging](../core/logging.md)** - Secure logging practices
 - **[Error Handling](../core/error-handling.md)** - Secure error handling patterns
 
 For security issues or questions:

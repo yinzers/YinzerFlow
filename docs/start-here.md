@@ -120,7 +120,7 @@ For custom shutdown handling, see [Advanced Configuration](./advanced-configurat
 - **[Body Parsing](./security/body-parsing.md)** - Secure parsing of JSON, file uploads, and form data with DoS protection
 - **[CORS](./security/cors.md)** - Cross-Origin Resource Sharing with comprehensive security measures
 - **[IP Security](./security/ip-security.md)** - Client IP validation and spoofing protection for load balancers and CDNs
-- **[Logging](./security/logging.md)** - Flexible logging with custom logger support and Pittsburgh personality
+- **[Logging](./core/logging.md)** - Flexible logging with custom logger support and Pittsburgh personality
 - **[Configuration Patterns](./configuration/configuration-patterns.md)** - Common configuration patterns and best practices
 - **[Advanced Configuration](./configuration/advanced-configuration-options.md)** - Fine-tune security, performance, and functionality
 
@@ -164,7 +164,7 @@ For custom shutdown handling, see [Advanced Configuration](./advanced-configurat
 1. **Start with Routes**: Learn the routing system in [routes.md](./routes.md)
 2. **Understand Requests**: Explore request handling in [request.md](./request.md)
 3. **Configure Security**: Set up IP security and CORS in [ip-security.md](./ip-security.md) and [cors.md](./cors.md)
-4. **Customize Logging**: Implement custom loggers in [logging.md](./logging.md)
+4. **Customize Logging**: Implement custom loggers in [logging.md](./core/logging.md)
 5. **Advanced Configuration**: Fine-tune settings in [advanced-configuration-options.md](./advanced-configuration-options.md)
 
 ## Examples

@@ -1,3 +1,5 @@
+import type { LogLevel } from '@typedefs/constants/log.js';
+
 /**
  * Logger Interface for YinzerFlow.
  *
@@ -223,61 +225,10 @@ export interface Logger {
    * ```
    */
   error: (...args: Array<unknown>) => void;
+}
 
-  /**
-   * Logs detailed debugging information (optional).
-   *
-   * Use this level for detailed information that's only needed during
-   * development and debugging. This method is optional and can be omitted.
-   *
-   * @param args - Variable arguments to log (strings, objects, etc.)
-   *
-   * @example
-   * ```typescript
-   * // Debug examples
-   * logger.debug('Request headers received', { headers: request.headers });
-   * logger.debug('SQL query executed', { query: sql, params: values });
-   * logger.debug('Cache miss for key', { key: 'user:123', reason: 'expired' });
-   *
-   * // Conditional debug logging
-   * if (process.env.NODE_ENV === 'development') {
-   *   logger.debug('Processing step completed', { step: 'validation', data: input });
-   * }
-   * ```
-   */
-  debug?: (...args: Array<unknown>) => void;
-
-  /**
-   * Logs very detailed tracing information (optional).
-   *
-   * Use this level for the most detailed information, typically only
-   * needed for deep debugging. This method is optional and can be omitted.
-   *
-   * @param args - Variable arguments to log (strings, objects, etc.)
-   *
-   * @example
-   * ```typescript
-   * // Trace examples
-   * logger.trace('Function entry', {
-   *   function: 'validateUser',
-   *   parameters: { email, password },
-   *   timestamp: Date.now()
-   * });
-   *
-   * logger.trace('Database query details', {
-   *   connection: 'pool-1',
-   *   query: 'SELECT * FROM users WHERE id = ?',
-   *   parameters: [userId],
-   *   executionPlan: queryPlan
-   * });
-   *
-   * // Performance tracing
-   * logger.trace('Performance checkpoint', {
-   *   operation: 'userAuthentication',
-   *   duration: '15ms',
-   *   memoryUsage: process.memoryUsage()
-   * });
-   * ```
-   */
-  trace?: (...args: Array<unknown>) => void;
+export interface LoggerConfig {
+  logLevel?: LogLevel | undefined;
+  prefix?: string | undefined;
+  logger?: { info: (...args: Array<unknown>) => void; warn: (...args: Array<unknown>) => void; error: (...args: Array<unknown>) => void } | undefined;
 }

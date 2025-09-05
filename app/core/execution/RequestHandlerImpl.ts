@@ -29,6 +29,7 @@ export class RequestHandlerImpl {
       // 1. Handle CORS before anything else. The cors handler will handle return true if it was a preflight request, otherwise it will return false.
       const corsResult = handleCors(context, this.setup._configuration.cors);
 
+
       if (corsResult) {
         context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
         return void 0;
@@ -71,6 +72,7 @@ export class RequestHandlerImpl {
       // 6. Run afterRoute hooks and afterGroup hooks
       // * The after group hooks and afterRoute hooks are in the same array and ordered on route registration.
       for (const hook of afterHooks) await hook(context);
+
 
       // 7. Run afterAll hooks
       const afterAllHooks = this.setup._hooks._afterAll;

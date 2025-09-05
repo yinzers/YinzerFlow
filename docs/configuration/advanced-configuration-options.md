@@ -210,7 +210,7 @@ await app.listen();
 
 ### Logging Configuration
 
-Control framework logging output with built-in Pittsburgh personality or custom logging libraries. See [Logging Documentation](./logging.md) for detailed setup, custom logger integration, and advanced use cases.
+Control framework logging output with built-in Pittsburgh personality or custom logging libraries. See [Logging Documentation](../core/logging.md) for detailed setup, custom logger integration, and advanced use cases.
 
 ```typescript
 const app = new YinzerFlow({

@@ -1,6 +1,6 @@
+import { colors } from '@constants/colors.ts';
 import { httpStatusCode } from '@constants/http.ts';
 import { log } from '@core/utils/log.ts';
-import { colors } from '@core/utils/networkLog.ts';
 import type { InternalGlobalHookOptions, InternalHookRegistryImpl } from '@typedefs/internal/InternalHookRegistryImpl.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 
