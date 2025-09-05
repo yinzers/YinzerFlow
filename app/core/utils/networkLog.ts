@@ -28,40 +28,23 @@ export const getStatusEmoji = (statusCode: number): string => {
 };
 
 /**
+ * Performance thresholds with Pittsburgh personality
+ */
+const PERFORMANCE_THRESHOLDS = [
+  { maxTime: 50, emoji: '⚡', phrase: 'faster than a Stillers touchdown!' },
+  { maxTime: 100, emoji: '🔥', phrase: "smooth as butter n'at!" },
+  { maxTime: 200, emoji: '✅', phrase: 'not bad yinz!' },
+  { maxTime: 500, emoji: '⚠️', phrase: "slowin' down a bit there" },
+  { maxTime: 1000, emoji: '🐌', phrase: "that's draggin' n'at" },
+  { maxTime: Infinity, emoji: '💥', phrase: 'what a jagoff response time!' },
+] as const;
+
+/**
  * Get performance details for response time with Pittsburgh personality
  */
 export const logPerformanceDetails = (timeMs: number): void => {
-  let emoji = '';
-  let phrase = '';
+  const threshold = PERFORMANCE_THRESHOLDS.find((t) => timeMs < t.maxTime) ?? PERFORMANCE_THRESHOLDS[PERFORMANCE_THRESHOLDS.length - 1];
+  if (!threshold) throw new Error('No threshold found for performance details');
 
-  // < 50ms: Truly instant, users can't perceive any delay
-  if (timeMs < 50) {
-    emoji = '⚡';
-    phrase = 'faster than a Stillers touchdown!';
-  }
-  // 50-100ms: Still feels instant for most interactions
-  if (timeMs < 100) {
-    emoji = '🔥';
-    phrase = "smooth as butter n'at!";
-  }
-  // 100-200ms: Google's "good" threshold, still very responsive
-  if (timeMs < 200) {
-    emoji = '✅';
-    phrase = 'not bad yinz!';
-  }
-  // 200-500ms: Noticeable but acceptable for complex operations
-  if (timeMs < 500) {
-    emoji = '⚠️';
-    phrase = "slowin' down a bit there";
-  }
-  // 500ms-1s: Users start getting impatient
-  if (timeMs < 1000) {
-    emoji = '🐌';
-    phrase = "that's draggin' n'at";
-  }
-  // > 1s: Definitely problematic, needs attention
-  emoji = '💥';
-  phrase = 'what a jagoff response time!';
-
-  networkLog.log.warn(`${colors.magenta} ${emoji} Response time: ${timeMs}ms - ${phrase}${colors.reset}`);
+  networkLog.log.warn(`${colors.magenta} ${threshold.emoji} Response time: ${timeMs}ms - ${threshold.phrase}${colors.reset}`);
 };

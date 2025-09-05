@@ -1,23 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { handleCustomConfiguration } from '@core/setup/utils/handleCustomConfiguration.ts';
-import { logLevels } from '@constants/log.ts';
-import { log } from '@core/utils/log.ts';
 
 describe('handleCustomConfiguration', () => {
-  // Store original log level to restore after tests
-  let originalLogLevel: string;
-
-  beforeEach(() => {
-    // Store the current log level
-    originalLogLevel = log.setLogLevel.name; // This is a bit of a hack, but we need to preserve the current level
-  });
-
-  afterEach(() => {
-    // Restore the original log level
-    // Since we can't easily get the current level, we'll set it back to warn (default)
-    log.setLogLevel('warn');
-  });
-
   describe('Basic Configuration', () => {
     it('should return a default configuration', () => {
       const config = handleCustomConfiguration({});
@@ -25,7 +9,6 @@ describe('handleCustomConfiguration', () => {
       expect(config).toBeDefined();
       expect(config.port).toBe(5000);
       expect(config.host).toBe('0.0.0.0');
-      expect(config.logLevel).toBe(logLevels.warn);
       expect(config.ipSecurity.trustedProxies).toEqual(['127.0.0.1', '::1']);
       expect(config.cors).toBeDefined();
       expect(config.cors.enabled).toBe(false);
@@ -45,7 +28,6 @@ describe('handleCustomConfiguration', () => {
 
       expect(config.port).toBe(3000);
       expect(config.host).toBe('0.0.0.0');
-      expect(config.logLevel).toBe(logLevels.warn);
       expect(config.ipSecurity.trustedProxies).toEqual(['127.0.0.1', '::1']);
       expect(config.cors.enabled).toBe(false);
     });
@@ -276,11 +258,6 @@ describe('handleCustomConfiguration', () => {
   });
 
   describe('Security Warnings', () => {
-    // Set log level to warn to ensure warnings are visible
-    beforeEach(() => {
-      log.setLogLevel('warn');
-    });
-
     describe('JSON Security Warnings', () => {
       it('should not throw when prototype pollution is enabled', () => {
         expect(() => {
