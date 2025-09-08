@@ -4,6 +4,9 @@ import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js';
 import { handleCors } from '@core/utils/cors.ts';
 import { log } from '@core/utils/log.ts';
+import type { HandlerCallback } from '@typedefs/public/Context.js';
+import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
+import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.js';
 
 /**
  * Handles the complete lifecycle of an HTTP request
@@ -26,37 +29,31 @@ export class RequestHandlerImpl {
    */
   async handle(context: InternalContextImpl): Promise<void> {
     try {
-      // 1. Handle CORS before anything else. The cors handler will handle return true if it was a preflight request, otherwise it will return false.
-      const corsResult = handleCors(context, this.setup._configuration.cors);
-
-      if (corsResult) {
-        context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
+      // 1. Handle CORS - stop if it's a preflight request
+      if (this._handleCors(context)) {
         return void 0;
       }
 
       // 2. Match route based on context.request.method + context.request.path
-      const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, context.request.path);
-
-      if (!matchedRoute) {
-        const notFoundResponse = await this.setup._hooks._onNotFound(context);
-        context._response._setBody(notFoundResponse);
-        context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
-        return void 0;
-      }
+      const matchedRoute = await this._matchRoute(context);
+      if (!matchedRoute) return void 0;
 
       // Set route params in the request context
-      context.request.params = matchedRoute.params;
+      Object.assign(context.request.params as unknown as Record<string, string>, matchedRoute.params);
 
       const { handler, options } = matchedRoute;
       const { beforeHooks = [], afterHooks = [] } = options;
 
-      // 3. Run beforeAll hooks
-      const beforeAllHooks = this.setup._hooks._beforeAll;
-      for (const hook of beforeAllHooks) await hook.handler(context);
+      // 3. Run beforeAll hooks - stop if any hook returns a value
+      if (await this._handleBeforeAllHooks(context)) {
+        return void 0;
+      }
 
-      // 4. Run beforeGroup hooks and beforeRoute hooks
+      // 4. Run beforeGroup hooks and beforeRoute hooks - stop if any hook returns a value
       // * The before group hooks and beforeRoute hooks are in the same array and ordered on route registration.
-      for (const hook of beforeHooks) await hook(context);
+      if (await this._handleBeforeHooks(context, beforeHooks)) {
+        return void 0;
+      }
 
       // 5. Execute route handler.
       // * We are saving the response to a variable because in this case we might not
@@ -74,7 +71,13 @@ export class RequestHandlerImpl {
 
       // 7. Run afterAll hooks
       const afterAllHooks = this.setup._hooks._afterAll;
-      for (const hook of afterAllHooks) await hook.handler(context);
+      for (const hook of afterAllHooks) {
+        // Check if hook should run based on route options
+        if (!this._shouldRunHook(hook.options, context.request.path)) {
+          continue;
+        }
+        await hook.handler(context);
+      }
 
       // 8. Build response (set content-type, etc.)
       context._response._setBody(routeResponse);
@@ -140,5 +143,104 @@ export class RequestHandlerImpl {
         'Content-Length': context._response._stringBody.split('\n\n')[1]?.length.toString() ?? '0',
       });
     }
+  }
+
+  private _handleCors(context: InternalContextImpl): boolean {
+    // 1. Handle CORS before anything else. The cors handler will handle return true if it was a preflight request, otherwise it will return false.
+    const corsResult = handleCors(context, this.setup._configuration.cors);
+
+    if (corsResult) {
+      context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
+      return true; // Signal that we should stop processing
+    }
+
+    return false; // Signal that we should continue processing
+  }
+
+  private async _matchRoute(context: InternalContextImpl): Promise<InternalRouteRegistry | null> {
+    const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, context.request.path);
+
+    if (!matchedRoute) {
+      const notFoundResponse = await this.setup._hooks._onNotFound(context);
+      context._response._setBody(notFoundResponse);
+      context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
+      return null; // Signal that no route was found and response is already set
+    }
+
+    return matchedRoute;
+  }
+
+  private async _handleBeforeAllHooks(context: InternalContextImpl): Promise<boolean> {
+    const beforeAllHooks = this.setup._hooks._beforeAll;
+    for (const hook of beforeAllHooks) {
+      // Check if hook should run based on route options
+      if (!this._shouldRunHook(hook.options, context.request.path)) {
+        continue;
+      }
+
+      const result = await hook.handler(context);
+      if (result !== undefined) {
+        context._response._setBody(result);
+        context._response._parseResponseIntoString();
+        return true; // Signal that we should stop processing
+      }
+    }
+    return false; // Signal that we should continue processing
+  }
+
+  private async _handleBeforeHooks(context: InternalContextImpl, hooks: Array<HandlerCallback>): Promise<boolean> {
+    for (const hook of hooks) {
+      const result = await hook(context);
+      if (result !== undefined) {
+        context._response._setBody(result);
+        context._response._parseResponseIntoString();
+        return true; // Signal that we should stop processing
+      }
+    }
+    return false; // Signal that we should continue processing
+  }
+
+  /**
+   * Determines if a hook should run based on its options and the current request path
+   */
+  private _shouldRunHook(options: InternalGlobalHookOptions | undefined, requestPath: string): boolean {
+    if (!options) {
+      return true; // No options means run for all routes
+    }
+
+    const { routesToInclude, routesToExclude } = options;
+
+    // If routesToExclude contains the current path, don't run
+    if (routesToExclude.some((pattern) => this._matchesPattern(requestPath, pattern))) {
+      return false;
+    }
+
+    // If routesToInclude is empty, run for all routes (unless excluded above)
+    if (routesToInclude.length === 0) {
+      return true;
+    }
+
+    // If routesToInclude has patterns, only run if current path matches one of them
+    return routesToInclude.some((pattern) => this._matchesPattern(requestPath, pattern));
+  }
+
+  /**
+   * Simple pattern matching for route filtering
+   * Supports basic wildcard patterns like /api/* and exact matches
+   */
+  private _matchesPattern(path: string, pattern: string): boolean {
+    // Exact match
+    if (pattern === path) {
+      return true;
+    }
+
+    // Wildcard pattern (e.g., /api/*)
+    if (pattern.endsWith('/*')) {
+      const prefix = pattern.slice(0, -2);
+      return path.startsWith(prefix);
+    }
+
+    // No match
+    return false;
   }
 }

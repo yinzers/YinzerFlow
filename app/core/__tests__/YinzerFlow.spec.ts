@@ -32,7 +32,10 @@ const createExecutionTracker = () => {
   const order: Array<string> = [];
   return {
     order,
-    track: (step: string) => () => order.push(step),
+    track: (step: string) => () => {
+      order.push(step);
+      // Don't return anything (void)
+    },
     getOrder: () => [...order],
   };
 };

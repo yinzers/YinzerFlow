@@ -121,11 +121,229 @@ describe('RequestHandler', () => {
       expect(context._response._body).toEqual({ success: true });
     });
 
+    it('should stop execution when beforeAll hook returns non-void value', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeAllHandler: HandlerCallback = () => {
+        executionOrder.push('beforeAll');
+        return { error: 'Stopped by beforeAll hook' };
+      };
+
+      const beforeRouteHandler: HandlerCallback = () => {
+        executionOrder.push('beforeRoute');
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { success: true };
+      };
+
+      setup.beforeAll([beforeAllHandler]);
+      setup.get('/stop-test', routeHandler, {
+        beforeHooks: [beforeRouteHandler],
+      });
+
+      const context = new ContextImpl('GET /stop-test HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      expect(executionOrder).toEqual(['beforeAll']);
+      expect(context._response._body).toEqual({ error: 'Stopped by beforeAll hook' });
+    });
+
+    it('should stop execution when before hook returns non-void value', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeAllHandler: HandlerCallback = () => {
+        executionOrder.push('beforeAll');
+      };
+
+      const beforeRouteHandler: HandlerCallback = () => {
+        executionOrder.push('beforeRoute');
+        return { error: 'Stopped by before hook' };
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { success: true };
+      };
+
+      setup.beforeAll([beforeAllHandler]);
+      setup.get('/stop-before-test', routeHandler, {
+        beforeHooks: [beforeRouteHandler],
+      });
+
+      const context = new ContextImpl('GET /stop-before-test HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      expect(executionOrder).toEqual(['beforeAll', 'beforeRoute']);
+      expect(context._response._body).toEqual({ error: 'Stopped by before hook' });
+    });
+
+    it('should continue execution when hooks return void/undefined', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeAllHandler: HandlerCallback = () => {
+        executionOrder.push('beforeAll');
+        // No return value (void)
+      };
+
+      const beforeRouteHandler: HandlerCallback = () => {
+        executionOrder.push('beforeRoute');
+        return undefined; // Explicitly return undefined
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { success: true };
+      };
+
+      setup.beforeAll([beforeAllHandler]);
+      setup.get('/continue-test', routeHandler, {
+        beforeHooks: [beforeRouteHandler],
+      });
+
+      const context = new ContextImpl('GET /continue-test HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      expect(executionOrder).toEqual(['beforeAll', 'beforeRoute', 'route']);
+      expect(context._response._body).toEqual({ success: true });
+    });
+
+    it('should stop execution on first hook that returns non-void value', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeAllHandler1: HandlerCallback = () => {
+        executionOrder.push('beforeAll1');
+        // No return value (void) - should continue
+      };
+
+      const beforeAllHandler2: HandlerCallback = () => {
+        executionOrder.push('beforeAll2');
+        return { error: 'Stopped by second beforeAll hook' };
+      };
+
+      const beforeAllHandler3: HandlerCallback = () => {
+        executionOrder.push('beforeAll3');
+        // This should never execute
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { success: true };
+      };
+
+      setup.beforeAll([beforeAllHandler1, beforeAllHandler2, beforeAllHandler3]);
+      setup.get('/stop-first-test', routeHandler);
+
+      const context = new ContextImpl('GET /stop-first-test HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      expect(executionOrder).toEqual(['beforeAll1', 'beforeAll2']);
+      expect(context._response._body).toEqual({ error: 'Stopped by second beforeAll hook' });
+    });
+
+    it('should return response from beforeAll hook and skip route execution', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeAllHandler: HandlerCallback = () => {
+        executionOrder.push('beforeAll');
+        return { message: 'Response from beforeAll hook', status: 'early_return' };
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { message: 'This should not execute' };
+      };
+
+      setup.beforeAll([beforeAllHandler]);
+      setup.get('/beforeall-return', routeHandler);
+
+      const context = new ContextImpl('GET /beforeall-return HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      expect(executionOrder).toEqual(['beforeAll']);
+      expect(context._response._body).toEqual({
+        message: 'Response from beforeAll hook',
+        status: 'early_return',
+      });
+    });
+
+    it('should return response from before group hook and skip route execution', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeGroupHandler: HandlerCallback = () => {
+        executionOrder.push('beforeGroup');
+        return { message: 'Response from before group hook', status: 'early_return' };
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { message: 'This should not execute' };
+      };
+
+      setup.get('/beforegroup-return', routeHandler, {
+        beforeHooks: [beforeGroupHandler],
+      });
+
+      const context = new ContextImpl('GET /beforegroup-return HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      expect(executionOrder).toEqual(['beforeGroup']);
+      expect(context._response._body).toEqual({
+        message: 'Response from before group hook',
+        status: 'early_return',
+      });
+    });
+
+    it('should skip route execution when beforeAll hook returns response but continue with afterAll hooks', async () => {
+      const executionOrder: Array<string> = [];
+
+      const beforeAllHandler: HandlerCallback = () => {
+        executionOrder.push('beforeAll');
+        return { message: 'Response from beforeAll hook' };
+      };
+
+      const routeHandler: HandlerCallback = () => {
+        executionOrder.push('route');
+        return { message: 'This should not execute' };
+      };
+
+      const afterAllHandler: HandlerCallback = () => {
+        executionOrder.push('afterAll');
+        // No return value (void)
+      };
+
+      setup.beforeAll([beforeAllHandler]);
+      setup.afterAll([afterAllHandler]);
+      setup.get('/beforeall-skip-route', routeHandler);
+
+      const context = new ContextImpl('GET /beforeall-skip-route HTTP/1.1\r\n\r\n', setup) as InternalContextImpl;
+
+      await requestHandler.handle(context);
+
+      // Note: afterAll hooks should NOT execute when beforeAll returns a response
+      // because the response is already set and parsed
+      expect(executionOrder).toEqual(['beforeAll']);
+      expect(context._response._body).toEqual({ message: 'Response from beforeAll hook' });
+    });
+
     it('should execute multiple beforeAll hooks in order', async () => {
       const executionOrder: Array<string> = [];
 
-      const beforeHook1: HandlerCallback = () => executionOrder.push('before1');
-      const beforeHook2: HandlerCallback = () => executionOrder.push('before2');
+      const beforeHook1: HandlerCallback = () => {
+        executionOrder.push('before1');
+        // No return value (void)
+      };
+      const beforeHook2: HandlerCallback = () => {
+        executionOrder.push('before2');
+        // No return value (void)
+      };
       const routeHandler: HandlerCallback = () => {
         executionOrder.push('route');
         return { executed: true };
@@ -148,8 +366,14 @@ describe('RequestHandler', () => {
         executionOrder.push('route');
         return { executed: true };
       };
-      const afterHook1: HandlerCallback = () => executionOrder.push('after1');
-      const afterHook2: HandlerCallback = () => executionOrder.push('after2');
+      const afterHook1: HandlerCallback = () => {
+        executionOrder.push('after1');
+        // No return value (void)
+      };
+      const afterHook2: HandlerCallback = () => {
+        executionOrder.push('after2');
+        // No return value (void)
+      };
 
       setup.afterAll([afterHook1, afterHook2]);
       setup.get('/multi-after', routeHandler);
@@ -378,12 +602,18 @@ describe('RequestHandler', () => {
       it('should execute all hooks for HEAD requests', async () => {
         const executionOrder: Array<string> = [];
 
-        const beforeHook: HandlerCallback = () => executionOrder.push('before');
+        const beforeHook: HandlerCallback = () => {
+          executionOrder.push('before');
+          // No return value (void)
+        };
         const routeHandler: HandlerCallback = () => {
           executionOrder.push('route');
           return { data: 'test' };
         };
-        const afterHook: HandlerCallback = () => executionOrder.push('after');
+        const afterHook: HandlerCallback = () => {
+          executionOrder.push('after');
+          // No return value (void)
+        };
 
         setup.beforeAll([beforeHook]);
         setup.afterAll([afterHook]);
@@ -498,12 +728,18 @@ describe('RequestHandler', () => {
       it('should handle OPTIONS routes with hooks', async () => {
         const executionOrder: Array<string> = [];
 
-        const beforeHook: HandlerCallback = () => executionOrder.push('before');
+        const beforeHook: HandlerCallback = () => {
+          executionOrder.push('before');
+          // No return value (void)
+        };
         const optionsHandler: HandlerCallback = () => {
           executionOrder.push('options');
           return { allowed: ['GET', 'POST'] };
         };
-        const afterHook: HandlerCallback = () => executionOrder.push('after');
+        const afterHook: HandlerCallback = () => {
+          executionOrder.push('after');
+          // No return value (void)
+        };
 
         setup.options('/api/methods', optionsHandler, {
           beforeHooks: [beforeHook],
