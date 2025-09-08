@@ -5,6 +5,7 @@ import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js';
 import type { HttpMethodHandlers, RouteGroupMethod } from '@core/setup/utils/routeUtils.js';
 import { buildRoutePath, ensureCompleteRouteOptions, mergeRouteOptions } from '@core/setup/utils/routeUtils.js';
+import type { RouteGroup } from '@typedefs/public/Setup.js';
 
 export interface InternalGroupApp extends HttpMethodHandlers {
   readonly group: RouteGroupMethod;
@@ -57,7 +58,7 @@ export class GroupApp implements InternalGroupApp {
   options = this._createRouteHandler(httpMethod.options);
 
   // Nested group support
-  group(prefix: string, callback: (group: InternalGroupApp) => void, options?: InternalRouteRegistryOptions): InternalGroupApp {
+  group(prefix: string, callback: (group: RouteGroup) => void, options?: InternalRouteRegistryOptions): RouteGroup {
     const nestedPrefix = buildRoutePath(this._prefix, prefix);
     const nestedOptions = mergeRouteOptions(this._options, options);
 

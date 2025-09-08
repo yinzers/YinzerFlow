@@ -9,8 +9,8 @@ import type { InternalRouteRegistryOptions } from '@typedefs/internal/InternalRo
 import { RouteRegistryImpl } from '@core/setup/RouteRegistryImpl.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { GroupApp } from '@core/setup/GroupApp.ts';
-import type { InternalGroupApp } from '@core/setup/GroupApp.ts';
 import { ensureCompleteRouteOptions } from '@core/setup/utils/routeUtils.js';
+import type { RouteGroup } from '@typedefs/public/Setup.js';
 
 export class SetupImpl implements InternalSetupImpl {
   readonly _configuration: InternalServerConfiguration;
@@ -54,7 +54,7 @@ export class SetupImpl implements InternalSetupImpl {
     this._routeRegistry._register({ method: httpMethod.options, handler, path, options: ensureCompleteRouteOptions(options), params: {} });
   }
 
-  group(prefix: string, callback: (group: InternalGroupApp) => void, options?: InternalRouteRegistryOptions): InternalGroupApp {
+  group(prefix: string, callback: (group: RouteGroup) => void, options?: InternalRouteRegistryOptions): RouteGroup {
     // Create a group app that can handle nested groups and route registration
     const groupApp = new GroupApp(this, prefix, options);
 

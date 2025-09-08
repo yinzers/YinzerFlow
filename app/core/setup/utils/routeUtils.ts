@@ -1,7 +1,7 @@
 import type { InternalRouteRegistryOptions } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import type { InternalSetupMethod } from '@typedefs/internal/InternalSetupImpl.js';
-import type { InternalGroupApp } from '@core/setup/GroupApp.js';
 import type { httpMethod } from '@constants/http.ts';
+import type { RouteGroup } from '@typedefs/public/Setup.js';
 
 /**
  * Utility type that maps HTTP methods to their handler functions
@@ -13,7 +13,7 @@ export type HttpMethodHandlers = Record<Lowercase<keyof typeof httpMethod>, Inte
  * Route group method signature for consistent typing across interfaces
  * Used for both main setup and nested group registration
  */
-export type RouteGroupMethod = (prefix: string, callback: (group: InternalGroupApp) => void, options?: InternalRouteRegistryOptions) => InternalGroupApp;
+export type RouteGroupMethod = (prefix: string, callback: (group: RouteGroup) => void, options?: InternalRouteRegistryOptions) => RouteGroup;
 
 /**
  * Ensure route options are complete by filling in missing optional properties
