@@ -11,6 +11,7 @@ import type { Colors } from '@typedefs/constants/colors.js';
  * Simple, clean logging with Pittsburgh personality!
  * - Numeric levels (0=off, 1=error, 2=warn, 3=info)
  * - Smart formatting: Objects get pretty JSON, strings get YinzerFlow colors
+ * - Table support: Use log.table() for structured data display
  * - Network logging is separate (see networkLog.ts)
  */
 
@@ -61,6 +62,18 @@ const _logWithStyle = (level: LogLevel, prefix: string, ...args: Array<unknown>)
   console.info(`${logPrefix}`, `${bodyColor}`, ...args, `${colors.reset} - ${_getRandomPhrase('positive')}`);
 };
 
+const _logTable = (prefix: string, data: unknown, ...additionalArgs: Array<unknown>): void => {
+  const timestamp = _formatTimestamp();
+  const logPrefix = `${colors.magenta}[${prefix}] 📊 [${timestamp}] [TABLE]${colors.reset}`;
+
+  console.log(`${logPrefix} - ${_getRandomPhrase('positive')}`);
+  console.table(data);
+
+  if (additionalArgs.length > 0) {
+    console.log(`${colors.gray}Additional context:${colors.reset}`, ...additionalArgs);
+  }
+};
+
 /**
  * Creates a logger instance with isolated state
  *
@@ -73,6 +86,7 @@ const createLogger = (
   info: (...args: Array<unknown>) => void;
   warn: (...args: Array<unknown>) => void;
   error: (...args: Array<unknown>) => void;
+  table: (data: unknown, ...additionalArgs: Array<unknown>) => void;
   levels: typeof LOG_LEVELS;
 } => {
   const state = {
@@ -116,10 +130,23 @@ const createLogger = (
     _logWithStyle('error', state.prefix, ...args);
   };
 
+  const table = (data: unknown, ...additionalArgs: Array<unknown>): void => {
+    if (_getNumericLevel(state.logLevel) < LOG_LEVELS.info) return;
+
+    if (state.logger) {
+      // Custom loggers probably don't have table method, so fallback to info
+      state.logger.info('TABLE:', data, ...additionalArgs);
+      return;
+    }
+
+    _logTable(state.prefix, data, ...additionalArgs);
+  };
+
   return {
     info,
     warn,
     error,
+    table,
     levels: LOG_LEVELS,
   };
 };

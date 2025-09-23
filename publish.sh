@@ -3,7 +3,6 @@
 # Exit on error
 set -e
 
-# Publish
-cd lib
-npm publish --access public --verbose
-cd ..
+# Then publish
+echo "Publishing package..."
+docker compose run --rm node sh -c "cd lib && npm publish --access public --verbose"
