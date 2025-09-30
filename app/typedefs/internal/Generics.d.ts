@@ -113,7 +113,7 @@ export interface InternalHandlerCallbackGenerics {
    * };
    * ```
    */
-  query?: Record<string, string>;
+  query?: Record<string, unknown>;
 
   /**
    * The expected type of route parameters

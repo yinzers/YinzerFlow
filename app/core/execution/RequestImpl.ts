@@ -19,7 +19,7 @@ export class RequestImpl implements InternalRequestImpl {
   protocol: string;
   headers: Partial<Record<InternalHttpHeaders, string>>;
   body: unknown;
-  query: Record<string, string>;
+  query: Record<string, unknown>;
   params: Record<string, string>;
   ipAddress: string;
   rawBody: Buffer | string;
