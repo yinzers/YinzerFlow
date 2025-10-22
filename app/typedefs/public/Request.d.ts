@@ -1,5 +1,5 @@
 import type { InternalHttpHeaders, InternalHttpMethod } from '@typedefs/constants/http.js';
-import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generics.d.ts';
+import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.d.ts';
 
 /**
  * Request object containing all incoming request data and metadata.
@@ -8,7 +8,7 @@ import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generic
  * query parameters, route parameters, and client information. It's fully
  * typed through generics for type-safe access to request data.
  *
- * @template T - Extends InternalHandlerCallbackGenerics for custom typing
+ * @template T - Extends HandlerCallbackGenerics for custom typing
  *
  * @example
  * ```typescript
@@ -30,7 +30,7 @@ import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generic
  * };
  *
  * // Typed request with custom body and query
- * interface UserRequest extends InternalHandlerCallbackGenerics {
+ * interface UserRequest extends HandlerCallbackGenerics {
  *   body: { name: string; email: string; age: number };
  *   query: { page: string; limit: string };
  *   params: { id: string };
@@ -56,11 +56,11 @@ import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generic
  * ```
  *
  * @see {@link Context} for the complete request context
- * @see {@link InternalHandlerCallbackGenerics} for custom typing options
+ * @see {@link HandlerCallbackGenerics} for custom typing options
  * @see {@link InternalHttpMethod} for available HTTP methods
  * @see {@link InternalHttpHeaders} for available HTTP headers
  */
-export interface Request<T extends InternalHandlerCallbackGenerics = InternalHandlerCallbackGenerics> {
+export interface Request<T extends HandlerCallbackGenerics = HandlerCallbackGenerics> {
   /**
    * The HTTP protocol version (e.g., "HTTP/1.1").
    *
@@ -191,7 +191,7 @@ export interface Request<T extends InternalHandlerCallbackGenerics = InternalHan
    * };
    *
    * // Typed body with generics
-   * interface CreateUserRequest extends InternalHandlerCallbackGenerics {
+   * interface CreateUserRequest extends HandlerCallbackGenerics {
    *   body: { name: string; email: string; age: number };
    * }
    *
@@ -208,7 +208,7 @@ export interface Request<T extends InternalHandlerCallbackGenerics = InternalHan
    * };
    * ```
    *
-   * @see {@link InternalHandlerCallbackGenerics} for custom body typing
+   * @see {@link HandlerCallbackGenerics} for custom body typing
    */
   body: T['body'];
 
@@ -238,7 +238,7 @@ export interface Request<T extends InternalHandlerCallbackGenerics = InternalHan
    * };
    *
    * // Typed query parameters with generics
-   * interface UserListRequest extends InternalHandlerCallbackGenerics {
+   * interface UserListRequest extends HandlerCallbackGenerics {
    *   query: { page: string; limit: string; search?: string; sort?: string };
    * }
    *
@@ -259,7 +259,7 @@ export interface Request<T extends InternalHandlerCallbackGenerics = InternalHan
    * };
    * ```
    *
-   * @see {@link InternalHandlerCallbackGenerics} for custom query typing
+   * @see {@link HandlerCallbackGenerics} for custom query typing
    */
   query: T['query'];
 
@@ -290,7 +290,7 @@ export interface Request<T extends InternalHandlerCallbackGenerics = InternalHan
    * };
    *
    * // Typed route parameters with generics
-   * interface UserDetailRequest extends InternalHandlerCallbackGenerics {
+   * interface UserDetailRequest extends HandlerCallbackGenerics {
    *   params: { id: string; tab?: string };
    * }
    *
@@ -314,7 +314,7 @@ export interface Request<T extends InternalHandlerCallbackGenerics = InternalHan
    * };
    * ```
    *
-   * @see {@link InternalHandlerCallbackGenerics} for custom params typing
+   * @see {@link HandlerCallbackGenerics} for custom params typing
    */
   params: T['params'];
 

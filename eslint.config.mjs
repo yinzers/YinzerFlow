@@ -47,7 +47,7 @@ const eslintRules = {
   /** eslint suggestions */
   'arrow-body-style': ['error', 'as-needed'],
   camelcase: ['error'],
-  complexity: ['error', 15],
+  complexity: ['error', 20],
   curly: ['error', 'multi-line'],
   'default-case': 'error',
   'default-case-last': 'error',

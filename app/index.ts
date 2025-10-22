@@ -1,10 +1,28 @@
-// Main YinzerFlow exports
+// ============================================
+// Main Framework Export
+// ============================================
 export { YinzerFlow } from '@core/YinzerFlow.ts';
 
-// Logging system exports
+// ============================================
+// Public Helper Functions
+// ============================================
+// Logging utilities
 export { log, createLogger } from '@core/utils/log.ts';
 
-// Constants exports
+// Rate limiting hooks
+export { rateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
+
+// ============================================
+// Constants
+// ============================================
+// ANSI color codes for terminal output
 export { colors } from '@constants/colors.ts';
+
+// HTTP status codes and messages
 export { httpStatus, httpStatusCode } from '@constants/http.ts';
+
+// Logging levels
 export { logLevels } from '@constants/log.ts';
+
+// Rate limiting algorithms
+export { rateLimitAlgorithm } from '@constants/rateLimit.ts';

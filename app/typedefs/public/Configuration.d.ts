@@ -36,7 +36,7 @@ import type {
  *
  * // Full configuration example
  * const app = new YinzerFlow({
- *   port: 9000,
+ *   port: 3000,
  *   host: '0.0.0.0',
  *   logLevel: 'debug',
  *   networkLogs: true,

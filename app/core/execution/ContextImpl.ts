@@ -26,7 +26,7 @@ import type { Response } from '@typedefs/public/Response.ts';
  * 3. **Request Processing**: Handles raw request data and builds structured request
  * 4. **Response Control**: Provides methods to control HTTP response behavior
  * 5. **State Management**: Allows middleware and handlers to store custom data
- * 6. **Cleanup**: Automatically manages memory and resource cleanup
+ * 6. **Cleanup**: Automatically garbage collected when request completes
  *
  * @example
  * ```typescript
@@ -121,8 +121,8 @@ export class ContextImpl implements InternalContextImpl {
    * User-defined state data that persists throughout the request lifecycle.
    *
    * This property allows middleware and route handlers to store and share
-   * custom data. The state is request-scoped and will be garbage collected
-   * after the request completes.
+   * custom data. The state is request-scoped and will be automatically garbage
+   * collected when the request completes and the context goes out of scope.
    *
    * ## State Lifecycle
    *
@@ -132,7 +132,7 @@ export class ContextImpl implements InternalContextImpl {
    * 4. **Route Handler**: Your handler can access and modify state
    * 5. **Route Hooks**: `afterHooks` can access state and modify response
    * 6. **Global Hooks**: `afterAll` hooks can access state and modify response
-   * 7. **Request End**: State is automatically garbage collected
+   * 7. **Request End**: Context goes out of scope and is automatically garbage collected
    *
    * @example
    * ```typescript

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { httpMethod, httpStatus, httpStatusCode } from '@constants/http.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
-import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generics.d.ts';
+import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.d.ts';
 
 // Reusable test data builders
 const createTestHooks = () => ({
@@ -769,7 +769,7 @@ describe('SetupImpl', () => {
       const setup = new SetupImpl();
 
       // Define typed state interface
-      interface TypedState extends InternalHandlerCallbackGenerics {
+      interface TypedState extends HandlerCallbackGenerics {
         state: {
           user: { id: number; name: string };
           permissions: Array<string>;

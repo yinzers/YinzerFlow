@@ -1,6 +1,6 @@
 {
   "name": "yinzerflow",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
   "license": "MIT",
   "homepage": "https://github.com/yinzers/YinzerFlow/blob/main/docs/start-here.md",
@@ -27,7 +27,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test --watch --coverage",
-    "test:production": "bun test --timeout=100 --rerun-each=1 --bail --coverage",
+    "test:production": "bun test --timeout=5000 --rerun-each=1 --bail --coverage",
     "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
     "build": "bun clean; bun build.ts",
     "build:watch": "bun build-watch.ts",

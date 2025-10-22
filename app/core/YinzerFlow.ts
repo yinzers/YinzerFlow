@@ -8,6 +8,10 @@ import { log } from '@core/utils/log.ts';
 import type { ServerConfiguration } from '@typedefs/public/Configuration.js';
 import { getStatusEmoji, logPerformanceDetails, networkLog } from '@core/utils/networkLog.ts';
 import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInBytes.ts';
+import { _createGlobalRateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
+import { RateLimiter } from '@core/modules/rateLimit/RateLimiter.ts';
+import { _convertTimeToMs } from '@core/utils/time.ts';
+import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
 
 /**
  * Main YinzerFlow application class for building HTTP servers.
@@ -135,6 +139,7 @@ import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInB
 export class YinzerFlow extends SetupImpl {
   private _isListening = false;
   private _server?: ReturnType<typeof createServer>;
+  private _globalRateLimiter?: RateLimiter | undefined;
 
   constructor(configuration?: ServerConfiguration) {
     super(configuration);
@@ -150,9 +155,20 @@ export class YinzerFlow extends SetupImpl {
       networkLog.enable(this._configuration.networkLogger);
     }
 
+    // Setup global rate limiting, if there is none provided, it will be enabled by default
+    const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit);
+    if (configuration?.rateLimit?.enabled) {
+      this._globalRateLimiter = new RateLimiter(rateLimitConfig);
+      const hook = _createGlobalRateLimitHook(this._globalRateLimiter);
+      this.beforeAll([hook]);
+    }
+
     // Setup automatic graceful shutdown if enabled
-    if (this._configuration.autoGracefulShutdown) {
-      this._setupGracefulShutdown();
+    if (this._configuration.gracefulShutdownTimeout) {
+      const gracefulShutdownTimeout = _convertTimeToMs(this._configuration.gracefulShutdownTimeout);
+      if (gracefulShutdownTimeout > 0) {
+        this._setupGracefulShutdown(gracefulShutdownTimeout);
+      }
     }
   }
 
@@ -340,6 +356,12 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
+    // Clean up rate limiter resources (intervals, memory)
+    if (this._globalRateLimiter) {
+      this._globalRateLimiter.destroy();
+      this._globalRateLimiter = undefined;
+    }
+
     return new Promise((resolve) => {
       if (!this._server) {
         this._isListening = false; // Probably redundant but just in case
@@ -370,20 +392,26 @@ export class YinzerFlow extends SetupImpl {
   /**
    * Setup automatic graceful shutdown handlers
    */
-  private _setupGracefulShutdown(): void {
+  private _setupGracefulShutdown(gracefulShutdownTimeout: number): void {
+    if (gracefulShutdownTimeout <= 0) {
+      return;
+    }
+
     // Only setup if no handlers are already registered
     if (process.listenerCount('SIGTERM') === 0 && process.listenerCount('SIGINT') === 0) {
       const shutdown = (signal: string): void => {
-        log.info(`🛑 Received ${signal}, shutting down gracefully...`);
-        this.close()
-          .then(() => {
-            log.info('✅ Server shut down gracefully');
-            process.exit(0);
-          })
-          .catch((error) => {
-            log.error('❌ Error during graceful shutdown:', error);
-            process.exit(1);
-          });
+        log.info(`🛑 Received ${signal}, shutting down gracefully in ${this._configuration.gracefulShutdownTimeout}...`);
+        setTimeout(() => {
+          this.close()
+            .then(() => {
+              log.info('✅ Server shut down gracefully');
+              process.exit(0);
+            })
+            .catch((error) => {
+              log.error('❌ Error during graceful shutdown:', error);
+              process.exit(1);
+            });
+        }, gracefulShutdownTimeout);
       };
 
       process.on('SIGTERM', () => shutdown('SIGTERM'));

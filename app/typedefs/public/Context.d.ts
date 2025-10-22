@@ -1,4 +1,4 @@
-import type { InternalHandlerCallbackGenerics } from '@typedefs/internal/Generics.d.ts';
+import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.d.ts';
 import type { Request } from '@typedefs/public/Request.js';
 import type { Response } from '@typedefs/public/Response.js';
 
@@ -9,7 +9,7 @@ import type { Response } from '@typedefs/public/Response.js';
  * It contains the request and response objects, plus any custom state data
  * defined by the user through generics.
  *
- * @template T - Extends InternalHandlerCallbackGenerics to provide custom typing
+ * @template T - Extends HandlerCallbackGenerics to provide custom typing
  *
  * @example
  * ```typescript
@@ -32,7 +32,7 @@ import type { Response } from '@typedefs/public/Response.js';
  * };
  *
  * // Advanced usage with custom state typing
- * interface AuthContext extends InternalHandlerCallbackGenerics {
+ * interface AuthContext extends HandlerCallbackGenerics {
  *   state: {
  *     user: User;
  *     permissions: string[];
@@ -55,7 +55,7 @@ import type { Response } from '@typedefs/public/Response.js';
  * };
  * ```
  */
-export interface Context<T extends InternalHandlerCallbackGenerics = InternalHandlerCallbackGenerics> {
+export interface Context<T extends HandlerCallbackGenerics = HandlerCallbackGenerics> {
   /**
    * The incoming request object containing all request data and metadata
    *
@@ -153,7 +153,7 @@ export interface Context<T extends InternalHandlerCallbackGenerics = InternalHan
  * - **Void**: No response body (useful for middleware)
  * - **Error**: Thrown errors are caught by error handlers
  *
- * @template T - Extends InternalHandlerCallbackGenerics for custom typing
+ * @template T - Extends HandlerCallbackGenerics for custom typing
  * @param ctx - The request context containing request, response, and state objects
  * @param error - Optional error object (only provided to error handlers)
  * @returns Response data, promise, or void
@@ -169,7 +169,7 @@ export interface Context<T extends InternalHandlerCallbackGenerics = InternalHan
  * };
  *
  * // Typed route handler with custom state
- * interface UserContext extends InternalHandlerCallbackGenerics {
+ * interface UserContext extends HandlerCallbackGenerics {
  *   body: { name: string; email: string };
  *   response: { id: string; name: string; email: string };
  *   state: { user: User; permissions: string[] };
@@ -212,9 +212,9 @@ export interface Context<T extends InternalHandlerCallbackGenerics = InternalHan
  * ```
  *
  * @see {@link Context} for context interface details
- * @see {@link InternalHandlerCallbackGenerics} for custom typing options
+ * @see {@link HandlerCallbackGenerics} for custom typing options
  */
-export type HandlerCallback<T extends InternalHandlerCallbackGenerics = InternalHandlerCallbackGenerics> = (
+export type HandlerCallback<T extends HandlerCallbackGenerics = HandlerCallbackGenerics> = (
   ctx: Context<T>,
   error?: unknown,
 ) => Promise<T['response'] | void> | T['response'] | void;

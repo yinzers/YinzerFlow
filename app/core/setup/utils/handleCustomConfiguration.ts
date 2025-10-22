@@ -2,6 +2,7 @@ import type { ServerConfiguration } from '@typedefs/public/Configuration.js';
 import type { InternalServerConfiguration } from '@typedefs/internal/InternalConfiguration.js';
 import { httpStatusCode } from '@constants/http.ts';
 import { log } from '@core/utils/log.ts';
+import { _convertTimeToMs } from '@core/utils/time.ts';
 
 /**
  * Default CORS configuration for when CORS is enabled
@@ -64,18 +65,12 @@ const DEFAULT_CONFIGURATION: InternalServerConfiguration = {
   port: 5000,
   host: '0.0.0.0',
   networkLogs: false,
+  gracefulShutdownTimeout: '15m', // Enabled by default
   cors: {
     enabled: false, // Disabled by default
   },
   bodyParser: DEFAULT_BODY_PARSER_CONFIG,
   ipSecurity: DEFAULT_IP_SECURITY_CONFIG,
-  connectionOptions: {
-    socketTimeout: 30000,
-    gracefulShutdownTimeout: 30000,
-    keepAliveTimeout: 65000,
-    headersTimeout: 66000,
-  },
-  autoGracefulShutdown: true, // Enabled by default
 };
 
 /**

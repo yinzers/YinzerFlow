@@ -1,20 +1,25 @@
 # YinzerFlow
 
-A lightweight, modular HTTP server framework for Node.js built with TypeScript. Features comprehensive security protections, Pittsburgh personality, and flexible configuration options.
+A lightweight, modular HTTP server framework for Node.js and Bun built with TypeScript. This is a **framework project**, not an API or application. The code here is meant to be used by other developers to build their own applications.
+
+## ✨ Features
+
+YinzerFlow is designed for developers who want:
+
+- **Security-first** — Built-in protections against common web vulnerabilities
+- **TypeScript-first** — Full type safety and IntelliSense support (JavaScript is supported natively)
+- **Pittsburgh personality** — Witty logging and error messages
+- **Flexible configuration** — Comprehensive options for different use cases
+- **Modular architecture** — Scales from simple APIs to complex applications
 
 ## 🚀 Quick Start
 
-For complete documentation and examples, see **[docs/start-here.md](docs/start-here.md)**.
-
-## 📦 Installation
-
 ```bash
+# Install
 npm install yinzerflow
 # or
 bun add yinzerflow
 ```
-
-## 🔧 Basic Usage
 
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
@@ -28,30 +33,26 @@ app.get('/hello', () => {
 await app.listen();
 ```
 
-## ✨ Features
-
-- **Security-first** - Built-in protections against common web vulnerabilities
-- **TypeScript-first** - Full type safety and IntelliSense support
-- **Pittsburgh personality** - Witty logging and error messages
-- **Flexible configuration** - Comprehensive options for different use cases
-- **Modular architecture** - Scales from simple APIs to complex applications
+YinzerFlow works right out of the box—no configuration required. However, plenty of configuration options are available.
 
 ## 📚 Documentation
 
-- **[Getting Started](docs/start-here.md)** - Complete guide and examples
-- **[Routes](docs/routes.md)** - Routing system and handlers
-- **[Request/Response](docs/request.md)** - Request and response objects
-- **[Logging](docs/core/logging.md)** - Logging configuration and customization
-- **[Advanced Configuration](docs/advanced-configuration-options.md)** - Detailed configuration options
+For complete documentation, examples, and guides, see the **[docs/](docs/)** folder:
 
-## 🛡️ Security
+- **[Core Concepts](docs/core/core-concepts.md)** - Context, Request, Response, Routing, and Hooks
+- **[Configuration](docs/configuration/configuration.md)** - All configuration options
+- **[Modules](docs/modules/)** - Built-in modules (Rate Limiting, CORS, IP Security, Body Parsing)
 
-YinzerFlow includes comprehensive security features:
-- IP security and rate limiting
-- CORS protection
-- Body parsing with security limits
-- Header validation and sanitization
-- Prototype pollution protection
+## 🛡️ Built-in Security
+
+YinzerFlow includes comprehensive security features out of the box:
+
+- **Rate limiting** - Protection against DoS attacks (enabled by default)
+- **IP security** - Advanced IP validation and spoofing detection
+- **CORS protection** - Configurable cross-origin resource sharing
+- **Body parsing limits** - Protection against payload attacks
+- **Header validation** - Automatic sanitization and size limits
+- **CRLF injection prevention** - Secure header handling
 
 ## 📄 License
 

@@ -1,5 +1,7 @@
 import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { Logger } from '@typedefs/public/Logger.js';
+import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
+import type { TimeString } from '@typedefs/public/Time.js';
 
 /**
  * Internal CORS Configuration Options
@@ -89,49 +91,6 @@ export interface InternalCorsEnabledConfiguration {
    * @default 204
    */
   optionsSuccessStatus: InternalHttpStatusCode;
-}
-
-/**
- * Internal Connection Options
- */
-export interface InternalConnectionOptions {
-  /**
-   * Default socket timeout in milliseconds (30 seconds)
-   *
-   * Standard timeout for most socket connections.
-   * It is long enough for slow clients but short enough to prevent idle connections from staying open indefinitely.
-   */
-  socketTimeout: number;
-
-  /**
-   * Default graceful shutdown timeout in milliseconds (30 seconds)
-   *
-   * This is the maximum time to wait for a connection to complete before the server will close it.
-   */
-  gracefulShutdownTimeout: number;
-
-  /**
-   * Default keep-alive timeout in milliseconds (65 seconds)
-   *
-   * This is the maximum time a connection can be idle before the server will close it.
-   * This is to allow for a connection to stay open for a period of time so subsequent requests can be handled without a new connection.
-   * This is also to prevent a connection from staying open indefinitely.
-   * This is also useful for load balancing and preventing a single server from being overwhelmed by a large number of connections.
-   * AWS recommends a keep-alive timeout of 65 seconds because there idle timeout is 60 seconds.
-   */
-  keepAliveTimeout: number;
-
-  /**
-   * Default headers timeout in milliseconds (66 seconds)
-   *
-   * This is the maximum time to wait for a header from the client.
-   * This is to allow for a connection to stay open for a period of time so subsequent requests can be handled without a new connection.
-   * This is also to prevent a connection from staying open indefinitely.
-   * This is also useful for load balancing and preventing a single server from being overwhelmed by a large number of connections.
-   * It is recommended to set this value to be greater than the keep-alive timeout to prevent the server from closing the connection prematurely
-   * before the keep-alive timeout has expired.
-   */
-  headersTimeout: number;
 }
 
 /**
@@ -391,14 +350,21 @@ export interface InternalServerConfiguration {
   ipSecurity: InternalIpValidationConfig;
 
   /**
-   * Server connection options
+   * Rate limiting configuration
+   * Protects against DoS attacks and API abuse by limiting requests per IP
+   * @default enabled with 100 requests per 15 minutes
    */
-  connectionOptions: InternalConnectionOptions;
+  rateLimit?: RateLimitOptions;
 
   /**
-   * Automatic graceful shutdown configuration
-   * When enabled, YinzerFlow automatically sets up signal handlers for SIGTERM and SIGINT
+   * Graceful shutdown timeout configuration
+   * When set to a value greater than 0, YinzerFlow automatically sets up signal handlers for SIGTERM and SIGINT
+   * and waits for all requests to complete before shutting down.
+   * If the value is 0 (disabled), you must manually handle graceful shutdown by calling `app.close()` and `process.exit(0)`.
+   * Note: If using container orchestrations, your container configuration should be at least 1 second more
+   * than the graceful shutdown timeout to ensure all requests are completed, otherwise the container will be
+   * killed before all requests are completed.
    * @default true
    */
-  autoGracefulShutdown: boolean;
+  gracefulShutdownTimeout: TimeString | number;
 }
