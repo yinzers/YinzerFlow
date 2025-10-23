@@ -60,9 +60,10 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
       windowStart: now,
     };
 
-    // Check if we've moved to a new window
+    // Calculate time elapsed from the ORIGINAL window start (before any updates)
     const timeElapsed = now - entry.windowStart;
 
+    // Check if we've moved to a new window
     if (timeElapsed >= this._config.window) {
       // Move to new window
       const windowsPassed = Math.floor(timeElapsed / this._config.window);
@@ -77,11 +78,14 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
         entry.currentWindowCount = 0;
       }
 
-      entry.windowStart = now;
+      // Update window start to the beginning of the current window
+      entry.windowStart = now - (timeElapsed % this._config.window);
     }
 
     // Calculate weighted count using sliding window formula
-    const percentageIntoCurrentWindow = timeElapsed / this._config.window;
+    // Use the UPDATED windowStart for accurate percentage calculation
+    const currentTimeElapsed = now - entry.windowStart;
+    const percentageIntoCurrentWindow = currentTimeElapsed / this._config.window;
     const weightedPreviousCount = entry.previousWindowCount * (1 - percentageIntoCurrentWindow);
     const estimatedCount = entry.currentWindowCount + weightedPreviousCount;
 

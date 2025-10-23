@@ -1,7 +1,10 @@
+import { Redis } from 'ioredis';
+import type { RedisClientType } from 'redis';
 import type { InternalRateLimitStore } from '@typedefs/internal/modules/rateLimit/index.js';
 import { log } from '@core/utils/log.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import type { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
+import type { RedisClient } from '@typedefs/public/RateLimit.js';
 
 /**
  * Create a Redis-based store for rate limiting data
@@ -83,107 +86,166 @@ export const createRedisStore = async <T>(config: RateLimitConfig): Promise<Inte
   // Initialize connection validation (non-blocking)
   await _validateConnection();
 
-  /**
-   * Build Redis key with prefix
-   */
-  const _buildKey = (key: string): string => `${keyPrefix}${key}`;
-
-  /**
-   * Serialize value to JSON string
-   */
-  const _serialize = (value: T): string => {
-    try {
-      return JSON.stringify(value);
-    } catch (error) {
-      log.error('[RedisStore] Failed to serialize value:', error);
-      throw new Error('Failed to serialize rate limit data');
-    }
-  };
-
-  /**
-   * Deserialize JSON string to value
-   */
-  const _deserialize = (json: string): T => {
-    try {
-      return JSON.parse(json) as T;
-    } catch (error) {
-      log.error('[RedisStore] Failed to deserialize value:', error);
-      throw new Error('Failed to deserialize rate limit data');
-    }
-  };
-
-  /**
-   * Handle Redis errors gracefully
-   */
-  const _handleError = (operation: string, error: unknown): void => {
-    if (connectionHealthy) {
-      log.warn(`[RedisStore] Redis ${operation} failed (connection was healthy):`, error);
-    } else {
-      log.error(`[RedisStore] Redis ${operation} failed (connection unhealthy):`, error);
-    }
-    // Don't throw - allow the application to continue with degraded functionality
-  };
-
   return {
-    /**
-     * Get value from Redis
-     */
-    get: async (key: string): Promise<T | undefined> => {
-      try {
-        const redisKey = _buildKey(key);
-        const value = await client.get(redisKey);
-
-        if (value === null) {
-          return undefined;
-        }
-
-        return _deserialize(value);
-      } catch (error) {
-        _handleError('GET', error);
-        return undefined;
-      }
-    },
-
-    /**
-     * Set value in Redis with TTL
-     */
-    set: async (key: string, value: T): Promise<void> => {
-      try {
-        const redisKey = _buildKey(key);
-        const serialized = _serialize(value);
-
-        await client.setEx(redisKey, Math.floor(config.window / 1000), serialized);
-      } catch (error) {
-        _handleError('SET', error);
-      }
-    },
-
-    /**
-     * Delete key from Redis
-     */
-    delete: async (key: string): Promise<void> => {
-      try {
-        const redisKey = _buildKey(key);
-        await client.del(redisKey);
-      } catch (error) {
-        _handleError('DELETE', error);
-      }
-    },
-
-    /**
-     * Delete all keys related to this store
-     */
-    destroy: async (): Promise<void> => {
-      try {
-        const pattern = `${keyPrefix}*`;
-        const keys = await client.keys(pattern);
-        if (keys.length > 0) {
-          await Promise.all(keys.map(async (key) => client.del(key)));
-          log.info(`[RedisStore] Destroyed ${keys.length} rate limit keys`);
-        }
-      } catch (error) {
-        _handleError('DESTROY', error);
-      }
-    },
+    get: async (key: string) => _get({ client, key, keyPrefix, connectionHealthy }),
+    set: async (key: string, value: T) => _set({ client, config, key, value, keyPrefix, connectionHealthy }),
+    delete: async (key: string) => _delete({ client, key, keyPrefix, connectionHealthy }),
+    destroy: async () => _destroy({ client, keyPrefix, connectionHealthy }),
   };
+};
+
+/**
+ * Build Redis key with prefix
+ */
+const _buildKey = (key: string, keyPrefix: string): string => `${keyPrefix}${key}`;
+
+/**
+ * Serialize value to JSON string
+ */
+const _serialize = <T>(value: T): string => {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    log.error('[RedisStore] Failed to serialize value:', error);
+    throw new Error('Failed to serialize rate limit data');
+  }
+};
+
+/**
+ * Deserialize JSON string to value
+ */
+const _deserialize = <T>(json: string): T => {
+  try {
+    return JSON.parse(json) as T;
+  } catch (error) {
+    log.error('[RedisStore] Failed to deserialize value:', error);
+    throw new Error('Failed to deserialize rate limit data');
+  }
+};
+
+/**
+ * Handle Redis errors gracefully
+ */
+const _handleError = (operation: string, error: unknown, connectionHealthy: boolean): void => {
+  if (connectionHealthy) {
+    log.warn(`[RedisStore] Redis ${operation} failed (connection was healthy):`, error);
+  } else {
+    log.error(`[RedisStore] Redis ${operation} failed (connection unhealthy):`, error);
+  }
+  // Don't throw - allow the application to continue with degraded functionality
+};
+
+/**
+ * Set key with TTL, handling both ioredis and redis package differences
+ */
+const _setWithTtl = async ({ client, key, value, ttlSeconds }: { client: RedisClient; key: string; value: string; ttlSeconds: number }): Promise<void> => {
+  if (client instanceof Redis) {
+    await client.set(key, value, 'EX', ttlSeconds);
+  }
+
+  await (client as RedisClientType).set(key, value, { EX: ttlSeconds });
+};
+
+/**
+ * Get value from Redis
+ */
+const _get = async <T>({
+  client,
+  key,
+  keyPrefix,
+  connectionHealthy,
+}: {
+  client: RedisClient;
+  key: string;
+  keyPrefix: string;
+  connectionHealthy: boolean;
+}): Promise<T | undefined> => {
+  try {
+    const redisKey = _buildKey(key, keyPrefix);
+    const value = await client.get(redisKey);
+
+    if (value === null) {
+      return undefined;
+    }
+
+    return _deserialize<T>(value);
+  } catch (error) {
+    _handleError('GET', error, connectionHealthy);
+    return undefined;
+  }
+};
+
+/**
+ * Set value in Redis with TTL
+ */
+const _set = async <T>({
+  client,
+  config,
+  key,
+  value,
+  keyPrefix,
+  connectionHealthy,
+}: {
+  client: RedisClient;
+  config: RateLimitConfig;
+  key: string;
+  value: T;
+  keyPrefix: string;
+  connectionHealthy: boolean;
+}): Promise<void> => {
+  try {
+    const redisKey = _buildKey(key, keyPrefix);
+    const serialized = _serialize(value);
+
+    // Check if key exists first
+    const exists = await client.exists(redisKey);
+
+    if (exists) {
+      // Key exists - update value but preserve TTL
+      await client.set(redisKey, serialized);
+    } else {
+      // New key - set with TTL
+      await _setWithTtl({ client, key: redisKey, value: serialized, ttlSeconds: Math.floor(config.window / 1000) });
+    }
+  } catch (error) {
+    _handleError('SET', error, connectionHealthy);
+  }
+};
+
+/**
+ * Delete key from Redis
+ */
+const _delete = async ({
+  client,
+  key,
+  keyPrefix,
+  connectionHealthy,
+}: {
+  client: RedisClient;
+  key: string;
+  keyPrefix: string;
+  connectionHealthy: boolean;
+}): Promise<void> => {
+  try {
+    const redisKey = _buildKey(key, keyPrefix);
+    await client.del(redisKey);
+  } catch (error) {
+    _handleError('DELETE', error, connectionHealthy);
+  }
+};
+
+/**
+ * Delete all keys related to this store
+ */
+const _destroy = async ({ client, keyPrefix, connectionHealthy }: { client: RedisClient; keyPrefix: string; connectionHealthy: boolean }): Promise<void> => {
+  try {
+    const pattern = `${keyPrefix}*`;
+    const keys = await client.keys(pattern);
+    if (keys.length > 0) {
+      await Promise.all(keys.map(async (key) => client.del(key)));
+      log.info(`[RedisStore] Destroyed ${keys.length} rate limit keys`);
+    }
+  } catch (error) {
+    _handleError('DESTROY', error, connectionHealthy);
+  }
 };

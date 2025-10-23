@@ -1,4 +1,5 @@
-import type { createClient } from 'redis';
+import type { Redis } from 'ioredis';
+import type { RedisClientType } from 'redis';
 import type { TimeString } from './Time.js';
 import type { RateLimitAlgorithm, RateLimitStoreType } from '@typedefs/constants/rateLimit.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
@@ -7,6 +8,8 @@ interface BaseStoreConfig {
   /** Type of the store @default 'memory' */
   type: RateLimitStoreType;
 }
+
+export type RedisClient = Redis | RedisClientType;
 
 export interface MemoryStoreConfig extends BaseStoreConfig {
   type: 'memory';
@@ -18,7 +21,7 @@ export interface MemoryStoreConfig extends BaseStoreConfig {
 export interface RedisStoreConfig extends BaseStoreConfig {
   type: 'redis';
   /** Redis client instance of ioredis or redis */
-  client: ReturnType<typeof createClient>;
+  client: RedisClient;
   /** Key prefix for the rate limit keys @default 'rate_limit:' */
   keyPrefix?: string;
   /** Maximum number of connection retry attempts @default 3 */
