@@ -4,6 +4,7 @@ import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
+import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.js';
 
 /**
  * Create a rate limiting hook for use in route options
@@ -40,7 +41,7 @@ import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
  * ```
  */
 export const rateLimitHook =
-  (rateLimitOptions: RateLimitOptions): HandlerCallback<{ response: { success: false; message: string } }> =>
+  <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions): HandlerCallback<T> =>
   // Return the hook function
   async (context) => {
     const rateLimitConfig = new RateLimitConfig(rateLimitOptions);
@@ -56,7 +57,7 @@ export const rateLimitHook =
 
     // Check if limit exceeded
     if (!result.allowed) {
-      return rateLimiter.config.handler(context);
+      return rateLimiter.config.handler<T>(context);
     }
 
     // Continue to next hook/handler
@@ -69,7 +70,7 @@ export const rateLimitHook =
  * This function is used to create the global rate limiting hook used internally by the framework
  */
 export const _createGlobalRateLimitHook =
-  (rateLimiter: RateLimiter): HandlerCallback<{ response: { success: false; message: string } }> =>
+  <T extends HandlerCallbackGenerics>(rateLimiter: RateLimiter): HandlerCallback<T> =>
   // Return the hook function
   async (context) => {
     // Check if request is within rate limit

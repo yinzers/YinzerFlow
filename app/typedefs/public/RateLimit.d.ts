@@ -198,5 +198,5 @@ export interface RateLimitOptions {
    * }
    * ```
    */
-  handler?: HandlerCallback<{ response: { success: false; message: string } }>;
+  handler?: HandlerCallback<T>;
 }

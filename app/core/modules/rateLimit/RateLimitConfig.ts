@@ -5,6 +5,7 @@ import { log } from '@core/utils/log.ts';
 import type { RateLimitAlgorithm } from '@typedefs/constants/rateLimit.js';
 import type { Context, HandlerCallback } from '@typedefs/public/Context.js';
 import type { RateLimitOptions, StoreConfig } from '@typedefs/public/RateLimit.js';
+import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.js';
 
 export class RateLimitConfig implements RateLimitOptions {
   algorithm: RateLimitAlgorithm;
@@ -15,7 +16,7 @@ export class RateLimitConfig implements RateLimitOptions {
   skipSuccessfulRequests: boolean;
   skipFailedRequests: boolean;
   keyGenerator: (ctx: Context<any>) => string;
-  handler: HandlerCallback<{ response: { success: false; message: string } }>;
+  handler: <T extends HandlerCallbackGenerics>(ctx: Context<T>) => HandlerCallback<T>;
 
   constructor(config?: RateLimitOptions) {
     this._validateConfig(config);
