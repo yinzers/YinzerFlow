@@ -268,6 +268,53 @@ Options: `boolean`
 
 </aside>
 
+### store — @default <span style="color: #2ecc71">`{ type: 'memory' }`</span>
+
+Rate limiting store configuration for distributed systems.
+
+<span style="color: #3498db">**💡 Tip:**</span> Use Redis store for production applications with multiple server instances to enable distributed rate limiting.
+
+```typescript
+import { YinzerFlow } from 'yinzerflow';
+import { createClient } from 'redis';
+
+// Redis client setup
+const redis = createClient({
+  url: 'redis://localhost:6379'
+});
+await redis.connect();
+
+const app = new YinzerFlow({
+  port: 3000,
+  rateLimit: {
+    window: '15m',
+    max: 100,
+    store: {
+      type: 'redis',
+      client: redis,
+      keyPrefix: 'app:rate_limit:',
+      maxRetries: 3,
+      retryDelay: 1000
+    }
+  }
+});
+```
+
+<aside>
+
+Options: `StoreConfig`
+
+- 🟢 **In-memory** (default): Fast, single-instance only
+- 🔄 **Redis**: Distributed, works across multiple instances
+
+**Redis Store Options:**
+- `client`: Redis client instance (required)
+- `keyPrefix`: Key prefix for rate limit keys (default: `'rate_limit:'`)
+- `maxRetries`: Connection retry attempts (default: `3`)
+- `retryDelay`: Delay between retries in ms (default: `1000`)
+
+</aside>
+
 ## 📚 Configuration Reference
 
 Full configuration example with all options:
@@ -292,6 +339,9 @@ const app = new YinzerFlow({
         success: false,
         message: 'Yinz are sending too many requests. Slow down, jagoff!'
       };
+    },
+    store: {
+      type: 'memory' // or 'redis' for distributed systems
     }
   }
 });
@@ -305,6 +355,8 @@ const app = new YinzerFlow({
 - 🎯 **Custom key generator**: Rate limit by user ID for authenticated APIs
 - 📝 **Monitor violations**: Log rate limit exceeded events for security analysis
 - 💬 **Graceful degradation**: Provide helpful error messages when limits are hit
+- 🔄 **Redis for distributed**: Use Redis store for production with multiple server instances
+- 🛡️ **Connection resilience**: Configure retry settings for Redis store reliability
 
 # 💻 Examples
 
@@ -380,6 +432,85 @@ app.post('/api/search',
 
 await app.listen();
 ```
+
+### Distributed Rate Limiting with Redis
+
+**Use Case:** Production API with multiple server instances
+
+**Description:** Distributed rate limiting using Redis store to ensure consistent limits across all server instances, preventing clients from bypassing limits by hitting different servers.
+
+<span style="color: #f39c12">**⚡ Performance:**</span> Redis store adds ~1-5ms latency but enables true distributed rate limiting.
+
+```typescript
+import { YinzerFlow } from 'yinzerflow';
+import { createClient } from 'redis';
+
+// Redis client setup
+const redis = createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+  retryDelayOnFailover: 100,
+  maxRetriesPerRequest: 3
+});
+await redis.connect();
+
+const app = new YinzerFlow({
+  port: parseInt(process.env.PORT || '3000'),
+  rateLimit: {
+    enabled: true,
+    window: '15m',
+    max: 100,
+    standardHeaders: true,
+    store: {
+      type: 'redis',
+      client: redis,
+      keyPrefix: 'app:rate_limit:',
+      maxRetries: 3,
+      retryDelay: 1000
+    },
+    keyGenerator: (ctx) => {
+      // Rate limit by user ID for authenticated users
+      return ctx.state.userId || ctx.request.ipAddress;
+    }
+  }
+});
+
+// Authentication middleware
+app.beforeAll([
+  async (ctx) => {
+    const token = ctx.request.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const decoded = await verifyJWT(token);
+        ctx.state.userId = decoded.userId;
+      } catch (error) {
+        // Invalid token, will fall back to IP-based limiting
+      }
+    }
+  }
+]);
+
+// Strict limits for sensitive endpoints
+app.post('/api/auth/login',
+  {
+    beforeRoute: [rateLimitHook({
+      window: '15m',
+      max: 5,
+      store: {
+        type: 'redis',
+        client: redis,
+        keyPrefix: 'app:auth_limit:'
+      }
+    })]
+  },
+  async ({ request }) => {
+    return await authenticateUser(request.body);
+  }
+);
+
+await app.listen();
+```
+
+<span style="color: #3498db">**💡 Tip:**</span> Use different key prefixes for different types of limits (`app:rate_limit:`, `app:auth_limit:`) to organize your Redis keys.
 
 ### Custom Key Generator (User-Based)
 
@@ -469,7 +600,9 @@ await app.listen();
 
 ## 🚀 Performance Notes
 
-YinzerFlow's rate limiter is designed for high performance:
+YinzerFlow's rate limiter is designed for high performance with both in-memory and Redis stores:
+
+### In-Memory Store Performance
 
 - ⚡ **O(1) lookups**: Uses Map for constant-time access
 - 🎯 **Minimal overhead**: Adds only ~0.1-0.5ms per request
@@ -483,13 +616,27 @@ YinzerFlow's rate limiter is designed for high performance:
 - **Sliding Window Log**: ~800 bytes per client (100+ timestamps)
 - **Savings**: 33x less memory usage
 
+### Redis Store Performance
+
+- 🌐 **Distributed**: Works across multiple server instances
+- ⚡ **Low latency**: Adds ~1-5ms per request (depending on Redis location)
+- 💾 **Shared memory**: Rate limit data shared across all instances
+- 🔄 **Automatic expiration**: Redis TTL handles cleanup automatically
+- 🛡️ **Connection resilience**: Configurable retry logic for reliability
+
+<span style="color: #f39c12">**⚡ Performance:**</span> Redis store comparison:
+
+- **In-memory**: ~0.1-0.5ms latency, single-instance only
+- **Redis local**: ~1-2ms latency, distributed
+- **Redis remote**: ~5-10ms latency, distributed
+
 **Algorithm complexity:**
 
 - ⚡ All operations: O(1) constant time
 - 💾 Memory per client: O(1) constant space
 - ✅ No background cleanup needed
 
-<span style="color: #2ecc71">**✅ Result:**</span> For most applications, rate limiting overhead is negligible (< 1%) compared to actual request processing.
+<span style="color: #2ecc71">**✅ Result:**</span> For most applications, rate limiting overhead is negligible (< 1%) compared to actual request processing. Use in-memory for single-instance deployments and Redis for distributed systems.
 
 ## 🔒 Security Notes
 
@@ -535,7 +682,17 @@ YinzerFlow implements several security measures to prevent abuse while maintaini
 - **Problem**: Rate limiters using untrusted IP headers can be bypassed by spoofing X-Forwarded-For.
 - **YinzerFlow Solution**: Uses YinzerFlow's IP security system with trusted proxy validation, preventing IP spoofing attacks.
 
-<span style="color: #2ecc71">**✅ Result:**</span> These security measures ensure YinzerFlow's rate limiting provides robust protection against DoS attacks and API abuse while maintaining excellent performance.
+### 🛡️ Redis Store Security
+
+- **Problem**: Distributed rate limiting requires secure data storage and transmission.
+- **YinzerFlow Solution**: Redis store uses configurable key prefixes to prevent conflicts, automatic TTL for data expiration, and connection retry logic for reliability. Keys are automatically prefixed to avoid collisions with other applications.
+
+### 🛡️ Connection Resilience
+
+- **Problem**: Redis connection failures can disable rate limiting entirely.
+- **YinzerFlow Solution**: Configurable retry logic with exponential backoff ensures rate limiting continues to work even during temporary Redis outages. Failed operations are logged but don't crash the application.
+
+<span style="color: #2ecc71">**✅ Result:**</span> These security measures ensure YinzerFlow's rate limiting provides robust protection against DoS attacks and API abuse while maintaining excellent performance in both single-instance and distributed deployments.
 
 ## 🔧 Troubleshooting
 
@@ -673,123 +830,48 @@ app.post('/api/auth/login',
 // ✅ This is acceptable for most applications
 ```
 
-## 🔴 Redis Store for Distributed Rate Limiting
+### Redis connection errors
 
-For production applications with multiple server instances, YinzerFlow supports Redis-based rate limiting storage for distributed rate limiting across your entire infrastructure.
+**Symptom:** Rate limiting stops working with Redis connection errors in logs.
 
-### 🚀 Quick Start with Redis
+**Cause:** Redis server is down or network issues.
+
+<span style="color: #2ecc71">**✅ Fix:**</span> Configure retry settings and ensure Redis is running.
 
 ```typescript
-import { YinzerFlow } from 'yinzerflow';
-import { RateLimiter } from 'yinzerflow';
-import { createClient } from 'redis';
-
-// Create Redis client
-const redis = createClient({
-  url: 'redis://localhost:6379'
-});
-await redis.connect();
-
-// Create rate limiter with Redis store
-const limiter = new RateLimiter({
-  algorithm: 'sliding-window-counter',
-  window: '15m',
-  max: 100,
-  keyGenerator: (ctx) => ctx.request.ipAddress,
-  handler: (ctx) => ({
-    success: false,
-    message: 'Rate limit exceeded'
-  })
-}, {
-  type: 'redis',
-  redis: {
-    client: redis,
-    keyPrefix: 'myapp:rate_limit:',
-    defaultTtl: 3600
-  }
-});
-
-// Use with YinzerFlow
 const app = new YinzerFlow({
   port: 3000,
-  rateLimit: { enabled: false } // Handle manually
-});
-
-app.beforeAll(async (ctx) => {
-  const result = limiter.check(ctx);
-  if (!result.allowed) {
-    ctx.response.setStatusCode(429);
-    return limiter.config.handler(ctx);
+  rateLimit: {
+    store: {
+      type: 'redis',
+      client: redis,
+      maxRetries: 5, // Increase retry attempts
+      retryDelay: 2000 // Increase delay between retries
+    }
   }
 });
 ```
 
-### 🐉 DragonflyDB Alternative
+<span style="color: #3498db">**💡 Tip:**</span> Monitor Redis health and consider using Redis Cluster for high availability.
 
-<span style="color: #3498db">**💡 Tip:**</span> Consider using [DragonflyDB](https://www.dragonflydb.io/) as a Redis alternative. DragonflyDB is a modern, high-performance in-memory database that's Redis-compatible but offers better performance through parallel request processing and lower memory usage.
+### Different rate limits across server instances
 
-```typescript
-// Works with the same Redis clients
-const redis = createClient({
-  url: 'redis://localhost:6379' // DragonflyDB uses same protocol
-});
-```
+**Symptom:** Rate limits are inconsistent across different server instances.
 
-### 📋 Features
+**Cause:** Using in-memory store instead of Redis store.
 
-- **🔄 Distributed**: Works across multiple server instances
-- **⚡ High Performance**: Redis/DragonflyDB-optimized for speed
-- **🛡️ Automatic Expiration**: Keys expire automatically to prevent memory leaks
-- **🔧 Algorithm Agnostic**: Works with any rate limiting algorithm
-- **📊 JSON Serialization**: Handles complex data structures
-- **🚨 Error Handling**: Graceful fallback on connection errors
-
-### ⚙️ Configuration
+<span style="color: #2ecc71">**✅ Fix:**</span> Use Redis store for distributed rate limiting.
 
 ```typescript
-interface RedisStoreConfig {
-  client: RedisClient;           // Redis client instance (required)
-  keyPrefix?: string;           // Key prefix (default: 'rate_limit:')
-  defaultTtl?: number;          // Default TTL in seconds (default: 3600)
-  debug?: boolean;              // Enable debug logging (default: false)
-}
-```
-
-### 🔧 Usage Examples
-
-#### User-Based Rate Limiting
-
-```typescript
-const userLimiter = new RateLimiter({
-  algorithm: 'sliding-window-counter',
-  window: '1h',
-  max: 10000,
-  keyGenerator: (ctx) => {
-    // Extract user ID from JWT, session, etc.
-    const userId = ctx.request.headers['x-user-id'] || 'anonymous';
-    return `user:${userId}`;
-  },
-  handler: (ctx) => ({
-    success: false,
-    message: 'User rate limit exceeded'
-  })
-}, {
-  type: 'redis',
-  redis: {
-    client: redis,
-    keyPrefix: 'myapp:user_limit:',
-    defaultTtl: 7200 // 2 hours
+const app = new YinzerFlow({
+  port: 3000,
+  rateLimit: {
+    store: {
+      type: 'redis', // Use Redis for distributed consistency
+      client: redis,
+      keyPrefix: 'app:rate_limit:'
+    }
   }
 });
 ```
 
-### 🛡️ Security Considerations
-
-- **Key Prefixing**: Use unique prefixes (`myapp:rate_limit:`) to avoid conflicts
-- **TTL Configuration**: Set TTL longer than your rate limit windows (1-hour TTL for 15-minute windows)
-
-### 📊 Performance
-
-- **Memory**: ~50-100 bytes per IP including Redis overhead
-- **Latency**: ~0.1-0.5ms local, ~1-10ms remote
-- **Throughput**: 100k+ operations/second with single Redis/DragonflyDB
