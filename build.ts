@@ -95,6 +95,12 @@ const buildMainLibrary = async (): Promise<void> => {
     target: BUILD_CONFIG.target,
     minify: BUILD_CONFIG.minify,
     sourcemap: BUILD_CONFIG.sourcemap,
+    external: [
+      // Peer dependencies - these should NOT be bundled
+      'redis',
+      'ioredis',
+      'typescript',
+    ],
     plugins: [
       dts({
         output: {
