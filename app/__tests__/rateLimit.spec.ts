@@ -360,6 +360,7 @@ describe('Rate Limiting with Redis Store', () => {
     get: async () => Promise.resolve(null),
     set: async () => Promise.resolve('OK'),
     setEx: async () => Promise.resolve('OK'),
+    exists: async () => Promise.resolve(0),
     del: async () => Promise.resolve(1),
     keys: async () => Promise.resolve([]),
     expire: async () => Promise.resolve(1),
@@ -528,6 +529,7 @@ describe('Rate Limiting with Redis Store', () => {
           setTimeout(() => sharedStore.delete(key), ttl * 1000);
           return Promise.resolve('OK');
         },
+        exists: async (key: string) => Promise.resolve(sharedStore.has(key) ? 1 : 0),
         del: async (key: string) => {
           const existed = sharedStore.has(key);
           sharedStore.delete(key);

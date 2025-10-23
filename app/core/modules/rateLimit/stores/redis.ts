@@ -1,5 +1,4 @@
 import { Redis } from 'ioredis';
-import type { RedisClientType } from 'redis';
 import type { InternalRateLimitStore } from '@typedefs/internal/modules/rateLimit/index.js';
 import { log } from '@core/utils/log.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
@@ -139,11 +138,36 @@ const _handleError = (operation: string, error: unknown, connectionHealthy: bool
  * Set key with TTL, handling both ioredis and redis package differences
  */
 const _setWithTtl = async ({ client, key, value, ttlSeconds }: { client: RedisClient; key: string; value: string; ttlSeconds: number }): Promise<void> => {
-  if (client instanceof Redis) {
-    await client.set(key, value, 'EX', ttlSeconds);
+  try {
+    if (client instanceof Redis) {
+      await client.set(key, value, 'EX', ttlSeconds);
+    } else {
+      await client.set(key, value, { EX: ttlSeconds });
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Unsupported Redis client or Redis operation failed: ${error.message}`);
+    }
+    throw error;
   }
+};
 
-  await (client as RedisClientType).set(key, value, { EX: ttlSeconds });
+/**
+ * Set key while preserving TTL, handling both ioredis and redis package differences
+ */
+const _setKeepTtl = async ({ client, key, value }: { client: RedisClient; key: string; value: string }): Promise<void> => {
+  try {
+    if (client instanceof Redis) {
+      await client.set(key, value, 'KEEPTTL'); // cspell:disable-line
+    } else {
+      await client.set(key, value, { KEEPTTL: true }); // cspell:disable-line
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Unsupported Redis client or Redis operation failed: ${error.message}`);
+    }
+    throw error;
+  }
 };
 
 /**
@@ -201,8 +225,8 @@ const _set = async <T>({
     const exists = await client.exists(redisKey);
 
     if (exists) {
-      // Key exists - update value but preserve TTL
-      await client.set(redisKey, serialized);
+      // Key exists - update value but preserve TTL using KEEPTTL (cspell:disable-line)
+      await _setKeepTtl({ client, key: redisKey, value: serialized });
     } else {
       // New key - set with TTL
       await _setWithTtl({ client, key: redisKey, value: serialized, ttlSeconds: Math.floor(config.window / 1000) });

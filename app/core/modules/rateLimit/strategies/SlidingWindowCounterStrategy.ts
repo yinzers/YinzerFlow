@@ -65,21 +65,10 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
 
     // Check if we've moved to a new window
     if (timeElapsed >= this._config.window) {
-      // Move to new window
-      const windowsPassed = Math.floor(timeElapsed / this._config.window);
-
-      if (windowsPassed === 1) {
-        // Moved exactly one window forward
-        entry.previousWindowCount = entry.currentWindowCount;
-        entry.currentWindowCount = 0;
-      } else {
-        // Moved more than one window forward (user was inactive)
-        entry.previousWindowCount = 0;
-        entry.currentWindowCount = 0;
-      }
-
-      // Update window start to the beginning of the current window
-      entry.windowStart = now - (timeElapsed % this._config.window);
+      // Hard reset - start fresh in new window
+      entry.previousWindowCount = 0;
+      entry.currentWindowCount = 0;
+      entry.windowStart = now;
     }
 
     // Calculate weighted count using sliding window formula
