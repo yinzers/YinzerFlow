@@ -2,6 +2,8 @@
 
 A lightweight, modular HTTP server framework for Node.js and Bun built with TypeScript. This is a **framework project**, not an API or application. The code here is meant to be used by other developers to build their own applications.
 
+
+
 ## ✨ Features
 
 YinzerFlow is designed for developers who want:
@@ -42,6 +44,8 @@ For complete documentation, examples, and guides, see the **[docs/](docs/)** fol
 - **[Core Concepts](docs/core/core-concepts.md)** - Context, Request, Response, Routing, and Hooks
 - **[Configuration](docs/configuration/configuration.md)** - All configuration options
 - **[Modules](docs/modules/)** - Built-in modules (Rate Limiting, CORS, IP Security, Body Parsing)
+
+**📖 [Official Documentation](https://redactdigital.notion.site/YinzerFlow-Web-Framework-Using-bun-and-typescript-293f97dd45ce80ea830deb5197ef7004)** - Published docs with interactive examples
 
 ## 🛡️ Built-in Security
 

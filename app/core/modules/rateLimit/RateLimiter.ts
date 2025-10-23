@@ -25,7 +25,6 @@ const _createStrategy = (config: RateLimitConfig): InternalRateLimitStrategy =>
   //   default:
   //     throw new Error(`Algorithm "${config.algorithm}" is not implemented`);
   // }
-
   new SlidingWindowCounterStrategy(config);
 
 /**
@@ -50,15 +49,35 @@ const _createStrategy = (config: RateLimitConfig): InternalRateLimitStrategy =>
  *
  * @example
  * ```typescript
+ * // In-memory rate limiter (default)
  * const limiter = new RateLimiter({
  *   algorithm: 'sliding-window-counter', // Default
- *   windowMs: 60000,  // 1 minute
- *   max: 10,          // 10 requests per minute
+ *   window: 60000,  // 1 minute
+ *   max: 10,        // 10 requests per minute
  *   standardHeaders: true,
  *   skipSuccessfulRequests: false,
  *   skipFailedRequests: false,
  *   keyGenerator: (ctx) => ctx.request.ipAddress,
- *   handler: (ctx, retryAfter) => ({ error: 'Too many requests' })
+ *   handler: (ctx) => ({ success: false, message: 'Too many requests' })
+ * });
+ *
+ * // Redis-based rate limiter (for production)
+ * import Redis from 'ioredis';
+ * const redis = new Redis({ host: 'localhost', port: 6379 });
+ *
+ * const redisLimiter = new RateLimiter({
+ *   algorithm: 'sliding-window-counter',
+ *   window: '15m',
+ *   max: 100,
+ *   keyGenerator: (ctx) => ctx.request.ipAddress,
+ *   handler: (ctx) => ({ success: false, message: 'Rate limit exceeded' })
+ * }, {
+ *   type: 'redis',
+ *   redis: {
+ *     client: redis,
+ *     keyPrefix: 'myapp:rate_limit:',
+ *     defaultTtl: 3600
+ *   }
  * });
  *
  * const result = limiter.check(context);
@@ -103,7 +122,7 @@ export class RateLimiter {
    * }
    * ```
    */
-  check(context: Context<any>): InternalRateLimitResult {
+  async check(context: Context<any>): Promise<InternalRateLimitResult> {
     return this._strategy.check(context);
   }
 
@@ -118,8 +137,8 @@ export class RateLimiter {
    * limiter.destroy(); // Clean up on shutdown
    * ```
    */
-  destroy(): void {
-    this._strategy.destroy();
+  async destroy(): Promise<void> {
+    await this._strategy.destroy();
   }
 
   get config(): RateLimitConfig {

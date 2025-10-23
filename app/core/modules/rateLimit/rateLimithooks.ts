@@ -47,7 +47,7 @@ export const rateLimitHook =
     const rateLimiter = new RateLimiter(rateLimitConfig);
 
     // Check if request is within rate limit
-    const result = rateLimiter.check(context);
+    const result = await rateLimiter.check(context);
 
     // Add headers if configured
     if (rateLimiter.config.standardHeaders) {
@@ -73,7 +73,7 @@ export const _createGlobalRateLimitHook =
   // Return the hook function
   async (context) => {
     // Check if request is within rate limit
-    const result = rateLimiter.check(context);
+    const result = await rateLimiter.check(context);
 
     // Add headers if configured
     if (rateLimiter.config.standardHeaders) {

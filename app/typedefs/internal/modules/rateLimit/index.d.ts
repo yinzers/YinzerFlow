@@ -54,13 +54,13 @@ export interface InternalRateLimitStrategy {
    * @param context - Request context containing IP and other identifying information
    * @returns Result indicating if request is allowed and current limit status
    */
-  check: (context: Context<any>) => InternalRateLimitResult;
+  check: (context: Context<any>) => Promise<InternalRateLimitResult>;
 
   /**
    * Clean up any resources (intervals, timers, etc.)
    * Called when shutting down the server
    */
-  destroy: () => void;
+  destroy: () => Promise<void>;
 }
 
 // ============================================
@@ -92,10 +92,8 @@ export interface InternalSlidingWindowCounterEntry {
  * Generic rate limiter store interface for tracking data per client
  */
 export interface InternalRateLimitStore<T> {
-  get: (key: string) => T | undefined;
-  set: (key: string, value: T) => void;
-  delete: (key: string) => void;
-  clear: () => void;
-  size: () => number;
-  entries: () => IterableIterator<[string, T]>;
+  get: (key: string) => Promise<T | undefined> | T | undefined;
+  set: (key: string, value: T) => Promise<void> | void;
+  delete: (key: string) => Promise<void> | void;
+  destroy: () => Promise<void> | void;
 }

@@ -6,7 +6,7 @@ import type {
   InternalSlidingWindowCounterEntry,
 } from '@typedefs/internal/modules/rateLimit/index.js';
 import type { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
-import { createInMemoryStore } from '@core/modules/rateLimit/stores/inMemory.ts';
+import { createRateLimitStore } from '@core/modules/rateLimit/stores/index.ts';
 
 /**
  * Sliding Window Counter Strategy
@@ -34,22 +34,27 @@ import { createInMemoryStore } from '@core/modules/rateLimit/stores/inMemory.ts'
  */
 export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
   private readonly _config: RateLimitConfig;
-  private readonly _store: InternalRateLimitStore<InternalSlidingWindowCounterEntry>;
+  private _store: InternalRateLimitStore<InternalSlidingWindowCounterEntry> | null = null;
 
   constructor(config: RateLimitConfig) {
     this._config = config;
-    this._store = createInMemoryStore<InternalSlidingWindowCounterEntry>();
+  }
+
+  private async _getStore(): Promise<InternalRateLimitStore<InternalSlidingWindowCounterEntry>> {
+    this._store ??= await createRateLimitStore<InternalSlidingWindowCounterEntry>(this._config);
+    return this._store;
   }
 
   /**
    * Check if request should be allowed using sliding window counter algorithm
    */
-  check(context: Context<any>): InternalRateLimitResult {
+  async check(context: Context<any>): Promise<InternalRateLimitResult> {
+    const store = await this._getStore();
     const key = this._config.keyGenerator(context);
     const now = Date.now();
 
     // Get or create entry for this client
-    const entry: InternalSlidingWindowCounterEntry = this._store.get(key) ?? {
+    const entry = (await store.get(key)) ?? {
       currentWindowCount: 0,
       previousWindowCount: 0,
       windowStart: now,
@@ -89,7 +94,7 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
     }
 
     // Save updated entry
-    this._store.set(key, entry);
+    await store.set(key, entry);
 
     // Calculate remaining requests
     const remaining = Math.max(0, Math.floor(this._config.max - estimatedCount - (allowed ? 1 : 0)));
@@ -109,7 +114,8 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
   /**
    * Clean up resources
    */
-  destroy(): void {
-    this._store.clear();
+  async destroy(): Promise<void> {
+    const store = await this._getStore();
+    await store.destroy();
   }
 }

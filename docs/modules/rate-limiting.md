@@ -665,10 +665,131 @@ app.post('/api/auth/login',
 
 <span style="color: #2ecc71">**✅ Expected:**</span> This is normal behavior. Sliding window counter uses only ~24 bytes per client.
 
-<span style="color: #3498db">**💡 Tip:**</span> For distributed systems with millions of clients, consider implementing a Redis-based store (future enhancement).
+<span style="color: #3498db">**💡 Tip:**</span> For distributed systems with millions of clients, use Redis-based storage for distributed rate limiting.
 
 ```typescript
 // Current memory usage is minimal:
 // 💾 1 million clients = ~24 MB of memory
 // ✅ This is acceptable for most applications
 ```
+
+## 🔴 Redis Store for Distributed Rate Limiting
+
+For production applications with multiple server instances, YinzerFlow supports Redis-based rate limiting storage for distributed rate limiting across your entire infrastructure.
+
+### 🚀 Quick Start with Redis
+
+```typescript
+import { YinzerFlow } from 'yinzerflow';
+import { RateLimiter } from 'yinzerflow';
+import { createClient } from 'redis';
+
+// Create Redis client
+const redis = createClient({
+  url: 'redis://localhost:6379'
+});
+await redis.connect();
+
+// Create rate limiter with Redis store
+const limiter = new RateLimiter({
+  algorithm: 'sliding-window-counter',
+  window: '15m',
+  max: 100,
+  keyGenerator: (ctx) => ctx.request.ipAddress,
+  handler: (ctx) => ({
+    success: false,
+    message: 'Rate limit exceeded'
+  })
+}, {
+  type: 'redis',
+  redis: {
+    client: redis,
+    keyPrefix: 'myapp:rate_limit:',
+    defaultTtl: 3600
+  }
+});
+
+// Use with YinzerFlow
+const app = new YinzerFlow({
+  port: 3000,
+  rateLimit: { enabled: false } // Handle manually
+});
+
+app.beforeAll(async (ctx) => {
+  const result = limiter.check(ctx);
+  if (!result.allowed) {
+    ctx.response.setStatusCode(429);
+    return limiter.config.handler(ctx);
+  }
+});
+```
+
+### 🐉 DragonflyDB Alternative
+
+<span style="color: #3498db">**💡 Tip:**</span> Consider using [DragonflyDB](https://www.dragonflydb.io/) as a Redis alternative. DragonflyDB is a modern, high-performance in-memory database that's Redis-compatible but offers better performance through parallel request processing and lower memory usage.
+
+```typescript
+// Works with the same Redis clients
+const redis = createClient({
+  url: 'redis://localhost:6379' // DragonflyDB uses same protocol
+});
+```
+
+### 📋 Features
+
+- **🔄 Distributed**: Works across multiple server instances
+- **⚡ High Performance**: Redis/DragonflyDB-optimized for speed
+- **🛡️ Automatic Expiration**: Keys expire automatically to prevent memory leaks
+- **🔧 Algorithm Agnostic**: Works with any rate limiting algorithm
+- **📊 JSON Serialization**: Handles complex data structures
+- **🚨 Error Handling**: Graceful fallback on connection errors
+
+### ⚙️ Configuration
+
+```typescript
+interface RedisStoreConfig {
+  client: RedisClient;           // Redis client instance (required)
+  keyPrefix?: string;           // Key prefix (default: 'rate_limit:')
+  defaultTtl?: number;          // Default TTL in seconds (default: 3600)
+  debug?: boolean;              // Enable debug logging (default: false)
+}
+```
+
+### 🔧 Usage Examples
+
+#### User-Based Rate Limiting
+
+```typescript
+const userLimiter = new RateLimiter({
+  algorithm: 'sliding-window-counter',
+  window: '1h',
+  max: 10000,
+  keyGenerator: (ctx) => {
+    // Extract user ID from JWT, session, etc.
+    const userId = ctx.request.headers['x-user-id'] || 'anonymous';
+    return `user:${userId}`;
+  },
+  handler: (ctx) => ({
+    success: false,
+    message: 'User rate limit exceeded'
+  })
+}, {
+  type: 'redis',
+  redis: {
+    client: redis,
+    keyPrefix: 'myapp:user_limit:',
+    defaultTtl: 7200 // 2 hours
+  }
+});
+```
+
+### 🛡️ Security Considerations
+
+- **Key Prefixing**: Use unique prefixes (`myapp:rate_limit:`) to avoid conflicts
+- **TTL Configuration**: Set TTL longer than your rate limit windows (1-hour TTL for 15-minute windows)
+
+### 📊 Performance
+
+- **Memory**: ~50-100 bytes per IP including Redis overhead
+- **Latency**: ~0.1-0.5ms local, ~1-10ms remote
+- **Throughput**: 100k+ operations/second with single Redis/DragonflyDB

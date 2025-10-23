@@ -7,11 +7,18 @@ export const createInMemoryStore = <T>(): InternalRateLimitStore<T> => {
   const store = new Map<string, T>();
 
   return {
-    get: (key: string) => store.get(key),
-    set: (key: string, value: T) => store.set(key, value),
-    delete: (key: string) => store.delete(key),
-    clear: () => store.clear(),
-    size: () => store.size,
-    entries: () => store.entries(),
+    get: async (key: string) => Promise.resolve(store.get(key)),
+    set: async (key: string, value: T): Promise<void> => {
+      store.set(key, value);
+      return Promise.resolve();
+    },
+    delete: async (key: string): Promise<void> => {
+      store.delete(key);
+      return Promise.resolve();
+    },
+    destroy: async (): Promise<void> => {
+      store.clear();
+      return Promise.resolve();
+    },
   };
 };

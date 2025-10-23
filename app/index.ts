@@ -25,4 +25,4 @@ export { httpStatus, httpStatusCode } from '@constants/http.ts';
 export { logLevels } from '@constants/log.ts';
 
 // Rate limiting algorithms
-export { rateLimitAlgorithm } from '@constants/rateLimit.ts';
+export { rateLimitAlgorithm, rateLimitStoreType } from '@constants/rateLimit.ts';

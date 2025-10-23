@@ -2,13 +2,14 @@ import { httpStatusCode } from '@constants/http.ts';
 import { rateLimitAlgorithm } from '@constants/rateLimit.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import { log } from '@core/utils/log.ts';
-import type { InternalRateLimitAlgorithm } from '@typedefs/constants/rateLimit.js';
+import type { RateLimitAlgorithm } from '@typedefs/constants/rateLimit.js';
 import type { Context, HandlerCallback } from '@typedefs/public/Context.js';
-import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
+import type { RateLimitOptions, StoreConfig } from '@typedefs/public/RateLimit.js';
 
 export class RateLimitConfig implements RateLimitOptions {
-  algorithm: InternalRateLimitAlgorithm;
-  window: number;
+  algorithm: RateLimitAlgorithm;
+  store: StoreConfig;
+  window: number; // milliseconds
   max: number;
   standardHeaders: boolean;
   skipSuccessfulRequests: boolean;
@@ -17,13 +18,10 @@ export class RateLimitConfig implements RateLimitOptions {
   handler: HandlerCallback<{ response: { success: false; message: string } }>;
 
   constructor(config?: RateLimitOptions) {
-    // Validate configuration before setting defaults
-    if (config) {
-      _validateRateLimitConfig(config);
-      _warnRateLimitConfig(config);
-    }
+    this._validateConfig(config);
 
     this.algorithm = config?.algorithm ?? rateLimitAlgorithm.slidingWindowCounter;
+    this.store = config?.store ?? { type: 'memory' };
     this.window = _convertTimeToMs(config?.window ?? '15m');
     this.max = config?.max ?? 100;
     this.standardHeaders = config?.standardHeaders ?? true;
@@ -31,6 +29,12 @@ export class RateLimitConfig implements RateLimitOptions {
     this.skipFailedRequests = config?.skipFailedRequests ?? false;
     this.keyGenerator = config?.keyGenerator ?? defaultKeyGenerator;
     this.handler = config?.handler ?? defaultHandler;
+  }
+
+  private _validateConfig(config?: RateLimitOptions): void {
+    if (!config) return;
+    _validateRateLimitConfig(config);
+    _warnRateLimitConfig(config);
   }
 
   get config(): RateLimitOptions {

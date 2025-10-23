@@ -358,7 +358,7 @@ export class YinzerFlow extends SetupImpl {
 
     // Clean up rate limiter resources (intervals, memory)
     if (this._globalRateLimiter) {
-      this._globalRateLimiter.destroy();
+      await this._globalRateLimiter.destroy();
       this._globalRateLimiter = undefined;
     }
 

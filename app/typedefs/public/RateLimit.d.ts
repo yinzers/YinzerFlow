@@ -1,6 +1,37 @@
+import type { createClient } from 'redis';
 import type { TimeString } from './Time.js';
-import type { InternalRateLimitAlgorithm } from '@typedefs/constants/rateLimit.js';
+import type { RateLimitAlgorithm, RateLimitStoreType } from '@typedefs/constants/rateLimit.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
+
+interface BaseStoreConfig {
+  /** Type of the store @default 'memory' */
+  type: RateLimitStoreType;
+}
+
+export interface MemoryStoreConfig extends BaseStoreConfig {
+  type: 'memory';
+}
+
+/**
+ * Redis store configuration
+ */
+export interface RedisStoreConfig extends BaseStoreConfig {
+  type: 'redis';
+  /** Redis client instance of ioredis or redis */
+  client: ReturnType<typeof createClient>;
+  /** Key prefix for the rate limit keys @default 'rate_limit:' */
+  keyPrefix?: string;
+  /** Maximum number of connection retry attempts @default 3 */
+  maxRetries?: number;
+  /** Delay between retry attempts in milliseconds @default 1000 */
+  retryDelay?: number;
+}
+
+/**
+ * Configuration for rate limit store
+ * This is a union type to future proof the code for other store types
+ */
+export type StoreConfig = MemoryStoreConfig | RedisStoreConfig;
 
 /**
  * Options for per-route rate limiting
@@ -59,7 +90,33 @@ export interface RateLimitOptions {
    * algorithm: rateLimitAlgorithm.slidingWindowCounter
    * ```
    */
-  algorithm?: InternalRateLimitAlgorithm;
+  algorithm?: RateLimitAlgorithm;
+
+  /**
+   * Rate limiting store configuration
+   *
+   * Configure the storage backend for rate limiting data.
+   * If not provided, defaults to in-memory storage.
+   *
+   * @example
+   * ```typescript
+   * // In-memory store (default)
+   * const config = { algorithm: 'sliding-window-counter', window: '15m', max: 100 };
+   *
+   * // Redis store
+   * const config = {
+   *   algorithm: 'sliding-window-counter',
+   *   window: '15m',
+   *   max: 100,
+   *   store: {
+   *     type: 'redis',
+   *     client: redisClient,
+   *     keyPrefix: 'myapp:rate_limit:'
+   *   }
+   * };
+   * ```
+   */
+  store?: StoreConfig;
 
   /**
    * Time window for rate limiting
@@ -76,7 +133,6 @@ export interface RateLimitOptions {
    * window: '15m'   // 15 minutes
    * window: '2h'    // 2 hours
    * window: '1d'    // 1 day
-   * window: 60000   // 1 minute (milliseconds)
    * ```
    */
   window?: TimeString | number;
@@ -104,6 +160,12 @@ export interface RateLimitOptions {
    * @default false
    */
   skipFailedRequests?: boolean;
+
+  /**
+   * Store configuration
+   * @default { type: 'memory' }
+   */
+  store?: StoreConfig;
 
   /**
    * Custom key generator function for identifying clients

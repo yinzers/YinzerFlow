@@ -21,7 +21,6 @@ import type { TimeString } from '@typedefs/public/Time.js';
  * @internal
  */
 export const _convertTimeToMs = (time: TimeString | number): number => {
-  // If already a number, return as-is
   if (typeof time === 'number') {
     return time;
   }

@@ -11,3 +11,15 @@ export const rateLimitAlgorithm = {
   // tokenBucket: 'token-bucket', // Future enhancement
   // slidingWindowLog: 'sliding-window-log', // Future enhancement
 } as const;
+
+/**
+ * Rate limiting store type options
+ *
+ * Available store types for rate limiting:
+ * - memory: In-memory store
+ * - redis: Redis store
+ */
+export const rateLimitStoreType = {
+  memory: 'memory',
+  redis: 'redis',
+} as const;

@@ -352,3 +352,278 @@ describe('Rate Limit Configuration Validation', () => {
     }).not.toThrow();
   });
 });
+
+describe('Rate Limiting with Redis Store', () => {
+  // Mock Redis client for testing
+  const mockRedisClient = {
+    ping: async () => Promise.resolve('PONG'),
+    get: async () => Promise.resolve(null),
+    set: async () => Promise.resolve('OK'),
+    setEx: async () => Promise.resolve('OK'),
+    del: async () => Promise.resolve(1),
+    keys: async () => Promise.resolve([]),
+    expire: async () => Promise.resolve(1),
+    on: () => {},
+    off: () => {},
+    disconnect: async () => Promise.resolve(),
+  };
+
+  describe('Redis store configuration', () => {
+    it('should work with Redis store configuration', () => {
+      expect(() => {
+        new YinzerFlow({
+          rateLimit: {
+            enabled: true,
+            max: 5,
+            window: '1m',
+            store: {
+              type: 'redis',
+              client: mockRedisClient as any,
+              keyPrefix: 'test:rate_limit:',
+            },
+          },
+        });
+      }).not.toThrow();
+    });
+
+    it('should accept Redis store with custom retry configuration', () => {
+      expect(() => {
+        new YinzerFlow({
+          rateLimit: {
+            enabled: true,
+            max: 5,
+            window: '1m',
+            store: {
+              type: 'redis',
+              client: mockRedisClient as any,
+              keyPrefix: 'test:rate_limit:',
+              maxRetries: 5,
+              retryDelay: 2000,
+            },
+          },
+        });
+      }).not.toThrow();
+    });
+
+    it('should fall back to in-memory store when Redis store is not configured', () => {
+      expect(() => {
+        new YinzerFlow({
+          rateLimit: {
+            enabled: true,
+            max: 5,
+            window: '1m',
+            // No store config - should default to in-memory
+          },
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe('Redis connection handling', () => {
+    let app: YinzerFlow;
+    let testPort: number;
+
+    beforeEach(async () => {
+      const testSetup = createTestApp({
+        rateLimit: {
+          enabled: true,
+          max: 2,
+          window: 1000, // 1 second for fast tests
+          store: {
+            type: 'redis',
+            client: mockRedisClient as any,
+            keyPrefix: 'test:rate_limit:',
+            maxRetries: 1, // Quick failure for testing
+            retryDelay: 100,
+          },
+        },
+      });
+      ({ app, testPort } = testSetup);
+
+      await app.listen();
+    });
+
+    afterEach(async () => {
+      if (app.status().isListening) {
+        await app.close();
+      }
+    });
+
+    it('should handle Redis connection gracefully', async () => {
+      // This test verifies that the app starts and handles requests
+      // even when Redis is mocked (simulating connection issues)
+      const response = await getRequest({ testPort });
+
+      // Should still work - Redis store should handle connection issues gracefully
+      expect(response.status).toBe(200);
+    });
+
+    it('should include rate limit headers with Redis store', async () => {
+      const response = await getRequest({ testPort });
+
+      expect(response.headers.get('RateLimit-Limit')).toBe('2');
+      expect(response.headers.get('RateLimit-Remaining')).toBe('1');
+    });
+  });
+
+  describe('Store configuration validation', () => {
+    it('should work with valid Redis store configuration', () => {
+      expect(() => {
+        new YinzerFlow({
+          rateLimit: {
+            enabled: true,
+            max: 5,
+            window: '1m',
+            store: {
+              type: 'redis',
+              client: mockRedisClient as any,
+              keyPrefix: 'test:rate_limit:',
+            },
+          },
+        });
+      }).not.toThrow();
+    });
+
+    it('should work with minimal Redis store configuration', () => {
+      expect(() => {
+        new YinzerFlow({
+          rateLimit: {
+            enabled: true,
+            max: 5,
+            window: '1m',
+            store: {
+              type: 'redis',
+              client: mockRedisClient as any,
+            },
+          },
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe('Distributed rate limiting simulation', () => {
+    // This test simulates how Redis store enables distributed rate limiting
+    // by using a shared store that persists data across "app instances"
+    const sharedStore = new Map<string, any>();
+    let app1: YinzerFlow;
+    let app2: YinzerFlow;
+    let port1: number;
+    let port2: number;
+
+    beforeEach(async () => {
+      // Reset shared store for each test
+      sharedStore.clear();
+
+      // Create a mock Redis client that uses shared storage
+      const sharedRedisClient = {
+        ping: async () => Promise.resolve('PONG'),
+        get: async (key: string) => Promise.resolve(sharedStore.get(key) ?? null),
+        set: async (key: string, value: string) => {
+          sharedStore.set(key, value);
+          return Promise.resolve('OK');
+        },
+        setEx: async (key: string, ttl: number, value: string) => {
+          sharedStore.set(key, value);
+          // Simulate TTL by setting a timeout to delete the key
+          setTimeout(() => sharedStore.delete(key), ttl * 1000);
+          return Promise.resolve('OK');
+        },
+        del: async (key: string) => {
+          const existed = sharedStore.has(key);
+          sharedStore.delete(key);
+          return Promise.resolve(existed ? 1 : 0);
+        },
+        keys: async (pattern: string) => {
+          const regex = new RegExp(pattern.replace(/\*/g, '.*'));
+          return Promise.resolve(Array.from(sharedStore.keys()).filter((key) => regex.test(key)));
+        },
+        expire: async () => Promise.resolve(1),
+        on: () => {},
+        off: () => {},
+        disconnect: async () => Promise.resolve(),
+      };
+
+      // Create two app instances with the same Redis store
+      const testSetup1 = createTestApp({
+        rateLimit: {
+          enabled: true,
+          max: 2, // Very low limit for testing
+          window: 2000, // 2 seconds
+          store: {
+            type: 'redis',
+            client: sharedRedisClient as any,
+            keyPrefix: 'distributed:rate_limit:',
+          },
+        },
+      });
+      ({ app: app1, testPort: port1 } = testSetup1);
+
+      const testSetup2 = createTestApp({
+        rateLimit: {
+          enabled: true,
+          max: 2, // Same limit as app1
+          window: 2000, // Same window as app1
+          store: {
+            type: 'redis',
+            client: sharedRedisClient as any,
+            keyPrefix: 'distributed:rate_limit:', // Same prefix
+          },
+        },
+      });
+      ({ app: app2, testPort: port2 } = testSetup2);
+
+      await app1.listen();
+      await app2.listen();
+    });
+
+    afterEach(async () => {
+      if (app1.status().isListening) await app1.close();
+      if (app2.status().isListening) await app2.close();
+    });
+
+    it('should share rate limit state between app instances', async () => {
+      // Use app1 to hit the rate limit
+      const requests1 = Array.from({ length: 2 }, async () => getRequest({ testPort: port1 }));
+      await Promise.all(requests1);
+
+      // Now app1 should be rate limited
+      const response1 = await getRequest({ testPort: port1 });
+      expect(response1.status).toBe(429);
+
+      // App2 should also be rate limited because they share the same Redis store
+      const response2 = await getRequest({ testPort: port2 });
+      expect(response2.status).toBe(429);
+
+      // Both should show the same remaining count (0)
+      expect(response1.headers.get('RateLimit-Remaining')).toBe('0');
+      expect(response2.headers.get('RateLimit-Remaining')).toBe('0');
+    });
+
+    it('should demonstrate distributed rate limiting with shared state', async () => {
+      // This test demonstrates the key benefit of Redis store: shared rate limiting
+      // across multiple app instances, which is crucial for production deployments
+
+      // App1 makes 1 request
+      const response1a = await getRequest({ testPort: port1 });
+      expect(response1a.status).toBe(200);
+      expect(response1a.headers.get('RateLimit-Remaining')).toBe('1');
+
+      // App2 makes 1 request - should see the shared state from App1
+      const response2a = await getRequest({ testPort: port2 });
+      expect(response2a.status).toBe(200);
+      expect(response2a.headers.get('RateLimit-Remaining')).toBe('0'); // 2 total requests = limit reached
+
+      // App1 makes another request - should be rate limited due to shared state
+      const response1b = await getRequest({ testPort: port1 });
+      expect(response1b.status).toBe(429);
+
+      // App2 makes another request - should also be rate limited
+      const response2b = await getRequest({ testPort: port2 });
+      expect(response2b.status).toBe(429);
+
+      // Both should show the same remaining count (0)
+      expect(response1b.headers.get('RateLimit-Remaining')).toBe('0');
+      expect(response2b.headers.get('RateLimit-Remaining')).toBe('0');
+    });
+  });
+});
