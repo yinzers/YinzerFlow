@@ -1,5 +1,6 @@
 import type { InternalRateLimitStore } from '@typedefs/internal/modules/rateLimit/index.js';
 import { log } from '@core/utils/log.ts';
+import { _convertTimeToMs } from '@core/utils/time.ts';
 import type { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
 
 /**
@@ -52,6 +53,7 @@ export const createRedisStore = async <T>(config: RateLimitConfig): Promise<Inte
   const { store } = config;
   if (store.type !== 'redis') throw new Error(`Expected Redis store configuration but got: ${JSON.stringify(store)}`);
   const { client, keyPrefix = 'rate_limit:', maxRetries = 3, retryDelay = 1000 } = store;
+  const retryDelayMs = _convertTimeToMs(retryDelay);
   let connectionHealthy = false;
 
   // Validate Redis connection with retry logic
@@ -66,9 +68,9 @@ export const createRedisStore = async <T>(config: RateLimitConfig): Promise<Inte
         log.warn(`[RedisStore] Redis connection attempt ${attempt}/${maxRetries} failed:`, error);
 
         if (attempt < maxRetries) {
-          log.info(`[RedisStore] Retrying connection in ${retryDelay}ms...`);
+          log.info(`[RedisStore] Retrying connection in ${retryDelay}...`);
           await new Promise<void>((resolve) => {
-            setTimeout(resolve, retryDelay);
+            setTimeout(resolve, retryDelayMs);
           });
         } else {
           log.error('[RedisStore] All Redis connection attempts failed. Store will operate in degraded mode.');

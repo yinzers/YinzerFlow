@@ -23,8 +23,8 @@ export interface RedisStoreConfig extends BaseStoreConfig {
   keyPrefix?: string;
   /** Maximum number of connection retry attempts @default 3 */
   maxRetries?: number;
-  /** Delay between retry attempts in milliseconds @default 1000 */
-  retryDelay?: number;
+  /** Delay between retry attempts in milliseconds or time string @default '1s' */
+  retryDelay?: TimeString | number;
 }
 
 /**

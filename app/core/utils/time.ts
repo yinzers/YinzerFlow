@@ -12,10 +12,11 @@ import type { TimeString } from '@typedefs/public/Time.js';
  *
  * @example
  * ```typescript
- * _convertTimeToMs('30s')  // 30000
- * _convertTimeToMs('15m')  // 900000
- * _convertTimeToMs('2h')   // 7200000
- * _convertTimeToMs('1d')   // 86400000
+ * _convertTimeToMs('500ms') // 500
+ * _convertTimeToMs('30s')   // 30000
+ * _convertTimeToMs('15m')   // 900000
+ * _convertTimeToMs('2h')    // 7200000
+ * _convertTimeToMs('1d')    // 86400000
  * ```
  *
  * @internal
@@ -27,19 +28,23 @@ export const _convertTimeToMs = (time: TimeString | number): number => {
 
   // Validate string format
   if (typeof time !== 'string') {
-    throw new Error('Invalid time format. Expected format: 1s, 1m, 1h, 1d');
+    throw new Error('Invalid time format. Expected format: 1ms, 1s, 1m, 1h, 1d');
   }
 
   if (time.length < 2) {
-    throw new Error('Invalid time format. Expected format: 1s, 1m, 1h, 1d');
+    throw new Error('Invalid time format. Expected format: 1ms, 1s, 1m, 1h, 1d');
+  }
+
+  if (time.length > 3) {
+    throw new Error('Invalid time format. Expected format: 1ms, 1s, 1m, 1h, 1d');
   }
 
   // Extract unit (last character)
-  const unit = time.slice(-1);
-  const value = time.slice(0, -1);
+  const unit = time.includes('ms') ? time.slice(-2) : time.slice(-1);
+  const value = time.includes('ms') ? time.slice(0, -2) : time.slice(0, -1);
 
   // Validate unit
-  if (!['s', 'm', 'h', 'd'].includes(unit)) {
+  if (!['ms', 's', 'm', 'h', 'd'].includes(unit)) {
     throw new Error(`Invalid time unit: "${unit}". Expected: s (seconds), m (minutes), h (hours), or d (days)`);
   }
 
@@ -51,6 +56,8 @@ export const _convertTimeToMs = (time: TimeString | number): number => {
 
   // Convert to milliseconds based on unit
   switch (unit) {
+    case 'ms':
+      return numValue;
     case 's':
       return numValue * 1000;
     case 'm':

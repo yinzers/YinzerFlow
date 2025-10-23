@@ -294,7 +294,7 @@ const app = new YinzerFlow({
       client: redis,
       keyPrefix: 'app:rate_limit:',
       maxRetries: 3,
-      retryDelay: 1000
+      retryDelay: '1s' // Can use time string or number (1000)
     }
   }
 });
@@ -311,7 +311,9 @@ Options: `StoreConfig`
 - `client`: Redis client instance (required)
 - `keyPrefix`: Key prefix for rate limit keys (default: `'rate_limit:'`)
 - `maxRetries`: Connection retry attempts (default: `3`)
-- `retryDelay`: Delay between retries in ms (default: `1000`)
+- `retryDelay`: Delay between retries in ms or time string (default: `1s`)
+
+<span style="color: #3498db">**💡 Tip:**</span> Use friendly time formats like `'1s'`, `'2s'`, `'500ms'` for better readability.
 
 </aside>
 
@@ -342,6 +344,7 @@ const app = new YinzerFlow({
     },
     store: {
       type: 'memory' // or 'redis' for distributed systems
+      // For Redis: { type: 'redis', client: redis, retryDelay: '2s' }
     }
   }
 });
@@ -465,7 +468,7 @@ const app = new YinzerFlow({
       client: redis,
       keyPrefix: 'app:rate_limit:',
       maxRetries: 3,
-      retryDelay: 1000
+      retryDelay: '1s' // Can use time string or number
     },
     keyGenerator: (ctx) => {
       // Rate limit by user ID for authenticated users
@@ -498,7 +501,8 @@ app.post('/api/auth/login',
       store: {
         type: 'redis',
         client: redis,
-        keyPrefix: 'app:auth_limit:'
+        keyPrefix: 'app:auth_limit:',
+        retryDelay: '500ms' // Short retry delay for auth endpoints
       }
     })]
   },
@@ -846,7 +850,7 @@ const app = new YinzerFlow({
       type: 'redis',
       client: redis,
       maxRetries: 5, // Increase retry attempts
-      retryDelay: 2000 // Increase delay between retries
+      retryDelay: '2s' // Increase delay between retries (can use time string)
     }
   }
 });
