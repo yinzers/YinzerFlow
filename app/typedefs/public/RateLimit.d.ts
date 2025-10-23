@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis';
-import type { RedisClientType } from 'redis';
+import type { createClient } from 'redis';
 import type { TimeString } from './Time.js';
 import type { RateLimitAlgorithm, RateLimitStoreType } from '@typedefs/constants/rateLimit.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
@@ -9,7 +9,7 @@ interface BaseStoreConfig {
   type: RateLimitStoreType;
 }
 
-export type RedisClient = Redis | RedisClientType;
+export type RedisClient = Redis | ReturnType<typeof createClient>;
 
 export interface MemoryStoreConfig extends BaseStoreConfig {
   type: 'memory';
