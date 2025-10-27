@@ -260,6 +260,68 @@ describe('Cookie Parser', () => {
     });
   });
 
+  describe('TimeString support for maxAge', () => {
+    beforeEach(async () => {
+      app = new YinzerFlow({
+        port: testPort,
+        cookieParser: { enabled: true },
+      });
+
+      app.post('/set-cookie-with-timestring', (ctx) => {
+        ctx.cookies.set('sessionId', 'abc123', {
+          maxAge: '1h', // 1 hour as TimeString
+        });
+        return { success: true };
+      });
+
+      app.post('/set-cookie-with-timestring-defaults', (ctx) => {
+        ctx.cookies.set('sessionId', 'abc123');
+        return { success: true };
+      });
+
+      await app.listen();
+    });
+
+    it('should convert TimeString to seconds for maxAge', async () => {
+      const response = await fetch(`http://localhost:${testPort}/set-cookie-with-timestring`, {
+        method: 'POST',
+      });
+
+      expect(response.ok).toBe(true);
+      const setCookieHeader = response.headers.get('set-cookie');
+      expect(setCookieHeader).toContain('Max-Age=3600'); // 1 hour = 3600 seconds
+    });
+
+    it('should work with default cookie options using TimeString', async () => {
+      const appWithDefaults = new YinzerFlow({
+        port: testPort + 1,
+        cookieParser: {
+          enabled: true,
+          defaults: {
+            maxAge: '30m', // 30 minutes as TimeString
+          },
+        },
+      });
+
+      appWithDefaults.post('/test', (ctx) => {
+        ctx.cookies.set('sessionId', 'abc123');
+        return { success: true };
+      });
+
+      await appWithDefaults.listen();
+
+      const response = await fetch(`http://localhost:${testPort + 1}/test`, {
+        method: 'POST',
+      });
+
+      expect(response.ok).toBe(true);
+      const setCookieHeader = response.headers.get('set-cookie');
+      expect(setCookieHeader).toContain('Max-Age=1800'); // 30 minutes = 1800 seconds
+
+      await appWithDefaults.close();
+    });
+  });
+
   describe('per-cookie signing configuration', () => {
     beforeEach(async () => {
       app = new YinzerFlow({

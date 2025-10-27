@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { CookieParserConfig } from './CookieParserConfig.ts';
 import type { CookieOptions, CookieParserOptions } from '@typedefs/public/CookieParser.js';
+import { _convertTimeToMs } from '@core/utils/time.ts';
 
 /**
  * Cookie parser implementation with HMAC-SHA256 signing support
@@ -28,7 +29,7 @@ import type { CookieOptions, CookieParserOptions } from '@typedefs/public/Cookie
  * const setCookieHeader = parser.set('sessionId', 'abc123', {
  *   httpOnly: true,
  *   secure: true,
- *   maxAge: 3600
+ *   maxAge: '1h' // or 3600 for 1 hour in seconds
  * });
  *
  * // Sign a cookie
@@ -114,7 +115,7 @@ export class CookieParser {
    * const header = parser.set('sessionId', 'abc123', {
    *   httpOnly: true,
    *   secure: true,
-   *   maxAge: 3600,
+   *   maxAge: '1h', // or 3600 for 1 hour in seconds
    *   sameSite: 'strict'
    * });
    *
@@ -246,10 +247,17 @@ export class CookieParser {
    * Merge default options with provided options
    */
   private _mergeOptions(options?: CookieOptions): CookieOptions {
-    return {
+    const merged = {
       ...this._config.defaults,
       ...options,
     };
+
+    // Convert TimeString to seconds for maxAge
+    if (merged.maxAge !== undefined && typeof merged.maxAge === 'string') {
+      merged.maxAge = _convertTimeToMs(merged.maxAge) / 1000;
+    }
+
+    return merged;
   }
 
   /**

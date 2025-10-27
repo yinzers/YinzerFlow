@@ -29,7 +29,7 @@ export type CookieOptions = InternalCookieOptions;
  *     httpOnly: true,
  *     secure: true,
  *     sameSite: 'strict',
- *     maxAge: 3600
+ *     maxAge: '1h' // or 3600 for 1 hour in seconds
  *   }
  * };
  * ```
@@ -84,7 +84,7 @@ export interface CookieParserOptions {
    *   httpOnly: true,
    *   secure: true,
    *   sameSite: 'strict',
-   *   maxAge: 3600
+   *   maxAge: '1h' // or 3600 for 1 hour in seconds
    * }
    * ```
    */

@@ -1,5 +1,6 @@
 import type { CookieParserOptions } from '@typedefs/public/CookieParser.js';
 import { log } from '@core/utils/log.ts';
+import { _convertTimeToMs } from '@core/utils/time.ts';
 
 export class CookieParserConfig {
   enabled: boolean;
@@ -99,8 +100,22 @@ const _validateCookieOptions = (options: CookieParserOptions['defaults']): void 
 const _validateMaxAge = (options: CookieParserOptions['defaults']): void => {
   if (!options || options.maxAge === undefined) return;
 
+  // Validate time string format if it's a string
+  if (typeof options.maxAge === 'string') {
+    const timeRegex = /^(?<value>\d+)(?<unit>ms|s|m|h|d)$/;
+    if (!timeRegex.test(options.maxAge)) {
+      throw new Error(
+        `cookieParser.defaults.maxAge must be a valid time string (e.g., '30s', '15m', '2h', '1d') or seconds as a number. Received: "${options.maxAge}"`,
+      );
+    }
+    return;
+  }
+
+  // Validate number format
   if (typeof options.maxAge !== 'number' || isNaN(options.maxAge)) {
-    throw new Error('cookieParser.defaults.maxAge must be a number');
+    throw new Error(
+      `cookieParser.defaults.maxAge must be a valid time string (e.g., '30s', '15m', '2h', '1d') or seconds as a number. Received: "${options.maxAge}"`,
+    );
   }
 
   if (options.maxAge < 0) {

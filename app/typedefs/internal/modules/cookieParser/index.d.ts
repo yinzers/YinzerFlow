@@ -7,6 +7,8 @@
 /**
  * Cookie attributes configuration
  */
+import type { TimeString } from '@typedefs/public/Time.js';
+
 export interface InternalCookieOptions {
   /**
    * Expiration date/time for the cookie
@@ -14,9 +16,13 @@ export interface InternalCookieOptions {
   expires?: Date;
 
   /**
-   * Max age in seconds
+   * Max age for the cookie
+   *
+   * Accepts either:
+   * - Friendly format: '30s', '15m', '2h', '1d' (converted to seconds)
+   * - Seconds: 3600
    */
-  maxAge?: number;
+  maxAge?: TimeString | number;
 
   /**
    * Domain for the cookie
