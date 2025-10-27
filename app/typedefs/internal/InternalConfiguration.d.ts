@@ -1,5 +1,6 @@
 import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { Logger } from '@typedefs/public/Logger.js';
+import type { CookieParserOptions } from '@typedefs/public/CookieParser.js';
 import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
 import type { TimeString } from '@typedefs/public/Time.js';
 
@@ -355,6 +356,13 @@ export interface InternalServerConfiguration {
    * @default enabled with 100 requests per 15 minutes
    */
   rateLimit?: RateLimitOptions;
+
+  /**
+   * Cookie parser configuration
+   * Parses incoming cookies and provides cookie management with HMAC signing
+   * @default disabled
+   */
+  cookieParser?: CookieParserOptions;
 
   /**
    * Graceful shutdown timeout configuration

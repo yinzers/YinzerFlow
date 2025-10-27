@@ -385,4 +385,47 @@ export interface Request<T extends HandlerCallbackGenerics = HandlerCallbackGene
    * ```
    */
   rawBody: Buffer | string;
+
+  /**
+   * Parsed unsigned cookies from the Cookie header
+   *
+   * Available when cookie parser middleware is used. Contains all cookies
+   * sent by the client, regardless of whether they're signed or not.
+   *
+   * @example
+   * ```typescript
+   * const handler: HandlerCallback = async (ctx) => {
+   *   // Access all cookies
+   *   const theme = ctx.request.cookies.get('theme');
+   *   const lang = ctx.request.cookies.get('language');
+   *
+   *   return { theme, lang };
+   * };
+   * ```
+   */
+  cookies: Map<string, string>;
+
+  /**
+   * Parsed and validated signed cookies
+   *
+   * Available when cookie parser middleware is used with a secret configured.
+   * Only contains cookies that were signed AND pass signature validation.
+   * Unsigned cookies or tampered cookies are excluded from this Map.
+   *
+   * @example
+   * ```typescript
+   * const handler: HandlerCallback = async (ctx) => {
+   *   // Access signed cookies (validated)
+   *   const sessionId = ctx.request.signedCookies.get('sessionId');
+   *   const userId = ctx.request.signedCookies.get('userId');
+   *
+   *   if (!sessionId) {
+   *     throw new Error('Session cookie missing or tampered');
+   *   }
+   *
+   *   return { sessionId, userId };
+   * };
+   * ```
+   */
+  signedCookies: Map<string, string>;
 }

@@ -12,6 +12,8 @@ import { _createGlobalRateLimitHook } from '@core/modules/rateLimit/rateLimithoo
 import { RateLimiter } from '@core/modules/rateLimit/RateLimiter.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
+import { cookieParserHook } from '@core/modules/cookieParser/cookieParserHooks.ts';
+import { CookieParserConfig } from '@core/modules/cookieParser/CookieParserConfig.ts';
 
 /**
  * Main YinzerFlow application class for building HTTP servers.
@@ -155,12 +157,19 @@ export class YinzerFlow extends SetupImpl {
       networkLog.enable(this._configuration.networkLogger);
     }
 
-    // Setup global rate limiting, if there is none provided, it will be enabled by default
+    // Setup global rate limiting, if there is none provided, it will be enabled by default. We need to set the confgratin before the conditional since it is defaulted on and users might not pass it in the configuration.
     const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit);
     if (configuration?.rateLimit?.enabled) {
       this._globalRateLimiter = new RateLimiter(rateLimitConfig);
       const hook = _createGlobalRateLimitHook(this._globalRateLimiter);
       this.beforeAll([hook]);
+    }
+
+    // Setup cookie parser, if enabled, since it is deisabled by default we can set the configuration after the conditional
+    if (configuration?.cookieParser?.enabled) {
+      const cookieParserConfig = new CookieParserConfig(configuration.cookieParser);
+      const cookieParserHookFunc = cookieParserHook(cookieParserConfig.config);
+      this.beforeAll([cookieParserHookFunc]);
     }
 
     // Setup automatic graceful shutdown if enabled

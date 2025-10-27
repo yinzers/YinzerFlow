@@ -194,6 +194,16 @@ export class ContextImpl implements InternalContextImpl {
    * @see {@link RequestImpl} for request building details
    * @see {@link ResponseImpl} for response building details
    */
+  cookies: {
+    set: (name: string, value: string, options?: import('@typedefs/public/CookieParser.js').CookieOptions) => void;
+    sign: (name: string, value: string) => string;
+    unsign: (name: string, signedValue: string) => string | false;
+  } = {
+    set: () => {},
+    sign: () => '',
+    unsign: () => false,
+  };
+
   constructor(rawRequest: Buffer | string, setup: SetupImpl, clientAddress?: string) {
     this._request = new RequestImpl(rawRequest, setup, clientAddress);
     this._response = new ResponseImpl(this._request);

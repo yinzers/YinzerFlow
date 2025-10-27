@@ -2,7 +2,6 @@ import type { Redis } from 'ioredis';
 import type { createClient } from 'redis';
 import type { TimeString } from './Time.js';
 import type { RateLimitAlgorithm, RateLimitStoreType } from '@typedefs/constants/rateLimit.js';
-import type { HandlerCallback } from '@typedefs/public/Context.js';
 
 interface BaseStoreConfig {
   /** Type of the store @default 'memory' */

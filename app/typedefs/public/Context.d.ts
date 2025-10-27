@@ -129,6 +129,68 @@ export interface Context<T extends HandlerCallbackGenerics = HandlerCallbackGene
    * ```
    */
   state: T['state'] extends Record<string, unknown> ? T['state'] : Record<string, unknown>;
+
+  /**
+   * Cookie helper methods for setting and managing cookies
+   *
+   * Available when cookie parser middleware is used. Provides convenient methods
+   * for setting cookies, signing values, and validating signed cookies.
+   *
+   * @example
+   * ```typescript
+   * const handler: HandlerCallback = async (ctx) => {
+   *   // Set a cookie
+   *   ctx.cookies.set('theme', 'dark', {
+   *     httpOnly: true,
+   *     secure: true,
+   *     maxAge: 86400 // 24 hours
+   *   });
+   *
+   *   // Set a signed cookie
+   *   const signedValue = ctx.cookies.sign('sessionId', 'abc123');
+   *   ctx.cookies.set('sessionId', signedValue);
+   *
+   *   // Validate a signed cookie
+   *   const signedValue = ctx.request.signedCookies.get('sessionId');
+   *   if (signedValue) {
+   *     const original = ctx.cookies.unsign('sessionId', signedValue);
+   *     if (original === false) {
+   *       throw new Error('Cookie was tampered with');
+   *     }
+   *   }
+   *
+   *   return { message: 'Cookie set successfully' };
+   * };
+   * ```
+   */
+  cookies: {
+    /**
+     * Set a cookie in the response
+     *
+     * @param name - Cookie name
+     * @param value - Cookie value
+     * @param options - Optional cookie attributes
+     */
+    set: (name: string, value: string, options?: CookieOptions) => void;
+
+    /**
+     * Sign a cookie value using HMAC
+     *
+     * @param name - Cookie name
+     * @param value - Cookie value to sign
+     * @returns Signed cookie value
+     */
+    sign: (name: string, value: string) => string;
+
+    /**
+     * Validate and unsign a cookie value
+     *
+     * @param name - Cookie name
+     * @param signedValue - Signed cookie value
+     * @returns Original value if valid, false if tampered
+     */
+    unsign: (name: string, signedValue: string) => string | false;
+  };
 }
 
 /**
