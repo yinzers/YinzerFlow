@@ -193,6 +193,34 @@ app.post('/api/login', async (ctx) => {
 });
 ```
 
+### Setting Multiple Cookies
+
+You can set multiple cookies in a single handler. Each call to `ctx.cookies.set()` will add a separate `Set-Cookie` header to the response:
+
+```typescript
+app.post('/api/set-preferences', async (ctx) => {
+  // Set multiple cookies - each creates its own Set-Cookie header
+  ctx.cookies.set('theme', 'dark', {
+    httpOnly: false,  // Allow JavaScript access
+    maxAge: 31536000  // 1 year
+  });
+  
+  ctx.cookies.set('language', 'en', {
+    httpOnly: false,
+    maxAge: 31536000
+  });
+  
+  ctx.cookies.set('sessionId', user.sessionId, {
+    httpOnly: true,   // Secure session cookie
+    secure: true,
+    sameSite: 'strict',
+    maxAge: 3600
+  });
+  
+  return { success: true };
+});
+```
+
 ## Signed Cookies
 
 ```typescript

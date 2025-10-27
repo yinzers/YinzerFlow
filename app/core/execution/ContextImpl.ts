@@ -4,6 +4,7 @@ import type { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.js';
 import type { InternalRequestImpl } from '@typedefs/internal/InternalRequestImpl.js';
 import type { InternalResponseImpl } from '@typedefs/internal/InternalResponseImpl.js';
+import type { CookieOptions } from '@typedefs/public/CookieParser.js';
 import type { Request } from '@typedefs/public/Request.ts';
 import type { Response } from '@typedefs/public/Response.ts';
 
@@ -195,13 +196,15 @@ export class ContextImpl implements InternalContextImpl {
    * @see {@link ResponseImpl} for response building details
    */
   cookies: {
-    set: (name: string, value: string, options?: import('@typedefs/public/CookieParser.js').CookieOptions) => void;
+    set: (name: string, value: string, options?: CookieOptions) => void;
     sign: (name: string, value: string) => string;
     unsign: (name: string, signedValue: string) => string | false;
   } = {
-    set: () => {},
-    sign: () => '',
-    unsign: () => false,
+    set: (_name: string, _value: string, _options?: unknown): void => {
+      // Initialized by cookieParserHook if enabled
+    },
+    sign: (_name: string, _value: string): string => '',
+    unsign: (_name: string, _signedValue: string): string | false => false,
   };
 
   constructor(rawRequest: Buffer | string, setup: SetupImpl, clientAddress?: string) {

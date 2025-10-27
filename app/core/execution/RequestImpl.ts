@@ -23,6 +23,8 @@ export class RequestImpl implements InternalRequestImpl {
   params: Record<string, string>;
   ipAddress: string;
   rawBody: Buffer | string;
+  cookies = new Map<string, string>();
+  signedCookies = new Map<string, string>();
 
   constructor(rawRequest: Request['rawBody'], setup: SetupImpl, clientAddress?: string) {
     this._rawRequest = rawRequest;
@@ -49,7 +51,7 @@ export class RequestImpl implements InternalRequestImpl {
     }
   }
 
-  private _parseRequestIntoObject(): Omit<Request, 'ipAddress'> {
+  private _parseRequestIntoObject(): Omit<Request, 'cookies' | 'ipAddress' | 'signedCookies'> {
     const request = this._rawRequest.toString();
 
     const { method, path, protocol, headersRaw, rawBody } = parseHttpRequest(request);

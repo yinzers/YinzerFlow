@@ -1,6 +1,4 @@
 ---
-description: 
-globs: *.spec.*,*.test.*
 alwaysApply: false
 ---
 # YinzerFlow Testing Standards

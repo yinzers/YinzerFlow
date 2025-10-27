@@ -29,7 +29,7 @@ export class RateLimitConfig implements RateLimitOptions {
     this.skipSuccessfulRequests = config?.skipSuccessfulRequests ?? false;
     this.skipFailedRequests = config?.skipFailedRequests ?? false;
     this.keyGenerator = config?.keyGenerator ?? defaultKeyGenerator;
-    this.handler = config?.handler ?? defaultHandler;
+    this.handler = (config?.handler ?? defaultHandler) as <T extends HandlerCallbackGenerics>(ctx: Context<T>) => HandlerCallback<T>;
   }
 
   private _validateConfig(config?: RateLimitOptions): void {

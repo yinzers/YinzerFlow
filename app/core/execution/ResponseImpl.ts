@@ -16,6 +16,7 @@ export class ResponseImpl implements InternalResponseImpl {
   _statusCode: InternalHttpStatusCode = httpStatusCode.ok;
   _status: InternalHttpStatus = httpStatus.ok;
   _headers: Partial<Record<InternalHttpHeaders, string>> = {};
+  _setCookies: Array<string> = []; // Track multiple Set-Cookie headers
   _body: unknown = '';
   _stringBody = '';
   _encoding: InternalHttpEncoding = httpEncoding.utf8;
@@ -32,6 +33,12 @@ export class ResponseImpl implements InternalResponseImpl {
     // Example: Content-Type: text/html
     const headerLines = Object.entries(this._headers).map(([key, value]) => `${key}: ${value}`);
 
+    // Add multiple Set-Cookie headers
+    const setCookieLines = this._setCookies.map((value) => `Set-Cookie: ${value}`);
+
+    // Combine all header lines (regular headers + Set-Cookie headers)
+    const allHeaderLines = [...headerLines, ...setCookieLines];
+
     // Determine encoding based on Content-Type header and body content
     const encoding = determineEncoding(this._headers['content-type'], this._body);
 
@@ -42,7 +49,7 @@ export class ResponseImpl implements InternalResponseImpl {
     this._encoding = encoding;
 
     // Fix: Handle the case when there are no headers properly
-    const headersSection = headerLines.length > 0 ? `${headerLines.join('\n')}\n` : '';
+    const headersSection = allHeaderLines.length > 0 ? `${allHeaderLines.join('\n')}\n` : '';
     this._stringBody = `${statusLine}\n${headersSection}\n${body}`;
 
     const contentLength = calculateContentSizeInBytes(this._stringBody);
@@ -89,8 +96,17 @@ export class ResponseImpl implements InternalResponseImpl {
     // SECURITY: Filter undefined values and validate response headers for CRLF injection
     const validatedHeaders = filterAndValidateHeaders(headers);
 
-    // Set headers after validation passes
-    this._headers = { ...this._headers, ...validatedHeaders };
+    // Handle Set-Cookie specially - support multiple values
+    for (const [key, value] of Object.entries(validatedHeaders)) {
+      if (key === 'Set-Cookie') {
+        if (value) {
+          this._setCookies.push(value);
+        }
+      } else {
+        // Regular headers overwrite if duplicate
+        this._headers[key] = value;
+      }
+    }
   }
 
   removeHeaders(headerNames: Array<InternalHttpHeaders>): void {

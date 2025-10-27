@@ -1,9 +1,7 @@
 ---
 description: Documentation standards for YinzerFlow
-globs: *.md,*.MD
 alwaysApply: false
 ---
-
 # Documentation Standards for YinzerFlow
 
 When creating or updating documentation, follow this template to ensure consistency, clarity, and completeness.
