@@ -33,4 +33,4 @@ export { rateLimitAlgorithm, rateLimitStoreType } from '@constants/rateLimit.ts'
 // ============================================
 export type { CorsOptions, BodyParserOptions, ServerConfiguration } from '@typedefs/public/Configuration.d.ts';
 export type { RateLimitOptions } from '@typedefs/public/RateLimit.d.ts';
-export type { CookieParserOptions } from '@typedefs/public/CookieParser.d.ts';
+export type { Cookies, CookieParserOptions } from '@typedefs/public/CookieParser.d.ts';
