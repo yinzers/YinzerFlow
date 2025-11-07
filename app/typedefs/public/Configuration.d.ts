@@ -142,6 +142,6 @@ export type ServerConfiguration = DeepPartial<InternalServerConfiguration>;
  * @see {@link InternalCorsEnabledConfiguration} for enabled CORS options
  * @see {@link ServerConfiguration} for complete server configuration
  */
-export type CorsOptions = InternalCorsDisabledConfiguration | InternalCorsEnabledConfiguration;
+export type CorsOptions = DeepPartial<InternalCorsEnabledConfiguration> | InternalCorsDisabledConfiguration;
 
 export type BodyParserOptions = DeepPartial<InternalBodyParserConfiguration>;
