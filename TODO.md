@@ -22,7 +22,7 @@
       - Public types: `{Feature}Options`
     - Examples:
       - `InternalBodyParserConfiguration` → `InternalBodyParserOptions`
-      - `CorsConfiguration` → `CorsOptions`
+      - `CorsOptions` → `CorsOptions`
       - `ServerConfiguration` → `ServerOptions`
     - Update all imports and references
     - Update documentation to reflect new naming
