@@ -60,7 +60,7 @@ import type {
  *
  * @see {@link InternalServerConfiguration} for complete internal configuration
  * @see {@link DeepPartial} for how optional properties are created
- * @see {@link CorsConfiguration} for CORS configuration options
+ * @see {@link CorsOptions} for CORS configuration options
  */
 export type ServerConfiguration = DeepPartial<InternalServerConfiguration>;
 

@@ -8,7 +8,7 @@ import type { TimeString } from '@typedefs/public/Time.js';
  * Internal CORS Configuration Options
  * Provides fine-grained control over Cross-Origin Resource Sharing
  */
-export type InternalCorsConfiguration = InternalCorsDisabledConfiguration | InternalCorsEnabledConfiguration;
+export type InternalCorsOptions = InternalCorsDisabledConfiguration | InternalCorsEnabledConfiguration;
 
 /**
  * Internal CORS Disabled Configuration
@@ -338,7 +338,7 @@ export interface InternalServerConfiguration {
   /**
    * Cross-Origin Resource Sharing configuration
    */
-  cors: InternalCorsConfiguration;
+  cors: InternalCorsOptions;
 
   /**
    * Body parsing configuration with security limits

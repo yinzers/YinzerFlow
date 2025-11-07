@@ -166,7 +166,7 @@ const app = new YinzerFlow({
 
 <aside>
 
-Options: `{ enabled: false } | CorsConfiguration`
+Options: `{ enabled: false } | CorsOptions`
 
 - 🔴 `{ enabled: false }`: CORS disabled (default, most secure)
 - 🟢 `{ enabled: true, ... }`: CORS enabled with origin configuration
@@ -227,7 +227,7 @@ const app = new YinzerFlow({
 
 <aside>
 
-Options: `BodyParserConfiguration`
+Options: `BodyParserOptions`
 
 - 📄 `json`: JSON parsing limits (256KB max default)
 - 📁 `fileUploads`: File upload limits (10MB max default)

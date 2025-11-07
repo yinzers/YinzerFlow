@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { CorsConfiguration } from '@typedefs/public/Configuration.js';
+import type { CorsOptions } from '@typedefs/public/Configuration.js';
 import { handleCors } from '@core/utils/cors.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
@@ -7,7 +7,7 @@ import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl
 import { httpStatusCode } from '@constants/http.ts';
 
 // Reusable test data builders
-const createCorsConfig = (overrides: Partial<CorsConfiguration> = {}): CorsConfiguration => ({
+const createCorsConfig = (overrides: Partial<CorsOptions> = {}): CorsOptions => ({
   enabled: true,
   origin: '*',
   credentials: false,
@@ -597,7 +597,7 @@ describe('CORS Functionality', () => {
     });
 
     it('should handle minimal CORS configuration', () => {
-      const config: CorsConfiguration = {
+      const config: CorsOptions = {
         enabled: true,
         origin: '*',
         methods: ['GET', 'POST'],

@@ -1,9 +1,9 @@
 import { httpHeaders } from '@constants/http.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.js';
-import type { CorsConfiguration } from '@typedefs/public/Configuration.js';
+import type { CorsOptions } from '@typedefs/public/Configuration.js';
 import type { InternalCorsEnabledConfiguration } from '@typedefs/internal/InternalConfiguration.js';
 
-export const handleCors = (context: InternalContextImpl, config: CorsConfiguration): boolean => {
+export const handleCors = (context: InternalContextImpl, config: CorsOptions): boolean => {
   if (!config.enabled) return false;
 
   if (context.request.method === 'OPTIONS') {
