@@ -1,6 +1,7 @@
 import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.d.ts';
 import type { Request } from '@typedefs/public/Request.js';
 import type { Response } from '@typedefs/public/Response.js';
+import type { Cookies } from '@typedefs/public/CookieParser.js';
 
 /**
  * Request context that provides access to request, response, and user-defined state
@@ -162,35 +163,10 @@ export interface Context<T extends HandlerCallbackGenerics = HandlerCallbackGene
    *   return { message: 'Cookie set successfully' };
    * };
    * ```
+   *
+   * @see {@link Cookies} for complete cookies interface documentation
    */
-  cookies: {
-    /**
-     * Set a cookie in the response
-     *
-     * @param name - Cookie name
-     * @param value - Cookie value
-     * @param options - Optional cookie attributes
-     */
-    set: (name: string, value: string, options?: CookieOptions) => void;
-
-    /**
-     * Sign a cookie value using HMAC
-     *
-     * @param name - Cookie name
-     * @param value - Cookie value to sign
-     * @returns Signed cookie value
-     */
-    sign: (name: string, value: string) => string;
-
-    /**
-     * Validate and unsign a cookie value
-     *
-     * @param name - Cookie name
-     * @param signedValue - Signed cookie value
-     * @returns Original value if valid, false if tampered
-     */
-    unsign: (name: string, signedValue: string) => string | false;
-  };
+  cookies: Cookies;
 }
 
 /**

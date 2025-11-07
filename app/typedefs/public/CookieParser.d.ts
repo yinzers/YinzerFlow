@@ -6,6 +6,95 @@ import type { InternalCookieOptions } from '@typedefs/internal/modules/cookiePar
 export type CookieOptions = InternalCookieOptions;
 
 /**
+ * Cookie helper methods for setting and managing cookies
+ *
+ * Available on the context object when cookie parser middleware is enabled.
+ * Provides convenient methods for setting cookies, signing values, and
+ * validating signed cookies.
+ *
+ * @example
+ * ```typescript
+ * import type { Cookies } from 'yinzerflow';
+ *
+ * // Use in a helper function
+ * export const setRefreshTokenCookie = (cookies: Cookies, refreshToken: string): void => {
+ *   const signedRefreshToken = cookies.sign('refreshToken', refreshToken);
+ *   cookies.set('refreshToken', signedRefreshToken, {
+ *     path: '/session',
+ *     maxAge: '7d',
+ *     httpOnly: true,
+ *     secure: true
+ *   });
+ * };
+ *
+ * // Use in a route handler
+ * const handler: HandlerCallback = async (ctx) => {
+ *   ctx.cookies.set('theme', 'dark', { maxAge: '30d' });
+ *   return { message: 'Cookie set' };
+ * };
+ * ```
+ */
+export interface Cookies {
+  /**
+   * Set a cookie in the response
+   *
+   * @param name - Cookie name
+   * @param value - Cookie value
+   * @param options - Optional cookie attributes
+   *
+   * @example
+   * ```typescript
+   * ctx.cookies.set('sessionId', 'abc123', {
+   *   httpOnly: true,
+   *   secure: true,
+   *   maxAge: '1h'
+   * });
+   * ```
+   */
+  set: (name: string, value: string, options?: CookieOptions) => void;
+
+  /**
+   * Sign a cookie value using HMAC-SHA256
+   *
+   * Creates a signature that can be validated to detect tampering.
+   * The signed value format is: `value.signature`
+   *
+   * @param name - Cookie name (used in signature calculation)
+   * @param value - Cookie value to sign
+   * @returns Signed cookie value
+   *
+   * @example
+   * ```typescript
+   * const signedValue = ctx.cookies.sign('sessionId', 'abc123');
+   * ctx.cookies.set('sessionId', signedValue);
+   * ```
+   */
+  sign: (name: string, value: string) => string;
+
+  /**
+   * Validate and unsign a signed cookie value
+   *
+   * Verifies the HMAC signature and returns the original value if valid.
+   *
+   * @param name - Cookie name (used in signature validation)
+   * @param signedValue - The signed cookie value
+   * @returns Original value if signature is valid, false if tampered
+   *
+   * @example
+   * ```typescript
+   * const signedValue = ctx.request.signedCookies.get('sessionId');
+   * if (signedValue) {
+   *   const original = ctx.cookies.unsign('sessionId', signedValue);
+   *   if (original === false) {
+   *     throw new Error('Cookie was tampered with');
+   *   }
+   * }
+   * ```
+   */
+  unsign: (name: string, signedValue: string) => string | false;
+}
+
+/**
  * Cookie parser configuration options
  *
  * @example
