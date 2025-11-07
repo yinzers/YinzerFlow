@@ -28,6 +28,39 @@
     - Update documentation to reflect new naming
   - **Note**: This should be done as a separate refactor, possibly before or after module work
 
+## Feature Enhancements
+
+- [ ] **Body Parser: Add Per-Parser Type Enable/Disable**
+  - **Issue**: Currently bodyParser is all-or-nothing - can't disable JSON parsing while keeping URL-encoded, etc.
+  - **Goal**: Allow granular control over which parsers are active
+  - **Implementation**: Add `enabled` flag to each parser type in BodyParserOptions
+  - **Example**:
+    ```typescript
+    const app = new YinzerFlow({
+      bodyParser: {
+        json: {
+          enabled: true,      // Enable JSON parsing
+          maxSize: 262144,
+          maxDepth: 10
+        },
+        urlEncoded: {
+          enabled: false,     // Disable URL-encoded parsing
+          maxSize: 1048576
+        },
+        fileUploads: {
+          enabled: true,      // Enable file uploads
+          maxFileSize: 10485760
+        }
+      }
+    });
+    ```
+  - **When**: Implement this as part of bodyParser module refactor (Phase 4)
+  - **Benefits**:
+    - Opt-out of unused parsers for performance
+    - Clearer security posture (disable what you don't need)
+    - Consistent with other module patterns (CORS, rateLimit have `enabled`)
+    - Better tree-shaking potential
+
 ## Architecture Refactoring
 
 ### 1. Add beforeRouting Hook System (NEW FRAMEWORK FEATURE)
@@ -73,8 +106,9 @@
   - [ ] **bodyParser Module** (uses beforeAll hooks)
     - Move parsing logic from setup/utils to dedicated module
     - Create `BodyParserConfig.ts` (json, urlEncoded, fileUploads)
+    - **Include per-parser enable/disable feature** (see "Feature Enhancements" section)
     - Create `bodyParserHooks.ts`
-    - Register in YinzerFlow constructor if enabled
+    - Register in YinzerFlow constructor (check each parser type's enabled flag)
   - [ ] **logging Module** (optional)
     - Consider if we want app-specific logging config as a module
     - Might not be necessary since logging is more of a framework concern
