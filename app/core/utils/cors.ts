@@ -1,6 +1,6 @@
 import { httpHeaders } from '@constants/http.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.js';
-import type { InternalCorsEnabledConfiguration, InternalCorsOptions } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalCorsEnabledOptions, InternalCorsOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 export const handleCors = (context: InternalContextImpl, config: InternalCorsOptions): boolean => {
   if (!config.enabled) return false;
@@ -62,7 +62,7 @@ export const handleCors = (context: InternalContextImpl, config: InternalCorsOpt
  * Determine the correct origin value to send back in Access-Control-Allow-Origin
  * SECURITY: Never echo back the request origin without validation
  */
-const _determineAllowedOrigin = (context: InternalContextImpl, config: InternalCorsEnabledConfiguration): string => {
+const _determineAllowedOrigin = (context: InternalContextImpl, config: InternalCorsEnabledOptions): string => {
   if (config.origin === '*') {
     // SECURITY: Block dangerous wildcard + credentials combination (CORS spec violation)
     if (config.credentials) {
@@ -97,7 +97,7 @@ const _determineAllowedOrigin = (context: InternalContextImpl, config: InternalC
   return 'null';
 };
 
-const _validateOrigin = (context: InternalContextImpl, config: InternalCorsEnabledConfiguration): boolean => {
+const _validateOrigin = (context: InternalContextImpl, config: InternalCorsEnabledOptions): boolean => {
   if (config.origin === '*') return true;
 
   const normalizedOrigin = context.request.headers.origin?.toLowerCase() ?? '';

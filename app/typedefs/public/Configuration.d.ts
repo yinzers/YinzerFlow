@@ -1,8 +1,8 @@
 import type { DeepPartial } from '@typedefs/internal/Generics.js';
 import type {
   InternalBodyParserConfiguration,
-  InternalCorsDisabledConfiguration,
-  InternalCorsEnabledConfiguration,
+  InternalCorsDisabledOptions,
+  InternalCorsEnabledOptions,
   InternalServerOptions,
 } from '@typedefs/internal/InternalConfiguration.js';
 
@@ -138,10 +138,10 @@ export type ServerOptions = DeepPartial<InternalServerOptions>;
  * });
  * ```
  *
- * @see {@link InternalCorsDisabledConfiguration} for disabled CORS options
- * @see {@link InternalCorsEnabledConfiguration} for enabled CORS options
+ * @see {@link InternalCorsDisabledOptions} for disabled CORS options
+ * @see {@link InternalCorsEnabledOptions} for enabled CORS options
  * @see {@link ServerOptions} for complete server configuration
  */
-export type CorsOptions = DeepPartial<InternalCorsEnabledConfiguration> | InternalCorsDisabledConfiguration;
+export type CorsOptions = DeepPartial<InternalCorsEnabledOptions> | InternalCorsDisabledOptions;
 
 export type BodyParserOptions = DeepPartial<InternalBodyParserConfiguration>;
