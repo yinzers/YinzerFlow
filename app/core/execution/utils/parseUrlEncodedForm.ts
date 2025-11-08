@@ -1,9 +1,9 @@
-import type { InternalUrlEncodedConfiguration } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalUrlEncodedOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 /**
  * Validate form field counts and basic structure
  */
-const _validateFormStructure = (pairs: Array<string>, config: InternalUrlEncodedConfiguration): void => {
+const _validateFormStructure = (pairs: Array<string>, config: InternalUrlEncodedOptions): void => {
   // SECURITY: Check field count to prevent memory exhaustion
   if (pairs.length > config.maxFields) {
     throw new Error(`Too many form fields: ${pairs.length} exceeds limit of ${config.maxFields}`);
@@ -13,7 +13,7 @@ const _validateFormStructure = (pairs: Array<string>, config: InternalUrlEncoded
 /**
  * Validate individual field name and value lengths
  */
-const _validateFieldLengths = (key: string, value: string | undefined, config: InternalUrlEncodedConfiguration): void => {
+const _validateFieldLengths = (key: string, value: string | undefined, config: InternalUrlEncodedOptions): void => {
   // SECURITY: Check field name length
   if (key.length > config.maxFieldNameLength) {
     throw new Error(`Form field name too long: ${key.length} characters exceeds limit of ${config.maxFieldNameLength}`);
@@ -28,7 +28,7 @@ const _validateFieldLengths = (key: string, value: string | undefined, config: I
 /**
  * Validate decoded field lengths (they may expand during decoding)
  */
-const _validateDecodedLengths = (decodedKey: string, decodedValue: string, config: InternalUrlEncodedConfiguration): void => {
+const _validateDecodedLengths = (decodedKey: string, decodedValue: string, config: InternalUrlEncodedOptions): void => {
   // SECURITY: Check decoded field name length (could expand during decoding)
   if (decodedKey.length > config.maxFieldNameLength) {
     throw new Error(`Decoded form field name too long: ${decodedKey.length} characters exceeds limit of ${config.maxFieldNameLength}`);
@@ -45,7 +45,7 @@ const _validateDecodedLengths = (decodedKey: string, decodedValue: string, confi
 /**
  * Process a single form field pair with security validation
  */
-const _processFieldPair = (pair: string, params: Record<string, string>, config?: InternalUrlEncodedConfiguration): void => {
+const _processFieldPair = (pair: string, params: Record<string, string>, config?: InternalUrlEncodedOptions): void => {
   const [key, value] = pair.split('=');
   if (!key) return;
 
@@ -91,7 +91,7 @@ const _processFieldPair = (pair: string, params: Record<string, string>, config?
  * // Returns { name: 'John', age: '30' }
  * ```
  */
-export const parseUrlEncodedForm = (body: string, config?: InternalUrlEncodedConfiguration): Record<string, string> => {
+export const parseUrlEncodedForm = (body: string, config?: InternalUrlEncodedOptions): Record<string, string> => {
   const params: Record<string, string> = {};
   const pairs = body.split('&');
 

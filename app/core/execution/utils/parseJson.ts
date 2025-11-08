@@ -1,4 +1,4 @@
-import type { InternalJsonParserConfiguration } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalJsonParserOptions } from '@typedefs/internal/InternalConfiguration.js';
 import { log } from '@core/utils/log.ts';
 
 /**
@@ -16,7 +16,7 @@ const DANGEROUS_PROPERTIES = ['__proto__', 'constructor', 'prototype'];
  * - Memory exhaustion protection (max keys, string length, array length)
  * - Proper error handling with security context
  */
-export const parseApplicationJson = (body: string, config: InternalJsonParserConfiguration): unknown => {
+export const parseApplicationJson = (body: string, config: InternalJsonParserOptions): unknown => {
   // Handle empty strings, whitespace, and null characters
   if (!body || !body.trim() || body.trim() === '\0') {
     return undefined;
@@ -57,7 +57,7 @@ export const parseApplicationJson = (body: string, config: InternalJsonParserCon
 /**
  * Validate primitive values (strings, numbers, etc.)
  */
-const _validatePrimitive = (data: unknown, config: InternalJsonParserConfiguration): void => {
+const _validatePrimitive = (data: unknown, config: InternalJsonParserOptions): void => {
   if (typeof data === 'string' && data.length > config.maxStringLength) {
     throw new Error(`String too long: ${data.length} characters exceeds limit of ${config.maxStringLength}`);
   }
@@ -66,7 +66,7 @@ const _validatePrimitive = (data: unknown, config: InternalJsonParserConfigurati
 /**
  * Validate array structure and elements
  */
-const _validateArray = (data: Array<unknown>, config: InternalJsonParserConfiguration, depth: number): void => {
+const _validateArray = (data: Array<unknown>, config: InternalJsonParserOptions, depth: number): void => {
   // SECURITY: Check array length to prevent memory exhaustion
   if (data.length > config.maxArrayLength) {
     throw new Error(`Array too large: ${data.length} elements exceeds limit of ${config.maxArrayLength}`);
@@ -81,7 +81,7 @@ const _validateArray = (data: Array<unknown>, config: InternalJsonParserConfigur
 /**
  * Validate object keys for security issues
  */
-const _validateObjectKeys = (keys: Array<string>, config: InternalJsonParserConfiguration): void => {
+const _validateObjectKeys = (keys: Array<string>, config: InternalJsonParserOptions): void => {
   // SECURITY: Check number of keys to prevent memory exhaustion
   if (keys.length > config.maxKeys) {
     throw new Error(`Object has too many keys: ${keys.length} exceeds limit of ${config.maxKeys}`);
@@ -104,7 +104,7 @@ const _validateObjectKeys = (keys: Array<string>, config: InternalJsonParserConf
 /**
  * Validate object properties and values
  */
-const _validateObjectProperties = (data: Record<string, unknown>, config: InternalJsonParserConfiguration, depth: number): void => {
+const _validateObjectProperties = (data: Record<string, unknown>, config: InternalJsonParserOptions, depth: number): void => {
   const keys = Object.keys(data);
 
   for (const key of keys) {
@@ -132,7 +132,7 @@ const _validateObjectProperties = (data: Record<string, unknown>, config: Intern
  * @param config - Security configuration
  * @param depth - Current nesting depth (starts at 1 for root level)
  */
-const _validateJsonStructure = (data: unknown, config: InternalJsonParserConfiguration, depth: number): void => {
+const _validateJsonStructure = (data: unknown, config: InternalJsonParserOptions, depth: number): void => {
   // SECURITY: Check nesting depth to prevent stack overflow attacks
   if (depth > config.maxDepth) {
     log.warn('[SECURITY] JSON nesting too deep - potential stack overflow attack', {

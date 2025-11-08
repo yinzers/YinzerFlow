@@ -98,28 +98,28 @@ export interface InternalCorsEnabledOptions {
  * Internal Body Parser Security Configuration
  * Protects against DoS attacks, prototype pollution, and memory exhaustion
  */
-export interface InternalBodyParserConfiguration {
+export interface InternalBodyParserOptions {
   /**
    * JSON parsing security configuration
    */
-  json: InternalJsonParserConfiguration;
+  json: InternalJsonParserOptions;
 
   /**
    * File upload security configuration
    */
-  fileUploads: InternalFileUploadConfiguration;
+  fileUploads: InternalFileUploadOptions;
 
   /**
    * URL-encoded form data configuration
    */
-  urlEncoded: InternalUrlEncodedConfiguration;
+  urlEncoded: InternalUrlEncodedOptions;
 }
 
 /**
  * Internal JSON Parser Security Configuration
  * Protects against JSON-specific attacks like prototype pollution and DoS
  */
-export interface InternalJsonParserConfiguration {
+export interface InternalJsonParserOptions {
   /**
    * Maximum JSON request body size in bytes
    * @default 262144 (256KB) - reasonable for API payloads
@@ -166,7 +166,7 @@ export interface InternalJsonParserConfiguration {
 /**
  * Internal File Upload Security Configuration
  */
-export interface InternalFileUploadConfiguration {
+export interface InternalFileUploadOptions {
   /**
    * Maximum size per file in bytes
    * @default 10485760 (10MB) - reasonable for documents/images
@@ -212,7 +212,7 @@ export interface InternalFileUploadConfiguration {
 /**
  * Internal URL-encoded Configuration
  */
-export interface InternalUrlEncodedConfiguration {
+export interface InternalUrlEncodedOptions {
   /**
    * Maximum URL-encoded form data size in bytes
    * @default 1048576 (1MB)
@@ -343,7 +343,7 @@ export interface InternalServerOptions {
   /**
    * Body parsing configuration with security limits
    */
-  bodyParser: InternalBodyParserConfiguration;
+  bodyParser: InternalBodyParserOptions;
 
   /**
    * IP address security and validation configuration
