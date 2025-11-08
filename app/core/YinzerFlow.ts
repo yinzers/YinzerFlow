@@ -5,7 +5,7 @@ import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { log } from '@core/utils/log.ts';
-import type { ServerConfiguration } from '@typedefs/public/Configuration.js';
+import type { ServerOptions } from '@typedefs/public/Configuration.js';
 import { getStatusEmoji, logPerformanceDetails, networkLog } from '@core/utils/networkLog.ts';
 import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInBytes.ts';
 import { _createGlobalRateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
@@ -134,7 +134,7 @@ import { CookieParserConfig } from '@core/modules/cookieParser/CookieParserConfi
  * 5. **Graceful Shutdown**: Automatic cleanup on process termination
  *
  * @see {@link SetupImpl} for route configuration capabilities
- * @see {@link ServerConfiguration} for configuration options
+ * @see {@link ServerOptions} for configuration options
  * @see {@link ContextImpl} for request context implementation
  * @see {@link RequestHandlerImpl} for request processing
  */
@@ -143,7 +143,7 @@ export class YinzerFlow extends SetupImpl {
   private _server?: ReturnType<typeof createServer>;
   private _globalRateLimiter?: RateLimiter | undefined;
 
-  constructor(configuration?: ServerConfiguration) {
+  constructor(configuration?: ServerOptions) {
     super(configuration);
 
     // Replace global logger if custom logger is provided

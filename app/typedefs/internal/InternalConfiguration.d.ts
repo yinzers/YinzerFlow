@@ -292,7 +292,7 @@ export interface InternalIpValidationConfig {
  * This defines ALL possible configuration options with their required types
  * Used as the foundation for both internal (complete) and public (partial) configurations
  */
-export interface InternalServerConfiguration {
+export interface InternalServerOptions {
   /**
    * Port number for the server to listen on
    * @default 5000

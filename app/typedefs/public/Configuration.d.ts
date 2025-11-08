@@ -3,14 +3,14 @@ import type {
   InternalBodyParserConfiguration,
   InternalCorsDisabledConfiguration,
   InternalCorsEnabledConfiguration,
-  InternalServerConfiguration,
+  InternalServerOptions,
 } from '@typedefs/internal/InternalConfiguration.js';
 
 /**
  * User-facing configuration interface where all properties are optional.
  *
  * Users only need to specify what they want to override from defaults.
- * This is created by making the complete internal ServerConfigurationShape
+ * This is created by making the complete internal ServerOptions shape
  * partially optional using DeepPartial.
  *
  * ## Configuration Options
@@ -58,11 +58,11 @@ import type {
  * });
  * ```
  *
- * @see {@link InternalServerConfiguration} for complete internal configuration
+ * @see {@link InternalServerOptions} for complete internal configuration
  * @see {@link DeepPartial} for how optional properties are created
  * @see {@link CorsOptions} for CORS configuration options
  */
-export type ServerConfiguration = DeepPartial<InternalServerConfiguration>;
+export type ServerOptions = DeepPartial<InternalServerOptions>;
 
 /**
  * CORS Configuration Options for Cross-Origin Resource Sharing.
@@ -140,7 +140,7 @@ export type ServerConfiguration = DeepPartial<InternalServerConfiguration>;
  *
  * @see {@link InternalCorsDisabledConfiguration} for disabled CORS options
  * @see {@link InternalCorsEnabledConfiguration} for enabled CORS options
- * @see {@link ServerConfiguration} for complete server configuration
+ * @see {@link ServerOptions} for complete server configuration
  */
 export type CorsOptions = DeepPartial<InternalCorsEnabledConfiguration> | InternalCorsDisabledConfiguration;
 
