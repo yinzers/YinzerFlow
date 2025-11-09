@@ -58,7 +58,7 @@
  * ```
  *
  * @see {@link Request} for accessing IP address in route handlers
- * @see {@link ServerConfiguration} for proxy configuration options
+ * @see {@link ServerOptions} for proxy configuration options
  */
 export interface InternalIpAddressResult {
   /**

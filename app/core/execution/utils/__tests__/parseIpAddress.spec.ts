@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { detectSpoofingPatterns, isPrivateIp, isTrustedProxy, isValidIpAddress, parseIpAddress, parseIpAddressSecure } from '../parseIpAddress.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
-import type { InternalIpValidationConfig } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalIpSecurityOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 describe('parseIpAddress', () => {
   describe('Basic IP extraction', () => {
@@ -273,7 +273,7 @@ describe('IP Validation Utilities', () => {
   });
 
   describe('detectSpoofingPatterns', () => {
-    const mockConfig: InternalIpValidationConfig = {
+    const mockConfig: InternalIpSecurityOptions = {
       trustedProxies: ['127.0.0.1'],
       allowPrivateIps: true,
       headerPreference: ['x-forwarded-for'],

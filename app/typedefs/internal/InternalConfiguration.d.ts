@@ -245,7 +245,7 @@ export interface InternalUrlEncodedOptions {
 /**
  * Internal IP Security Configuration
  */
-export interface InternalIpValidationConfig {
+export interface InternalIpSecurityOptions {
   /**
    * List of trusted proxy IP addresses that are allowed to set forwarded headers
    * Only these IPs can provide X-Forwarded-For and similar headers
@@ -348,7 +348,7 @@ export interface InternalServerOptions {
   /**
    * IP address security and validation configuration
    */
-  ipSecurity: InternalIpValidationConfig;
+  ipSecurity: InternalIpSecurityOptions;
 
   /**
    * Rate limiting configuration

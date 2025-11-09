@@ -138,7 +138,7 @@ import type { LogLevel } from '@typedefs/constants/log.js';
  * ```
  *
  * @see {@link YinzerFlow} for how to use custom loggers
- * @see {@link ServerConfiguration} for logger configuration options
+ * @see {@link ServerOptions} for logger configuration options
  */
 export interface Logger {
   /**

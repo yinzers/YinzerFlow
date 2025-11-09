@@ -1,6 +1,6 @@
 import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
 import type { InternalIpAddressResult } from '@typedefs/internal/InternalIpAddress.js';
-import type { InternalIpValidationConfig } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalIpSecurityOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.ts';
 
 // Private IP ranges (RFC 1918, RFC 4193, RFC 3927)
@@ -77,7 +77,7 @@ export const isTrustedProxy = (ip: string, trustedProxies: Array<string>): boole
 /**
  * Detects potential IP spoofing patterns
  */
-export const detectSpoofingPatterns = (chain: Array<string>, config: InternalIpValidationConfig): boolean => {
+export const detectSpoofingPatterns = (chain: Array<string>, config: InternalIpSecurityOptions): boolean => {
   if (!config.detectSpoofing || chain.length <= 1) return false;
 
   // Pattern 1: Too many hops (potential amplification attack)
@@ -101,7 +101,7 @@ export const detectSpoofingPatterns = (chain: Array<string>, config: InternalIpV
 /**
  * Validates X-Forwarded-For proxy chain
  */
-const _validateXForwardedForChain = (ipChain: Array<string>, config: InternalIpValidationConfig): boolean => {
+const _validateXForwardedForChain = (ipChain: Array<string>, config: InternalIpSecurityOptions): boolean => {
   if (ipChain.length <= 1) return true;
 
   const lastIp = ipChain[ipChain.length - 1];
@@ -125,7 +125,7 @@ const _createValidIpResult = (options: {
   clientIp: string;
   headerName: string;
   ipChain: Array<string>;
-  config: InternalIpValidationConfig;
+  config: InternalIpSecurityOptions;
 }): InternalIpAddressResult => {
   const { clientIp, headerName, ipChain, config } = options;
   const isPrivate = isPrivateIp(clientIp);
@@ -154,7 +154,7 @@ const _createInvalidIpResult = (): InternalIpAddressResult => ({
 /**
  * Extracts and validates IP addresses from headers with security checks
  */
-const _extractIpFromHeaders = (headers: Partial<Record<InternalHttpHeaders, string>>, config: InternalIpValidationConfig): InternalIpAddressResult => {
+const _extractIpFromHeaders = (headers: Partial<Record<InternalHttpHeaders, string>>, config: InternalIpSecurityOptions): InternalIpAddressResult => {
   // Try each header in preference order
   for (const headerName of config.headerPreference) {
     const headerValue = headers[headerName];
@@ -196,7 +196,7 @@ const _extractIpFromHeaders = (headers: Partial<Record<InternalHttpHeaders, stri
 export const parseIpAddressSecure = (
   setup: InternalSetupImpl,
   headers: Partial<Record<InternalHttpHeaders, string>>,
-  configOverride: Partial<InternalIpValidationConfig> = {},
+  configOverride: Partial<InternalIpSecurityOptions> = {},
 ): InternalIpAddressResult => {
   const serverConfig = setup._configuration.ipSecurity;
   const finalConfig = { ...serverConfig, ...configOverride };
