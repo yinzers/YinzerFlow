@@ -1,23 +1,7 @@
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
 import type { InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
-import { httpStatusCode } from '@constants/http.ts';
 import { log } from '@core/utils/log.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
-
-/**
- * Default CORS configuration for when CORS is enabled
- */
-const DEFAULT_CORS_ENABLED_CONFIG = {
-  enabled: true,
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: '*',
-  exposedHeaders: [],
-  credentials: false,
-  maxAge: 86400, // 24 hours
-  preflightContinue: false,
-  optionsSuccessStatus: httpStatusCode.noContent,
-};
 
 /**
  * Default body parser configuration with secure defaults
@@ -262,21 +246,6 @@ const _warnIpSecurityConfig = (config: InternalServerOptions['ipSecurity']): voi
 };
 
 /**
- * Handle CORS configuration merging
- */
-const _handleCorsConfig = (defaultConfig: InternalServerOptions, userConfig?: ServerOptions): void => {
-  if (userConfig?.cors?.enabled) {
-    // When CORS is enabled, merge with enabled defaults
-    // We ensure enabled is literally true to satisfy the type constraint
-    defaultConfig.cors = {
-      ...DEFAULT_CORS_ENABLED_CONFIG,
-      ...userConfig.cors,
-      enabled: true, // Override to ensure literal true type
-    };
-  }
-};
-
-/**
  * Handle body parser configuration merging and validation
  */
 const _handleBodyParserConfig = (defaultConfig: InternalServerOptions, userConfig?: ServerOptions): void => {
@@ -355,7 +324,6 @@ export const handleCustomConfiguration = (configuration?: ServerOptions): Intern
   Object.assign(result, configuration);
 
   // Handle special configuration sections
-  _handleCorsConfig(result, configuration);
   _handleBodyParserConfig(result, configuration);
   _handleIpSecurityConfig(result, configuration);
   _validatePort(result, configuration);

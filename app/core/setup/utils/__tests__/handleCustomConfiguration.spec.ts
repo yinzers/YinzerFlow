@@ -45,21 +45,23 @@ describe('handleCustomConfiguration', () => {
       expect(() => handleCustomConfiguration({ port: 0 })).toThrow('Invalid port number');
     });
 
-    it('should handle custom CORS configuration', () => {
+    it('should pass through CORS configuration without merging', () => {
+      // Note: CORS config merging is now handled by CorsConfig.merge() in YinzerFlow constructor
+      // handleCustomConfiguration just stores the user's config
       const config = handleCustomConfiguration({
         cors: {
           enabled: true,
           origin: 'https://example.com',
           credentials: true,
-        },
+        } as any,
       });
 
-      if (config.cors.enabled) {
-        expect(config.cors.enabled).toBe(true);
-        expect(config.cors.origin).toBe('https://example.com');
-        expect(config.cors.credentials).toBe(true);
-        expect(config.cors.methods).toEqual(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']); // Should merge with defaults
-      }
+      // Config should be stored but not merged with defaults
+      expect(config.cors).toEqual({
+        enabled: true,
+        origin: 'https://example.com',
+        credentials: true,
+      } as any);
     });
   });
 
