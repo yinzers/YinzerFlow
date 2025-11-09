@@ -2,7 +2,6 @@ import dayjs from 'dayjs';
 import type { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.ts';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js';
-import { handleCors } from '@core/utils/cors.ts';
 import { log } from '@core/utils/log.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
@@ -29,8 +28,8 @@ export class RequestHandlerImpl {
    */
   async handle(context: InternalContextImpl): Promise<void> {
     try {
-      // 1. Handle CORS - stop if it's a preflight request
-      if (this._handleCors(context)) {
+      // 1. Run beforeRouting hooks (includes CORS if enabled) - stop if any hook returns a value
+      if (await this._handleBeforeRoutingHooks(context)) {
         return void 0;
       }
 
@@ -82,13 +81,13 @@ export class RequestHandlerImpl {
       // 8. Build response (set content-type, etc.)
       context._response._setBody(routeResponse);
 
-      // 10. If this was a HEAD request, remove the body and convert it to a GET request.
+      // 9. If this was a HEAD request, remove the body and convert it to a GET request.
       // Im waiting to do this until after the after hooks since the after hooks might modify the response, headers, etc.
       if (context.request.method === 'HEAD') {
         context._response._setBody(null);
       }
 
-      // 11. Add default framework headers and parse the body into a string
+      // 10. Add default framework headers and parse the body into a string
       // This is done when we call context._response._parseResponseIntoString()
       context._response._parseResponseIntoString();
 
@@ -114,9 +113,6 @@ export class RequestHandlerImpl {
       // Apply the response to the context
       context._response._setBody(errorResponse);
 
-      // Add CORS headers to error responses too
-      handleCors(context, this.setup._configuration.cors);
-
       // Format the response for sending (same as normal flow)
       context._response._parseResponseIntoString();
       context._response._setHeadersIfNotSet({
@@ -133,9 +129,6 @@ export class RequestHandlerImpl {
         message: 'Internal Server Error',
       });
 
-      // Add CORS headers to fallback error responses too
-      handleCors(context, this.setup._configuration.cors);
-
       // Format the fallback response too
       context._response._parseResponseIntoString();
       context._response._setHeadersIfNotSet({
@@ -145,15 +138,21 @@ export class RequestHandlerImpl {
     }
   }
 
-  private _handleCors(context: InternalContextImpl): boolean {
-    // 1. Handle CORS before anything else. The cors handler will handle return true if it was a preflight request, otherwise it will return false.
-    const corsResult = handleCors(context, this.setup._configuration.cors);
+  private async _handleBeforeRoutingHooks(context: InternalContextImpl): Promise<boolean> {
+    const beforeRoutingHooks = this.setup._hooks._beforeRouting;
+    for (const hook of beforeRoutingHooks) {
+      // Check if hook should run based on route options
+      if (!this._shouldRunHook(hook.options, context.request.path)) {
+        continue;
+      }
 
-    if (corsResult) {
-      context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
-      return true; // Signal that we should stop processing
+      const result = await hook.handler(context);
+      if (result !== undefined) {
+        context._response._setBody(result);
+        context._response._parseResponseIntoString();
+        return true; // Signal that we should stop processing
+      }
     }
-
     return false; // Signal that we should continue processing
   }
 

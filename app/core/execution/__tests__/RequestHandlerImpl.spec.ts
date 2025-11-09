@@ -5,6 +5,8 @@ import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { httpStatusCode } from '@constants/http.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.ts';
+import { corsHook } from '@core/modules/cors/corsHooks.ts';
+import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 const createPostRequest = (path = '/api/test', body = ''): string => {
   return `POST ${path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}`;
@@ -680,8 +682,8 @@ describe('RequestHandler', () => {
 
     describe('HEAD with CORS Integration', () => {
       it('should handle HEAD requests with CORS enabled', async () => {
-        // Enable CORS
-        setup._configuration.cors = {
+        // Enable CORS via beforeRouting hook
+        const corsConfig: InternalCorsEnabledOptions = {
           enabled: true,
           origin: 'https://example.com',
           credentials: false,
@@ -692,6 +694,7 @@ describe('RequestHandler', () => {
           optionsSuccessStatus: 204,
           preflightContinue: false,
         };
+        setup.beforeRouting([corsHook(corsConfig)]);
 
         const handler: HandlerCallback = () => ({ data: 'test' });
         setup.get('/api/cors', handler);
@@ -769,8 +772,8 @@ describe('RequestHandler', () => {
 
     describe('CORS Preflight OPTIONS Handling', () => {
       it('should handle CORS preflight OPTIONS requests', async () => {
-        // Enable CORS
-        setup._configuration.cors = {
+        // Enable CORS via beforeRouting hook
+        const corsConfig: InternalCorsEnabledOptions = {
           enabled: true,
           origin: 'https://example.com',
           credentials: false,
@@ -781,6 +784,7 @@ describe('RequestHandler', () => {
           optionsSuccessStatus: 200,
           preflightContinue: false,
         };
+        setup.beforeRouting([corsHook(corsConfig)]);
 
         const context = new ContextImpl(
           createOptionsRequest('/api/data', {
@@ -798,8 +802,8 @@ describe('RequestHandler', () => {
       });
 
       it('should reject CORS preflight from unauthorized origins', async () => {
-        // Enable CORS with restricted origin
-        setup._configuration.cors = {
+        // Enable CORS with restricted origin via beforeRouting hook
+        const corsConfig: InternalCorsEnabledOptions = {
           enabled: true,
           origin: 'https://allowed.com',
           credentials: false,
@@ -810,6 +814,7 @@ describe('RequestHandler', () => {
           optionsSuccessStatus: 204,
           preflightContinue: false,
         };
+        setup.beforeRouting([corsHook(corsConfig)]);
 
         const context = new ContextImpl(
           createOptionsRequest('/api/data', {
@@ -833,11 +838,8 @@ describe('RequestHandler', () => {
       });
 
       it('should handle preflight with preflightContinue enabled', async () => {
-        // Setup a regular OPTIONS route
-        setup.options('/api/data', () => ({ message: 'Options route' }));
-
-        // Enable CORS with preflightContinue
-        setup._configuration.cors = {
+        // Enable CORS with preflightContinue via beforeRouting hook (before registering route)
+        const corsConfig: InternalCorsEnabledOptions = {
           enabled: true,
           origin: '*',
           credentials: false,
@@ -846,8 +848,12 @@ describe('RequestHandler', () => {
           exposedHeaders: [],
           maxAge: 3600,
           optionsSuccessStatus: 204,
-          preflightContinue: true, // Should return true and cause early return
+          preflightContinue: true, // Should not short-circuit, let route handler run
         };
+        setup.beforeRouting([corsHook(corsConfig)]);
+
+        // Setup a regular OPTIONS route
+        setup.options('/api/data', () => ({ message: 'Options route' }));
 
         const context = new ContextImpl(
           createOptionsRequest('/api/data', {
@@ -973,8 +979,8 @@ describe('RequestHandler', () => {
     });
 
     it('should handle mixed HEAD, OPTIONS, and regular requests in complex scenarios', async () => {
-      // Setup CORS
-      setup._configuration.cors = {
+      // Setup CORS via beforeRouting hook
+      const corsConfig: InternalCorsEnabledOptions = {
         enabled: true,
         origin: '*',
         credentials: false,
@@ -985,6 +991,7 @@ describe('RequestHandler', () => {
         optionsSuccessStatus: 204,
         preflightContinue: false,
       };
+      setup.beforeRouting([corsHook(corsConfig)]);
 
       // Setup routes
       const apiHandler: HandlerCallback = () => ({ data: 'API response', items: [1, 2, 3] });
