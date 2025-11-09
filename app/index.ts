@@ -10,6 +10,9 @@ export { YinzerFlow } from '@core/YinzerFlow.ts';
 // Logging utilities
 export { log, createLogger } from '@core/utils/log.ts';
 
+// CORS hooks
+export { corsHook } from '@core/modules/cors/corsHooks.ts';
+
 // Rate limiting hooks
 export { rateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
 
