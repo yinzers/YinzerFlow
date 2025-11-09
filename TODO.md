@@ -10,6 +10,19 @@
   - Ensure middleware is properly registered in the request pipeline
   - Test with various IP scenarios (blocked, allowed, localhost, etc.)
 
+- [ ] **Verify beforeAll Hook Route Filtering**
+  - Test that `routesToExclude` and `routesToInclude` work properly in beforeAll hooks
+  - Test at all levels: groups, routes, and global beforeAll
+  - Issue: These options don't appear to be working as expected
+  - Verify route matching logic handles patterns correctly
+  - Test with:
+    - Exact path matching (`/api/users`)
+    - Wildcard patterns (`/api/*`)
+    - Multiple routes in arrays
+    - Nested route groups
+    - Edge cases (root `/`, trailing slashes, etc.)
+  - Ensure hooks are properly skipped/included based on configuration
+
 ## Code Quality & Consistency
 
 - [ ] **Standardize Type Naming Conventions**
@@ -29,6 +42,57 @@
   - **Note**: This should be done as a separate refactor, possibly before or after module work
 
 ## Feature Enhancements
+
+- [ ] **IP Security: Enhanced CDN/Proxy Header Support**
+  - **Problem**: CloudFront → LB → EC2 → Docker setup shows Docker container IP instead of real client IP
+  - **Root Cause**: Framework validates `X-Forwarded-For` proxy chain, rejects it when LB IP isn't in `trustedProxies`
+  - **Goal**: Add CDN-specific headers that don't require proxy chain validation
+
+  **Quick Fix (User Side)**:
+  ```typescript
+  // For CloudFront → LB → Docker setups
+  const app = new YinzerFlow({
+    ipSecurity: {
+      trustedProxies: ['*'],  // Trust all proxies (CloudFront, LB, Docker network)
+      allowPrivateIps: true   // Allow Docker network IPs
+    }
+  });
+  ```
+
+  **Better Solution (Framework Enhancement)**:
+
+  **Add CDN-Specific Headers** (no proxy validation needed):
+  - `cloudfront-viewer-address` - CloudFront (format: `ip:port`)
+  - `fastly-client-ip` - Fastly
+  - `x-azure-clientip` - Azure Front Door
+  - `fly-client-ip` - Fly.io
+  - Keep existing: `cf-connecting-ip` (Cloudflare), `true-client-ip` (Akamai)
+
+  **Implementation Steps**:
+  1. Add CloudFront header parser (strip port from `ip:port` format)
+  2. Add new headers to `headerPreference` list (before `x-forwarded-for`)
+  3. Skip proxy chain validation for single-value CDN headers
+  4. Add auto-detection: detect CDN from fingerprint headers, auto-adjust preference
+  5. Add config option: `autoDetectCdn: true`
+  6. Log which header/CDN was used for debugging
+
+  **CloudFront AWS Setup** (required for CloudFront-Viewer-Address):
+  - **Option A**: Use managed policy `Managed-AllViewerExceptHostHeader` (includes viewer headers)
+  - **Option B**: Create custom Origin Request Policy with `CloudFront-Viewer-Address` header
+  - **No cache/origin config needed** - just Origin Request Policy
+
+  **New Default Header Order**:
+  ```typescript
+  ['cloudfront-viewer-address', 'cf-connecting-ip', 'true-client-ip',
+   'fastly-client-ip', 'x-azure-clientip', 'fly-client-ip',
+   'x-real-ip', 'x-client-ip', 'x-forwarded-for']
+  ```
+
+  **Benefits**:
+  - Works with CloudFront/Cloudflare/Fastly/Azure out-of-box
+  - No `trustedProxies` config needed for CDN headers
+  - Better security (CDN headers more trustworthy than X-Forwarded-For)
+  - Auto-detection reduces config burden
 
 - [ ] **Body Parser: Add Per-Parser Type Enable/Disable**
   - **Issue**: Currently bodyParser is all-or-nothing - can't disable JSON parsing while keeping URL-encoded, etc.
@@ -384,3 +448,141 @@
   - Global rate limiting (before route-specific limits)
   - Logging/monitoring hooks
   - API versioning (URL rewriting before routing)
+
+---
+
+## Implementation Progress Tracker
+
+### Phase 0: Type Naming Standardization ✅ IN PROGRESS
+
+Standardize all configuration types to use "Options" suffix consistently.
+
+- [x] **Chunk 0.1: Audit Types** - Identified all `*Configuration` types that need renaming
+- [x] **Chunk 0.2: Server Types** ✅ COMMITTED
+  - `ServerConfiguration` → `ServerOptions`
+  - Updated YinzerFlow.ts, SetupImpl.ts, handleCustomConfiguration.ts
+- [x] **Chunk 0.3: CORS Types** ✅ COMMITTED
+  - `InternalCorsDisabledConfiguration` → `InternalCorsDisabledOptions`
+  - `InternalCorsEnabledConfiguration` → `InternalCorsEnabledOptions`
+  - Updated cors.ts and related files
+- [x] **Chunk 0.4: Body Parser Types** ✅ COMMITTED
+  - `InternalBodyParserConfiguration` → `InternalBodyParserOptions`
+  - `InternalJsonParserConfiguration` → `InternalJsonParserOptions`
+  - `InternalFileUploadConfiguration` → `InternalFileUploadOptions`
+  - `InternalUrlEncodedConfiguration` → `InternalUrlEncodedOptions`
+  - Updated parseJson.ts, parseMultipart.ts, parseUrlEncodedForm.ts, parseBody.ts
+- [x] **Chunk 0.5: IP Security Types** ✅ READY TO COMMIT
+  - `InternalIpValidationConfig` → `InternalIpSecurityOptions`
+  - Updated parseIpAddress.ts and tests
+- [ ] **Chunk 0.6: Documentation Updates**
+  - Update docs to reflect new type names
+  - Search and replace any remaining references in markdown files
+
+**Status**: 5/6 chunks complete. Ready to commit Chunk 0.5 and move to documentation.
+
+---
+
+### Phase 1: Add beforeRouting Hook System (PLANNED)
+
+Add new hook type that executes before route matching.
+
+- [ ] **Chunk 1.1: Update HookRegistryImpl**
+  - Add `_beforeRouting` array property
+  - Add `_addBeforeRoutingHooks()` method
+  - Export getter for `_beforeRouting`
+
+- [ ] **Chunk 1.2: Update SetupImpl**
+  - Add `beforeRouting(handlers, options)` public method
+  - Wire to HookRegistryImpl
+
+- [ ] **Chunk 1.3: Update RequestHandlerImpl**
+  - Add `_handleBeforeRoutingHooks()` method
+  - Call before route matching in `handle()`
+  - Add optimization: check array length before iteration
+
+- [ ] **Chunk 1.4: Update TypeScript Types**
+  - Add `beforeRouting` to Setup interface
+  - Add internal types for beforeRouting hooks
+
+- [ ] **Chunk 1.5: Add Tests**
+  - Test execution order (before routing)
+  - Test short-circuiting
+  - Test multiple beforeRouting hooks
+  - Test with route filtering options
+
+**Status**: Not started. Blocked by Phase 0 completion.
+
+---
+
+### Phase 2: Convert CORS to Module (PLANNED)
+
+Move CORS from special-cased code to beforeRouting hook module.
+
+- [ ] **Chunk 2.1: Create CORS Module Structure**
+  - Create `app/core/modules/cors/` directory
+  - Create `Cors.ts` (core logic)
+  - Create `CorsConfig.ts` (config & validation)
+  - Create `corsHooks.ts` (hook function)
+
+- [ ] **Chunk 2.2: Move CORS Logic**
+  - Port logic from `app/core/utils/cors.ts` to `Cors.ts`
+  - Port config from `handleCustomConfiguration.ts` to `CorsConfig.ts`
+
+- [ ] **Chunk 2.3: Create CORS Hook**
+  - Implement `corsHook(config)` in `corsHooks.ts`
+  - Returns `HandlerCallback` that calls `Cors.handle()`
+
+- [ ] **Chunk 2.4: Update YinzerFlow Constructor**
+  - Check `configuration?.cors?.enabled`
+  - Create `CorsConfig` instance
+  - Register with `this.beforeRouting([corsHook(config)])`
+
+- [ ] **Chunk 2.5: Remove Old CORS Code**
+  - Delete `app/core/utils/cors.ts`
+  - Remove `_handleCors()` from RequestHandlerImpl
+  - Remove CORS config from handleCustomConfiguration.ts
+
+- [ ] **Chunk 2.6: Update CORS Tests**
+  - Move tests to `app/core/modules/cors/__tests__/`
+  - Test CORS as beforeRouting hook
+  - Test integration with other hooks
+
+- [ ] **Chunk 2.7: Export Public APIs**
+  - Export `corsHook` from main index
+  - Export CORS types
+
+**Status**: Not started. Blocked by Phase 1 completion.
+
+---
+
+### Phase 3: ipSecurity Module Refactor (PLANNED)
+
+Convert ipSecurity to module pattern with beforeAll hooks.
+
+- [ ] **Chunk 3.1-3.7**: TBD (similar structure to Phase 2)
+
+**Status**: Not started.
+
+---
+
+### Phase 4: bodyParser Module Refactor (PLANNED)
+
+Convert bodyParser to module with per-parser enable/disable.
+
+- [ ] **Chunk 4.1-4.6**: TBD
+
+**Status**: Not started.
+
+---
+
+### Phase 5: Final Documentation (PLANNED)
+
+Update all documentation to reflect new patterns.
+
+- [ ] **Chunk 5.1-5.4**: TBD
+
+**Status**: Not started.
+
+---
+
+**Current Task**: Complete Chunk 0.6 (Documentation Updates) to finish Phase 0.
