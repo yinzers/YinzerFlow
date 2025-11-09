@@ -1,0 +1,405 @@
+# YinzerFlow Testing Standards
+
+<!-- Testing conventions for YinzerFlow framework -->
+
+## Testing Framework
+### Bun Test Runner
+**CRITICAL**: All tests use Bun's built-in test runner, not Jest or other frameworks.
+
+- ✅ **Use Bun imports**: `import { describe, it, expect, beforeEach, afterEach } from 'bun:test'`
+- ✅ **Use Bun assertions**: `expect().toBe()`, `expect().toThrow()`, etc.
+- ❌ **No Jest**: Don't use `jest.fn()`, `jest.spyOn()`, or Jest-specific features
+- ❌ **No other test frameworks**: Stick to Bun's native testing capabilities
+
+## Testing Philosophy
+### Integration-First Approach
+**CRITICAL**: Focus on testing overall functionality and user workflows, not individual units
+
+- ✅ **Test real usage patterns**: How users actually interact with YinzerFlow
+- ✅ **Test end-to-end workflows**: Complete request/response cycles with real configuration
+- ✅ **Test error scenarios**: Ensure proper error handling and validation
+- ✅ **Test configuration validation**: Verify errors are thrown for invalid configs
+- ❌ **Avoid unit tests**: Only create unit tests for absolutely critical edge cases
+- ❌ **Avoid testing implementation details**: Focus on behavior, not internal mechanics
+
+### What to Test
+1. **Configuration validation**: Invalid configs throw appropriate errors
+2. **Feature functionality**: Rate limiting, CORS, body parsing work as expected
+3. **Error handling**: Proper status codes and error messages
+4. **Integration scenarios**: Multiple features working together
+5. **Edge cases**: Boundary conditions and error states
+
+### What NOT to Test
+- Individual utility functions (unless critical)
+- Internal implementation details
+- Private methods or properties
+- Simple getters/setters
+- Basic object construction
+
+## Test Structure
+### Functional Test Organization
+```typescript
+describe('Rate Limiting', () => {
+  let app: YinzerFlow;
+  let testPort: number;
+
+  beforeEach(async () => {
+    const testSetup = createTestApp({
+      rateLimit: {
+        enabled: true,
+        max: 5,
+        window: 1000, // 1 second for fast tests
+      },
+    });
+    ({ app, testPort } = testSetup);
+    await app.listen();
+  });
+
+  afterEach(async () => {
+    if (app.status().isListening) {
+      await app.close();
+    }
+  });
+
+  it('should return 429 when rate limit exceeded', async () => {
+    // Send 5 requests to hit limit
+    const requests = Array.from({ length: 5 }, () => getRequest({ testPort }));
+    await Promise.all(requests);
+
+    // 6th request should be rate limited
+    const response = await getRequest({ testPort });
+    expect(response.status).toBe(429);
+  });
+
+  it('should allow requests after window expires', async () => {
+    // Hit rate limit
+    const requests = Array.from({ length: 5 }, () => getRequest({ testPort }));
+    await Promise.all(requests);
+
+    // Wait for window to expire
+    await new Promise(resolve => setTimeout(resolve, 1100));
+
+    // Should work again
+    const response = await getRequest({ testPort });
+    expect(response.status).toBe(200);
+  });
+});
+```
+
+### Configuration Validation Tests
+```typescript
+describe('Configuration Validation', () => {
+  it('should throw error for invalid rate limit max', () => {
+    expect(() => {
+      new YinzerFlow({
+        rateLimit: {
+          max: 0.5 // Invalid: must be integer
+        }
+      });
+    }).toThrow('rateLimit.max must be an integer');
+  });
+
+  it('should throw error for invalid time window', () => {
+    expect(() => {
+      new YinzerFlow({
+        rateLimit: {
+          window: '500ms' // Invalid: too short
+        }
+      });
+    }).toThrow('rateLimit.window must be at least 1000ms');
+  });
+});
+```
+
+## Mocking Strategy
+### Real Implementations by Default
+- **Use actual YinzerFlow instances**: Test with real servers, real configuration
+- **Use real utilities**: Time conversion, validation, parsing functions
+- **Use real request/response objects**: Test actual HTTP behavior
+
+### Only Mock External Dependencies
+- Database connections (if testing DB integration)
+- External HTTP APIs
+- File system operations
+- Third-party services
+
+### Anti-Patterns
+```typescript
+// ❌ DON'T DO THIS - mocking internal code
+const mockRateLimiter = jest.fn();
+const mockConfig = { validate: jest.fn() };
+
+// ✅ DO THIS - use real implementations
+const app = new YinzerFlow({
+  rateLimit: { max: 5, window: '1s' }
+});
+```
+
+## Test Data and Helpers
+### Reusable Test Setup
+```typescript
+// Test utilities
+export const createTestApp = (config?: Partial<ServerOptions>) => {
+  const testPort = getAvailablePort();
+  const app = new YinzerFlow({
+    port: testPort,
+    ...config
+  });
+  return { app, testPort };
+};
+
+export const getRequest = async ({ testPort, path = '/test' }) => {
+  return fetch(`http://localhost:${testPort}${path}`);
+};
+```
+
+### Test Data Builders
+```typescript
+const createRateLimitConfig = (overrides = {}) => ({
+  enabled: true,
+  max: 100,
+  window: '15m',
+  ...overrides
+});
+
+const createCorsConfig = (overrides = {}) => ({
+  enabled: true,
+  origin: ['https://example.com'],
+  ...overrides
+});
+```
+
+## Test Patterns
+
+### Feature Integration Tests
+```typescript
+describe('CORS Integration', () => {
+  let app: YinzerFlow;
+  let testPort: number;
+
+  beforeEach(async () => {
+    const testSetup = createTestApp({
+      cors: {
+        enabled: true,
+        origin: ['https://example.com'],
+        credentials: true
+      }
+    });
+    ({ app, testPort } = testSetup);
+
+    app.get('/test', () => ({ message: 'success' }));
+    await app.listen();
+  });
+
+  it('should allow requests from allowed origin', async () => {
+    const response = await fetch(`http://localhost:${testPort}/test`, {
+      headers: { 'Origin': 'https://example.com' }
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it('should block requests from disallowed origin', async () => {
+    const response = await fetch(`http://localhost:${testPort}/test`, {
+      headers: { 'Origin': 'https://malicious.com' }
+    });
+    expect(response.status).toBe(403);
+  });
+});
+```
+
+### Error Handling Tests
+```typescript
+describe('Error Handling', () => {
+  let app: YinzerFlow;
+  let testPort: number;
+
+  beforeEach(async () => {
+    const testSetup = createTestApp();
+    ({ app, testPort } = testSetup);
+
+    app.get('/error', () => {
+      throw new Error('Test error');
+    });
+
+    app.onError(({ response }, error) => {
+      response.setStatusCode(500);
+      return { error: error.message };
+    });
+
+    await app.listen();
+  });
+
+  it('should handle errors with custom handler', async () => {
+    const response = await getRequest({ testPort, path: '/error' });
+    expect(response.status).toBe(500);
+
+    const data = await response.json();
+    expect(data.error).toBe('Test error');
+  });
+});
+```
+
+### Configuration Validation Tests
+```typescript
+describe('Configuration Validation', () => {
+  it('should validate rate limit configuration', () => {
+    // Test invalid max
+    expect(() => {
+      new YinzerFlow({ rateLimit: { max: -1 } });
+    }).toThrow('rateLimit.max must be at least 1');
+
+    // Test invalid window
+    expect(() => {
+      new YinzerFlow({ rateLimit: { window: 'invalid' } });
+    }).toThrow('rateLimit.window must be a valid time string');
+  });
+
+  it('should warn about risky configurations', () => {
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+    new YinzerFlow({
+      rateLimit: {
+        enabled: false // Should warn
+      }
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[SECURITY WARNING] Rate limiting is disabled')
+    );
+
+    consoleSpy.mockRestore();
+  });
+});
+```
+
+## Test Organization
+### File Structure
+```
+app/__tests__/
+├── rateLimit.spec.ts          # Rate limiting functionality
+├── cors.spec.ts               # CORS functionality
+├── bodyParser.spec.ts         # Body parsing functionality
+├── configuration.spec.ts      # Configuration validation
+├── errorHandling.spec.ts      # Error handling
+└── test-utils/
+    ├── create-server.spec.ts # Test server helpers
+    └── dummy-requests.spec.ts # Request helpers
+```
+
+### Test Naming
+- Use descriptive names that explain the scenario
+- Focus on behavior: "should return 429 when rate limit exceeded"
+- Group related tests with `describe` blocks
+- Use `it` for individual test cases
+
+## Best Practices
+### Keep Tests Simple and Focused
+- One test per behavior/scenario
+- Clear setup and teardown
+- Minimal test data - only what's needed
+- Focus on the "what" not the "how"
+
+### Test Real Usage
+- Use actual HTTP requests
+- Test with real configuration objects
+- Test complete workflows
+- Test error scenarios users might encounter
+
+### Maintainable Tests
+- Use helper functions for common setup
+- Keep test data minimal and focused
+- Avoid testing implementation details
+- Make tests readable and self-documenting
+
+### Performance Considerations
+- Use short timeouts for rate limiting tests
+- Clean up resources in `afterEach`
+- Use available ports to avoid conflicts
+- Keep tests fast and reliable
+
+## Example: Complete Feature Test
+```typescript
+describe('Rate Limiting Feature', () => {
+  let app: YinzerFlow;
+  let testPort: number;
+
+  beforeEach(async () => {
+    const testSetup = createTestApp({
+      rateLimit: {
+        enabled: true,
+        max: 3,
+        window: 1000, // 1 second for fast tests
+        standardHeaders: true
+      }
+    });
+    ({ app, testPort } = testSetup);
+
+    app.get('/api/test', () => ({ message: 'success' }));
+    await app.listen();
+  });
+
+  afterEach(async () => {
+    if (app.status().isListening) {
+      await app.close();
+    }
+  });
+
+  describe('when requests are within limit', () => {
+    it('should allow requests and return 200', async () => {
+      const response = await getRequest({ testPort, path: '/api/test' });
+      expect(response.status).toBe(200);
+    });
+
+    it('should include rate limit headers', async () => {
+      const response = await getRequest({ testPort, path: '/api/test' });
+      expect(response.headers.get('RateLimit-Limit')).toBe('3');
+      expect(response.headers.get('RateLimit-Remaining')).toBe('2');
+    });
+  });
+
+  describe('when rate limit is exceeded', () => {
+    it('should return 429 status', async () => {
+      // Send 3 requests to hit limit
+      const requests = Array.from({ length: 3 }, () =>
+        getRequest({ testPort, path: '/api/test' })
+      );
+      await Promise.all(requests);
+
+      // 4th request should be rate limited
+      const response = await getRequest({ testPort, path: '/api/test' });
+      expect(response.status).toBe(429);
+    });
+
+    it('should return error message', async () => {
+      // Hit rate limit
+      const requests = Array.from({ length: 3 }, () =>
+        getRequest({ testPort, path: '/api/test' })
+      );
+      await Promise.all(requests);
+
+      const response = await getRequest({ testPort, path: '/api/test' });
+      const data = await response.json();
+      expect(data.message).toContain('too many requests');
+    });
+  });
+
+  describe('when window expires', () => {
+    it('should reset rate limit counter', async () => {
+      // Hit rate limit
+      const requests = Array.from({ length: 3 }, () =>
+        getRequest({ testPort, path: '/api/test' })
+      );
+      await Promise.all(requests);
+
+      // Wait for window to expire
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      // Should work again
+      const response = await getRequest({ testPort, path: '/api/test' });
+      expect(response.status).toBe(200);
+    });
+  });
+});
+```
+
+This approach focuses on testing how YinzerFlow actually works for users, ensuring features behave correctly in real scenarios while avoiding unnecessary unit testing of internal implementation details.
