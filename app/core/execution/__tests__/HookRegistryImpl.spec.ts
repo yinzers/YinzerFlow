@@ -30,8 +30,10 @@ describe('HookRegistryImpl', () => {
 
   describe('constructor initialization', () => {
     it('should initialize with empty hook sets', () => {
+      expect(hookRegistry._beforeRouting).toBeInstanceOf(Set);
       expect(hookRegistry._beforeAll).toBeInstanceOf(Set);
       expect(hookRegistry._afterAll).toBeInstanceOf(Set);
+      expect(hookRegistry._beforeRouting.size).toBe(0);
       expect(hookRegistry._beforeAll.size).toBe(0);
       expect(hookRegistry._afterAll.size).toBe(0);
     });
@@ -70,6 +72,66 @@ describe('HookRegistryImpl', () => {
 
       // Check that the status code was set on the actual response
       expect((context as any)._response._statusCode).toBe(httpStatusCode.notFound);
+    });
+  });
+
+  describe('_addBeforeRoutingHooks', () => {
+    it('should add single hook without options', () => {
+      const handler = createHandler();
+
+      hookRegistry._addBeforeRoutingHooks([handler]);
+
+      expect(hookRegistry._beforeRouting.size).toBe(1);
+      const [hookEntry] = Array.from(hookRegistry._beforeRouting);
+      if (!hookEntry) throw new Error('Hook entry is undefined');
+      expect(hookEntry.handler).toBe(handler);
+      expect(hookEntry.options).toEqual({
+        routesToExclude: [],
+        routesToInclude: [],
+      });
+    });
+
+    it('should add multiple hooks at once', () => {
+      const handler1 = createHandler();
+      const handler2 = createHandler();
+      const handler3 = createHandler();
+
+      hookRegistry._addBeforeRoutingHooks([handler1, handler2, handler3]);
+
+      expect(hookRegistry._beforeRouting.size).toBe(3);
+      const handlers = Array.from(hookRegistry._beforeRouting).map((entry) => entry.handler);
+      expect(handlers).toContain(handler1);
+      expect(handlers).toContain(handler2);
+      expect(handlers).toContain(handler3);
+    });
+
+    it('should add hooks with custom options', () => {
+      const handler = createHandler();
+      const options: InternalGlobalHookOptions = {
+        routesToExclude: ['/api/health'],
+        routesToInclude: ['/api/*'],
+      };
+
+      hookRegistry._addBeforeRoutingHooks([handler], options);
+
+      const [hookEntry] = Array.from(hookRegistry._beforeRouting);
+      if (!hookEntry) throw new Error('Hook entry is undefined');
+      expect(hookEntry.options).toEqual(options);
+    });
+
+    it('should handle empty array gracefully', () => {
+      hookRegistry._addBeforeRoutingHooks([]);
+
+      expect(hookRegistry._beforeRouting.size).toBe(0);
+    });
+
+    it('should add different hook types (sync and async)', () => {
+      const syncHandler = createHandler();
+      const asyncHandler = createAsyncHandler();
+
+      hookRegistry._addBeforeRoutingHooks([syncHandler, asyncHandler]);
+
+      expect(hookRegistry._beforeRouting.size).toBe(2);
     });
   });
 
@@ -264,23 +326,30 @@ describe('HookRegistryImpl', () => {
   });
 
   describe('hook collection management', () => {
-    it('should maintain separate before and after hook collections', () => {
+    it('should maintain separate beforeRouting, beforeAll, and afterAll hook collections', () => {
+      const beforeRoutingHandler = createHandler();
       const beforeHandler = createHandler();
       const afterHandler = createHandler();
 
+      hookRegistry._addBeforeRoutingHooks([beforeRoutingHandler]);
       hookRegistry._addBeforeHooks([beforeHandler]);
       hookRegistry._addAfterHooks([afterHandler]);
 
+      expect(hookRegistry._beforeRouting.size).toBe(1);
       expect(hookRegistry._beforeAll.size).toBe(1);
       expect(hookRegistry._afterAll.size).toBe(1);
 
+      const beforeRoutingHandlers = Array.from(hookRegistry._beforeRouting).map((entry) => entry.handler);
       const beforeHandlers = Array.from(hookRegistry._beforeAll).map((entry) => entry.handler);
       const afterHandlers = Array.from(hookRegistry._afterAll).map((entry) => entry.handler);
 
+      expect(beforeRoutingHandlers).toContain(beforeRoutingHandler);
       expect(beforeHandlers).toContain(beforeHandler);
       expect(afterHandlers).toContain(afterHandler);
       expect(beforeHandlers).not.toContain(afterHandler);
       expect(afterHandlers).not.toContain(beforeHandler);
+      expect(beforeRoutingHandlers).not.toContain(beforeHandler);
+      expect(beforeRoutingHandlers).not.toContain(afterHandler);
     });
 
     it('should allow same handler in both before and after collections', () => {
@@ -321,11 +390,17 @@ describe('HookRegistryImpl', () => {
   describe('integration scenarios', () => {
     it('should handle complete hook registry setup', () => {
       // Setup multiple hooks with different configurations
+      const corsHook = createHandler();
       const authHook = createHandler();
       const loggingHook = createHandler();
       const cleanupHook = createHandler();
       const customErrorHandler = createHandler({ error: true });
       const customNotFoundHandler = createHandler({ notFound: true });
+
+      const corsOptions: InternalGlobalHookOptions = {
+        routesToExclude: [],
+        routesToInclude: [],
+      };
 
       const authOptions: InternalGlobalHookOptions = {
         routesToExclude: ['/public/*'],
@@ -338,6 +413,7 @@ describe('HookRegistryImpl', () => {
       };
 
       // Add hooks
+      hookRegistry._addBeforeRoutingHooks([corsHook], corsOptions);
       hookRegistry._addBeforeHooks([authHook], authOptions);
       hookRegistry._addBeforeHooks([loggingHook], loggingOptions);
       hookRegistry._addAfterHooks([cleanupHook]);
@@ -345,12 +421,17 @@ describe('HookRegistryImpl', () => {
       hookRegistry._addOnNotFound(customNotFoundHandler);
 
       // Verify all hooks are properly registered
+      expect(hookRegistry._beforeRouting.size).toBe(1);
       expect(hookRegistry._beforeAll.size).toBe(2);
       expect(hookRegistry._afterAll.size).toBe(1);
       expect(hookRegistry._onError).toBe(customErrorHandler);
       expect(hookRegistry._onNotFound).toBe(customNotFoundHandler);
 
       // Verify hook options are preserved
+      const beforeRoutingHooks = Array.from(hookRegistry._beforeRouting);
+      const corsEntry = beforeRoutingHooks.find((entry) => entry.handler === corsHook);
+      expect(corsEntry?.options).toEqual(corsOptions);
+
       const beforeHooks = Array.from(hookRegistry._beforeAll);
       const authEntry = beforeHooks.find((entry) => entry.handler === authHook);
       const loggingEntry = beforeHooks.find((entry) => entry.handler === loggingHook);

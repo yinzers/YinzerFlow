@@ -7,6 +7,10 @@ export type InternalGlobalHookOptions = {
 };
 
 export interface InternalHookRegistryImpl {
+  readonly _beforeRouting: Set<{
+    handler: HandlerCallback;
+    options?: InternalGlobalHookOptions;
+  }>;
   readonly _beforeAll: Set<{
     handler: HandlerCallback;
     options?: InternalGlobalHookOptions;
@@ -17,6 +21,7 @@ export interface InternalHookRegistryImpl {
   }>;
   _onError: HandlerCallback;
   _onNotFound: HandlerCallback;
+  _addBeforeRoutingHooks: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
   _addBeforeHooks: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
   _addAfterHooks: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
   _addOnError: (handler: HandlerCallback) => void;

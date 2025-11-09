@@ -5,6 +5,10 @@ import type { InternalGlobalHookOptions, InternalHookRegistryImpl } from '@typed
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 
 export class HookRegistryImpl implements InternalHookRegistryImpl {
+  readonly _beforeRouting: Set<{
+    handler: HandlerCallback;
+    options?: InternalGlobalHookOptions;
+  }>;
   readonly _beforeAll: Set<{
     handler: HandlerCallback;
     options?: InternalGlobalHookOptions;
@@ -17,6 +21,7 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   _onNotFound: HandlerCallback;
 
   constructor() {
+    this._beforeRouting = new Set();
     this._beforeAll = new Set();
     this._afterAll = new Set();
     this._onError = (ctx, error: unknown): unknown => {
@@ -28,6 +33,11 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
       ctx.response.setStatusCode(httpStatusCode.notFound);
       return { success: false, message: '404 Not Found' };
     };
+  }
+
+  _addBeforeRoutingHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
+    this._validateHandlersArray(handlers, 'beforeRouting');
+    for (const handler of handlers) this._beforeRouting.add({ handler, options: options ?? { routesToExclude: [], routesToInclude: [] } });
   }
 
   _addBeforeHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
