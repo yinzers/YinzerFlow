@@ -213,7 +213,7 @@ export { logLevels } from '@constants/log.ts';
 2. **`DeepPartial<T>`** - Makes all properties optional recursively
    ```typescript
    // Use for user-facing configuration types
-   export type ServerConfiguration = DeepPartial<InternalServerConfiguration>;
+   export type ServerOptions = DeepPartial<InternalServerOptions>;
    ```
 
 3. **`InternalHandlerCallbackGenerics`** - Base interface for typed handlers
@@ -238,7 +238,7 @@ export { logLevels } from '@constants/log.ts';
 #### **Public Types** (in `typedefs/public/`)
 - **No prefix**: Clean names for user-facing types
 - **Examples**:
-  - `ServerConfiguration` - User-facing config
+  - `ServerOptions` - User-facing config
   - `Request` - Request interface
   - `Response` - Response interface
   - `Context` - Context interface
@@ -248,7 +248,7 @@ export { logLevels } from '@constants/log.ts';
 #### **Internal Types** (in `typedefs/internal/`)
 - **Prefix with "Internal"**: Distinguishes from public types
 - **Examples**:
-  - `InternalServerConfiguration` - Complete internal config
+  - `InternalServerOptions` - Complete internal config
   - `InternalRequestImpl` - Request implementation interface
   - `InternalResponseImpl` - Response implementation interface
   - `InternalContextImpl` - Context implementation interface
@@ -285,10 +285,10 @@ export class RequestImpl implements InternalRequestImpl {
 ```typescript
 // In typedefs/public/Configuration.d.ts
 import type { DeepPartial } from '@typedefs/internal/Generics.d.ts';
-import type { InternalServerConfiguration } from '@typedefs/internal/InternalConfiguration.d.ts';
+import type { InternalServerOptions } from '@typedefs/internal/InternalConfiguration.d.ts';
 
 // User-facing type is DeepPartial of internal type
-export type ServerConfiguration = DeepPartial<InternalServerConfiguration>;
+export type ServerOptions = DeepPartial<InternalServerOptions>;
 ```
 
 #### **Constants Pattern**:

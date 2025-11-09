@@ -140,7 +140,7 @@ const app = new YinzerFlow({
 ### Reusable Test Setup
 ```typescript
 // Test utilities
-export const createTestApp = (config?: Partial<ServerConfiguration>) => {
+export const createTestApp = (config?: Partial<ServerOptions>) => {
   const testPort = getAvailablePort();
   const app = new YinzerFlow({
     port: testPort,
