@@ -73,6 +73,10 @@ export class SetupImpl implements InternalSetupImpl {
    * allowing for more flexibility to include hook modification, conditional
    * hook execution, and better debugging.
    */
+  beforeRouting(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
+    this._hooks._addBeforeRoutingHooks(handlers, options);
+  }
+
   beforeAll(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
     this._hooks._addBeforeHooks(handlers, options);
   }

@@ -14,6 +14,9 @@ import { _convertTimeToMs } from '@core/utils/time.ts';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
 import { cookieParserHook } from '@core/modules/cookieParser/cookieParserHooks.ts';
 import { CookieParserConfig } from '@core/modules/cookieParser/CookieParserConfig.ts';
+import { corsHook } from '@core/modules/cors/corsHooks.ts';
+import { CorsConfig } from '@core/modules/cors/CorsConfig.ts';
+import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 /**
  * Main YinzerFlow application class for building HTTP servers.
@@ -170,6 +173,15 @@ export class YinzerFlow extends SetupImpl {
       const cookieParserConfig = new CookieParserConfig(configuration.cookieParser);
       const cookieParserHookFunc = cookieParserHook(cookieParserConfig.config);
       this.beforeAll([cookieParserHookFunc]);
+    }
+
+    // Setup CORS, if enabled, as a beforeRouting hook
+    if (configuration?.cors?.enabled) {
+      const corsConfig = CorsConfig.merge(configuration.cors);
+      CorsConfig.validate(corsConfig);
+      // Type assertion safe here: validate() throws if config is disabled
+      const corsHookFunc = corsHook(corsConfig as InternalCorsEnabledOptions);
+      this.beforeRouting([corsHookFunc]);
     }
 
     // Setup automatic graceful shutdown if enabled

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { httpStatusCode } from '@constants/http.ts';
-import type { ServerConfiguration } from '@typedefs/public/Configuration.js';
 
 // Reusable test data builders
 const createTestApp = (customConfig?: any) => {
@@ -133,7 +132,7 @@ describe('YinzerFlow', () => {
     ];
 
     it.each(configTestCases)('$description', ({ config, expectedPort, expectedHost }) => {
-      const customApp = new YinzerFlow(config as ServerConfiguration);
+      const customApp = new YinzerFlow(config as any);
       const status = customApp.status();
 
       expect(status.port).toBe(expectedPort);
@@ -154,7 +153,7 @@ describe('YinzerFlow', () => {
         const originalSigtermCount = process.listenerCount('SIGTERM');
         const originalSigintCount = process.listenerCount('SIGINT');
 
-        app = new YinzerFlow({ autoGracefulShutdown: false });
+        app = new YinzerFlow({ gracefulShutdownTimeout: 0 });
 
         // Should not add additional handlers
         expect(process.listenerCount('SIGTERM')).toBe(originalSigtermCount);
@@ -180,7 +179,7 @@ describe('YinzerFlow', () => {
 
     describe('Manual Graceful Shutdown', () => {
       it('should handle manual graceful shutdown correctly', async () => {
-        app = new YinzerFlow({ autoGracefulShutdown: false });
+        app = new YinzerFlow({ gracefulShutdownTimeout: 0 });
 
         await app.listen();
         expect(app.status().isListening).toBe(true);
@@ -190,7 +189,7 @@ describe('YinzerFlow', () => {
       });
 
       it('should handle multiple close calls gracefully', async () => {
-        app = new YinzerFlow({ autoGracefulShutdown: false });
+        app = new YinzerFlow({ gracefulShutdownTimeout: 0 });
 
         await app.listen();
         await app.close();
@@ -260,6 +259,129 @@ describe('YinzerFlow', () => {
   });
 
   describe('Hook System Integration', () => {
+    describe('beforeRouting Hooks', () => {
+      it('should execute beforeRouting hooks before routing', async () => {
+        const tracker = createExecutionTracker();
+
+        app.beforeRouting([tracker.track('beforeRouting')]);
+        app.beforeAll([tracker.track('beforeAll')]);
+        app.get('/hook-test', () => {
+          tracker.track('route')();
+          return { order: tracker.getOrder() };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/hook-test'));
+
+        expect(response).toContain('"order":["beforeRouting","beforeAll","route"]');
+      });
+
+      it('should allow beforeRouting hooks to short-circuit response', async () => {
+        app.beforeRouting([
+          (ctx) => {
+            if (ctx.request.headers['x-api-key'] !== 'valid-key') {
+              ctx.response.setStatusCode(401);
+              return { error: 'Unauthorized', message: 'Invalid API key' };
+            }
+            return undefined;
+          },
+        ]);
+
+        app.get('/protected', () => {
+          return { data: 'Secret data' };
+        });
+
+        await app.listen();
+
+        // Test with missing API key
+        const unauthorizedResponse = await sendHttpRequest(testPort, createHttpRequest('GET', '/protected'));
+        expect(unauthorizedResponse).toContain('401 Unauthorized');
+        expect(unauthorizedResponse).toContain('"error":"Unauthorized"');
+        expect(unauthorizedResponse).toContain('"message":"Invalid API key"');
+
+        // Test with valid API key
+        const authorizedResponse = await sendHttpRequest(
+          testPort,
+          createHttpRequest('GET', '/protected', ['x-api-key: valid-key']),
+        );
+        expect(authorizedResponse).toContain('200 OK');
+        expect(authorizedResponse).toContain('"data":"Secret data"');
+      });
+
+      it('should execute multiple beforeRouting hooks in order', async () => {
+        const tracker = createExecutionTracker();
+
+        app.beforeRouting([tracker.track('beforeRouting1'), tracker.track('beforeRouting2'), tracker.track('beforeRouting3')]);
+
+        app.get('/multi-hook-test', () => {
+          tracker.track('route')();
+          return { order: tracker.getOrder() };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/multi-hook-test'));
+
+        expect(response).toContain('"order":["beforeRouting1","beforeRouting2","beforeRouting3","route"]');
+      });
+
+      it('should respect routesToExclude in beforeRouting hooks', async () => {
+        let hookExecuted = false;
+
+        app.beforeRouting(
+          [
+            () => {
+              hookExecuted = true;
+            },
+          ],
+          {
+            routesToExclude: ['/health'],
+            routesToInclude: [],
+          },
+        );
+
+        app.get('/health', () => ({ status: 'healthy' }));
+
+        await app.listen();
+
+        await sendHttpRequest(testPort, createHttpRequest('GET', '/health'));
+
+        expect(hookExecuted).toBe(false);
+      });
+
+      it('should respect routesToInclude in beforeRouting hooks', async () => {
+        let apiHookExecuted = false;
+        let publicHookExecuted = false;
+
+        app.beforeRouting(
+          [
+            () => {
+              apiHookExecuted = true;
+            },
+          ],
+          {
+            routesToExclude: [],
+            routesToInclude: ['/api/*'],
+          },
+        );
+
+        app.get('/api/users', () => ({ users: [] }));
+        app.get('/public/info', () => {
+          publicHookExecuted = true;
+          return { info: 'public' };
+        });
+
+        await app.listen();
+
+        await sendHttpRequest(testPort, createHttpRequest('GET', '/api/users'));
+        expect(apiHookExecuted).toBe(true);
+
+        await sendHttpRequest(testPort, createHttpRequest('GET', '/public/info'));
+        expect(publicHookExecuted).toBe(true);
+      });
+    });
+
     describe('Global Hooks', () => {
       it('should execute beforeAll hooks', async () => {
         const tracker = createExecutionTracker();

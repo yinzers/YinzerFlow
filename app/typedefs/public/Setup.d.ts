@@ -125,6 +125,57 @@ export interface Setup extends HttpMethodHandlers {
   group: RouteGroupMethod;
 
   /**
+   * Registers global hooks that run before routing logic.
+   *
+   * These hooks execute before YinzerFlow matches the route and before any
+   * beforeAll hooks. They're perfect for global middleware like CORS headers,
+   * rate limiting, authentication checks, or request preprocessing that should
+   * happen regardless of whether a matching route exists.
+   *
+   * **Execution Order**: beforeRouting → routing → beforeAll → beforeRoute → handler → afterRoute → afterAll
+   *
+   * @param handlers - Array of hook functions to execute
+   * @param options - Optional configuration for hook execution scope
+   *
+   * @example
+   * ```typescript
+   * // Global CORS middleware (executes before routing)
+   * app.beforeRouting([
+   *   async (ctx) => {
+   *     ctx.response.addHeaders({
+   *       'Access-Control-Allow-Origin': '*',
+   *       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+   *       'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+   *     });
+   *
+   *     // Handle preflight requests
+   *     if (ctx.request.method === 'OPTIONS') {
+   *       ctx.response.setStatusCode(204);
+   *       return null; // Short-circuit response
+   *     }
+   *   }
+   * ]);
+   *
+   * // Global rate limiting (executes before routing)
+   * app.beforeRouting([
+   *   async (ctx) => {
+   *     const ip = ctx.request.ipAddress;
+   *     const rateLimitExceeded = await checkRateLimit(ip);
+   *
+   *     if (rateLimitExceeded) {
+   *       ctx.response.setStatusCode(429);
+   *       return { error: 'Too many requests' }; // Short-circuit response
+   *     }
+   *   }
+   * ]);
+   * ```
+   *
+   * @see {@link InternalGlobalHookOptions} for hook configuration options
+   * @see {@link HandlerCallback} for hook function signature
+   */
+  beforeRouting: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
+
+  /**
    * Registers global hooks that run before all route handlers.
    *
    * These hooks execute for every request before any route-specific hooks
