@@ -228,13 +228,20 @@ const preflight = async (): Promise<PreflightResult> => {
   }
   log.success(`[${++passed}/${total}] npm v${npmCheck.stdout}`);
 
-  // 7. npm authenticated
-  const whoami = run(['npm', 'whoami']);
+  // 7. npm authenticated (interactive login if needed)
+  let whoami = run(['npm', 'whoami']);
   if (!whoami.ok) {
-    log.error('Not authenticated with npm.');
-    log.dim('Run: npm login');
-    log.dim('Or set NPM_TOKEN in .npmrc: //registry.npmjs.org/:_authToken=<token>');
-    process.exit(1);
+    log.warn('Not authenticated with npm. Launching npm login...');
+    const loginOk = runInherit(['npm', 'login']);
+    if (!loginOk) {
+      log.error('npm login failed');
+      process.exit(1);
+    }
+    whoami = run(['npm', 'whoami']);
+    if (!whoami.ok) {
+      log.error('Still not authenticated after login attempt');
+      process.exit(1);
+    }
   }
   log.success(`[${++passed}/${total}] npm authenticated as ${whoami.stdout}`);
 
