@@ -14,11 +14,43 @@ import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConf
  * - Rejects unauthorized preflight requests with 403
  */
 export class Cors {
-  constructor(private readonly config: InternalCorsEnabledOptions) {}
+  private readonly _normalizedOrigins: Set<string> | null;
+
+  constructor(private readonly config: InternalCorsEnabledOptions) {
+    // Fail fast: wildcard + credentials is forbidden by CORS spec
+    if (config.origin === '*' && config.credentials) {
+      throw new Error(
+        'CORS Configuration Error: Cannot use origin: "*" with credentials: true. ' +
+          'The CORS specification forbids this combination as it creates security vulnerabilities. ' +
+          'Choose one of these solutions:\n' +
+          '  1) Set credentials: false (recommended for public APIs)\n' +
+          '  2) Use specific origins instead of "*" (e.g., origin: ["https://example.com"])\n' +
+          '  3) Disable CORS entirely (enabled: false)',
+      );
+    }
+
+    // Pre-normalize array origins for O(1) lookup per request instead of O(m)
+    if (Array.isArray(config.origin)) {
+      this._normalizedOrigins = new Set(config.origin.map((o) => o.toLowerCase()));
+    } else {
+      this._normalizedOrigins = null;
+    }
+  }
 
   /**
-   * Handle CORS for a request
-   * @returns Response object if CORS should short-circuit, undefined to continue
+   * Handle CORS for an incoming request.
+   *
+   * For OPTIONS (preflight) requests: validates origin, sets all CORS headers,
+   * and short-circuits with the configured success status (default 204).
+   * Returns a response object to short-circuit, or undefined if preflightContinue is true.
+   *
+   * For actual requests: validates origin and sets Access-Control-Allow-Origin +
+   * Access-Control-Allow-Credentials headers. Always returns undefined to let
+   * normal request processing continue (CORS enforcement is browser-side for
+   * non-preflight requests per the CORS specification).
+   *
+   * @param context - The request context with headers and response object
+   * @returns Response object to short-circuit (preflight), or undefined to continue
    */
   handle(context: InternalContextImpl): unknown {
     if (context.request.method === 'OPTIONS') {
@@ -33,7 +65,8 @@ export class Cors {
    */
   private _handlePreflightRequest(context: InternalContextImpl): unknown {
     // Validate origin is accepted - SECURITY CRITICAL
-    const isOriginAllowed = this._validateOrigin(context);
+    const normalizedOrigin = context.request.headers.origin?.toLowerCase() ?? '';
+    const isOriginAllowed = this._isOriginAllowed(normalizedOrigin, context);
 
     if (!isOriginAllowed) {
       // Reject unauthorized CORS preflight requests
@@ -48,14 +81,16 @@ export class Cors {
     context.response.setStatusCode(this.config.optionsSuccessStatus);
 
     // Determine the allowed origin to echo back
-    const allowedOrigin = this._determineAllowedOrigin(context);
+    const allowedOrigin = this._resolveAllowedOrigin(context);
 
-    // Configure allowed methods and headers
+    // Set common CORS headers (origin + credentials)
+    this._setCommonCorsHeaders(context, allowedOrigin);
+
+    // Set preflight-specific headers
     context._response._setHeadersIfNotSet({
-      [httpHeaders.accessControlAllowOrigin]: allowedOrigin,
       [httpHeaders.accessControlAllowMethods]: this.config.methods.join(', '),
-      [httpHeaders.accessControlAllowHeaders]: typeof this.config.allowedHeaders === 'string' ? this.config.allowedHeaders : this.config.allowedHeaders.join(', '),
-      [httpHeaders.accessControlAllowCredentials]: this.config.credentials ? 'true' : 'false',
+      [httpHeaders.accessControlAllowHeaders]:
+        typeof this.config.allowedHeaders === 'string' ? this.config.allowedHeaders : this.config.allowedHeaders.join(', '),
       [httpHeaders.accessControlExposeHeaders]: this.config.exposedHeaders.join(', '),
       [httpHeaders.accessControlMaxAge]: this.config.maxAge.toString(),
     });
@@ -70,50 +105,47 @@ export class Cors {
   }
 
   /**
-   * Handle actual (non-preflight) request
+   * Handle actual (non-preflight) request — validate origin and set CORS headers.
+   * For disallowed origins, no CORS headers are set (browser will block the response).
    */
   private _handleActualRequest(context: InternalContextImpl): undefined {
-    // For non-OPTIONS requests, still validate origin and set appropriate headers
-    const isOriginAllowed = this._validateOrigin(context);
+    const normalizedOrigin = context.request.headers.origin?.toLowerCase() ?? '';
+    const isOriginAllowed = this._isOriginAllowed(normalizedOrigin, context);
 
     if (isOriginAllowed) {
-      const allowedOrigin = this._determineAllowedOrigin(context);
-      context._response._setHeadersIfNotSet({
-        [httpHeaders.accessControlAllowOrigin]: allowedOrigin,
-        [httpHeaders.accessControlAllowCredentials]: this.config.credentials ? 'true' : 'false',
-      });
+      const allowedOrigin = this._resolveAllowedOrigin(context);
+      this._setCommonCorsHeaders(context, allowedOrigin);
     }
 
-    // Let normal request processing continue
     return undefined;
   }
 
   /**
-   * Determine the correct origin value to send back in Access-Control-Allow-Origin
-   * SECURITY: Never echo back the request origin without validation
+   * Set CORS headers common to both preflight and actual requests
    */
-  private _determineAllowedOrigin(context: InternalContextImpl): string {
-    if (this.config.origin === '*') {
-      // SECURITY: Block dangerous wildcard + credentials combination (CORS spec violation)
-      if (this.config.credentials) {
-        throw new Error(
-          'CORS Security Error: origin: "*" with credentials: true is forbidden by CORS spec and creates security vulnerabilities. Use specific origins instead.',
-        );
-      }
+  private _setCommonCorsHeaders(context: InternalContextImpl, allowedOrigin: string): void {
+    context._response._setHeadersIfNotSet({
+      [httpHeaders.accessControlAllowOrigin]: allowedOrigin,
+      [httpHeaders.accessControlAllowCredentials]: this.config.credentials ? 'true' : 'false',
+    });
+  }
 
-      // SECURITY: For wildcard, always return literal '*', never echo back the request origin
-      // Echoing back the request origin defeats the purpose of CORS validation
+  /**
+   * Determine the correct origin value for the Access-Control-Allow-Origin header.
+   * SECURITY: Never echo back the request origin without prior validation.
+   */
+  private _resolveAllowedOrigin(context: InternalContextImpl): string {
+    if (this.config.origin === '*') {
       return '*';
     }
 
     // For specific origins, echo back the validated request origin
     const requestOrigin = context.request.headers.origin;
     if (requestOrigin) {
-      // At this point, validation should have already passed
       return requestOrigin;
     }
 
-    // If no request origin (shouldn't happen for validated requests), return first configured origin
+    // Fallback: no request origin (shouldn't happen for validated requests)
     if (typeof this.config.origin === 'string') {
       return this.config.origin;
     }
@@ -123,28 +155,25 @@ export class Cors {
       return firstOrigin ?? 'null';
     }
 
-    // This shouldn't happen if validation passed, but safety fallback
     return 'null';
   }
 
   /**
-   * Validate if the request origin is allowed
+   * Check if a normalized (lowercased) origin is allowed by the CORS configuration
    */
-  private _validateOrigin(context: InternalContextImpl): boolean {
+  private _isOriginAllowed(normalizedOrigin: string, context?: InternalContextImpl): boolean {
     if (this.config.origin === '*') return true;
 
-    const normalizedOrigin = context.request.headers.origin?.toLowerCase() ?? '';
-
     if (typeof this.config.origin === 'function') {
-      return Boolean(this.config.origin(normalizedOrigin, context.request));
+      return Boolean(this.config.origin(normalizedOrigin, context?.request));
     }
 
     if (typeof this.config.origin === 'string') {
       return normalizedOrigin === this.config.origin.toLowerCase();
     }
 
-    if (Array.isArray(this.config.origin)) {
-      return this.config.origin.some((origin) => normalizedOrigin === origin.toLowerCase());
+    if (this._normalizedOrigins) {
+      return this._normalizedOrigins.has(normalizedOrigin);
     }
 
     if (this.config.origin instanceof RegExp) {
