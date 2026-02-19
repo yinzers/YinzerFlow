@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import net from 'net';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { httpStatusCode } from '@constants/http.ts';
 
 // Reusable test data builders
-const createTestApp = (customConfig?: any) => {
-  const testPort = 5000 + Math.floor(Math.random() * 1000);
+let _nextTestPort = 10000;
+
+const createTestApp = (customConfig?: Record<string, unknown>) => {
+  const testPort = _nextTestPort++;
   return {
     app: new YinzerFlow({ port: testPort, host: '127.0.0.1', ...customConfig }),
     testPort,
@@ -13,7 +16,7 @@ const createTestApp = (customConfig?: any) => {
 };
 
 const createTestHandler =
-  (returnValue: any): HandlerCallback =>
+  (returnValue: unknown): HandlerCallback =>
   () =>
     returnValue;
 
@@ -22,9 +25,9 @@ const createHttpRequest = (method: string, path: string, headers: Array<string> 
   return `${method} ${path} HTTP/1.1\r\nHost: localhost${headerString}\r\n\r\n${body}`;
 };
 
-const createJsonRequest = (method: string, path: string, jsonBody: any) => {
+const createJsonRequest = (method: string, path: string, jsonBody: unknown) => {
   const body = JSON.stringify(jsonBody);
-  return createHttpRequest(method, path, ['Content-Type: application/json', `Content-Length: ${body.length}`], body);
+  return createHttpRequest(method, path, ['Content-Type: application/json', `Content-Length: ${Buffer.byteLength(body, 'utf8')}`], body);
 };
 
 const createExecutionTracker = () => {
@@ -301,10 +304,7 @@ describe('YinzerFlow', () => {
         expect(unauthorizedResponse).toContain('"message":"Invalid API key"');
 
         // Test with valid API key
-        const authorizedResponse = await sendHttpRequest(
-          testPort,
-          createHttpRequest('GET', '/protected', ['x-api-key: valid-key']),
-        );
+        const authorizedResponse = await sendHttpRequest(testPort, createHttpRequest('GET', '/protected', ['x-api-key: valid-key']));
         expect(authorizedResponse).toContain('200 OK');
         expect(authorizedResponse).toContain('"data":"Secret data"');
       });
@@ -604,7 +604,7 @@ describe('YinzerFlow', () => {
         expect(response).toContain(`"method":"${method}"`);
       } else {
         // HEAD requests should not have a body
-        const [_, body] = response.split('\r\n\r\n');
+        const [, body] = response.split('\r\n\r\n');
         expect(body ?? '').toBe('');
       }
     });
@@ -713,8 +713,6 @@ describe('YinzerFlow', () => {
       it('should handle request processing errors by destroying socket', async () => {
         await app.listen();
 
-        const net = await import('net');
-
         const errorPromise = new Promise<boolean>((resolve) => {
           const client = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
             // Send data that will cause parsing/processing errors
@@ -734,8 +732,6 @@ describe('YinzerFlow', () => {
 
       it('should handle promise rejection in request handler', async () => {
         await app.listen();
-
-        const net = await import('net');
 
         const promiseRejectionHandled = new Promise<boolean>((resolve) => {
           const client = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
@@ -877,6 +873,98 @@ describe('YinzerFlow', () => {
       });
     });
 
+    describe('TCP Stream Reassembly', () => {
+      it('should handle request body split across multiple TCP chunks (~2KB)', async () => {
+        app.post('/chunked-body', (ctx) => ({
+          received: true,
+          keyCount: Object.keys(ctx.request.body as Record<string, unknown>).length,
+        }));
+
+        await app.listen();
+
+        // ~2KB payload — exceeds typical TCP MSS (~1.4KB), will be split across segments
+        const payload = { data: 'a'.repeat(2000) };
+        const request = createJsonRequest('POST', '/chunked-body', payload);
+
+        // Send in small 500-byte chunks to simulate TCP fragmentation
+        const response = await sendChunkedHttpRequest(testPort, request, 500);
+
+        expect(response).toContain('200 OK');
+        expect(response).toContain('"received":true');
+      });
+
+      it('should handle large request body split into many TCP chunks (~10KB)', async () => {
+        app.post('/large-chunked', (ctx) => ({
+          received: true,
+          dataLength: ((ctx.request.body as Record<string, unknown>).data as string).length,
+        }));
+
+        await app.listen();
+
+        // ~10KB payload — the approximate size that was originally reported as broken
+        const payload = { data: 'b'.repeat(10000) };
+        const request = createJsonRequest('POST', '/large-chunked', payload);
+
+        // Send in 500-byte chunks (simulates ~20 TCP data events)
+        const response = await sendChunkedHttpRequest(testPort, request, 500);
+
+        expect(response).toContain('200 OK');
+        expect(response).toContain('"received":true');
+        expect(response).toContain('"dataLength":10000');
+      });
+
+      it('should handle very large request body split into tiny TCP chunks (~64KB)', async () => {
+        app.post('/very-large-chunked', (ctx) => ({
+          received: true,
+          dataLength: ((ctx.request.body as Record<string, unknown>).data as string).length,
+        }));
+
+        await app.listen();
+
+        // ~64KB payload split into 1KB chunks
+        const payload = { data: 'c'.repeat(64000) };
+        const request = createJsonRequest('POST', '/very-large-chunked', payload);
+        const response = await sendChunkedHttpRequest(testPort, request, 1024);
+
+        expect(response).toContain('200 OK');
+        expect(response).toContain('"received":true');
+        expect(response).toContain('"dataLength":64000');
+      });
+
+      it('should handle GET requests with no body when sent in chunks', async () => {
+        app.get('/chunked-get', () => ({ success: true }));
+
+        await app.listen();
+
+        const request = createHttpRequest('GET', '/chunked-get');
+        // Send headers in tiny chunks — no body expected
+        const response = await sendChunkedHttpRequest(testPort, request, 20);
+
+        expect(response).toContain('200 OK');
+        expect(response).toContain('"success":true');
+      });
+
+      it('should handle headers arriving in multiple chunks before body', async () => {
+        app.post('/header-chunks', (ctx) => ({
+          received: true,
+          name: (ctx.request.body as Record<string, unknown>).name,
+        }));
+
+        await app.listen();
+
+        const payload = { name: 'test-value' };
+        const request = createJsonRequest('POST', '/header-chunks', payload);
+
+        // Use chunk size that splits right in the middle of headers
+        // Headers are typically ~100-150 bytes, so 50-byte chunks ensure multiple header chunks
+        const response = await sendChunkedHttpRequest(testPort, request, 50);
+
+        expect(response).toContain('200 OK');
+        expect(response).toContain('"received":true');
+        expect(response).toContain('"name":"test-value"');
+      });
+    });
+
     describe('Concurrency and Performance', () => {
       it('should handle concurrent requests', async () => {
         app.get('/concurrent/:id', (ctx) => ({
@@ -915,16 +1003,27 @@ describe('YinzerFlow', () => {
   });
 });
 
-// Helper function to send HTTP requests to the test server
-const sendHttpRequest = async (port: number, request: string): Promise<string> => {
-  const net = await import('net');
-
-  return new Promise((resolve, reject) => {
+/**
+ * Core TCP connection helper — manages connection lifecycle, event listeners, and timeout.
+ * Used as the base for both direct and chunked request helpers.
+ *
+ * @param port - Server port to connect to
+ * @param writeStrategy - Function that writes data to the socket once connected
+ * @param timeoutMs - Maximum time to wait for response before force-closing
+ * @returns Raw HTTP response string from server
+ */
+const connectWithTimeout = (
+  port: number,
+  writeStrategy: (client: net.Socket) => void,
+  timeoutMs = 5000,
+): Promise<string> =>
+  new Promise((resolve, reject) => {
     const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
-      client.write(request);
+      writeStrategy(client);
     });
 
     let response = '';
+
     client.on('data', (data) => {
       response += data.toString();
     });
@@ -937,7 +1036,6 @@ const sendHttpRequest = async (port: number, request: string): Promise<string> =
       reject(error);
     });
 
-    // Set timeout to prevent hanging tests
     setTimeout(() => {
       client.destroy();
       if (response) {
@@ -945,6 +1043,46 @@ const sendHttpRequest = async (port: number, request: string): Promise<string> =
       } else {
         reject(new Error('Request timeout'));
       }
-    }, 5000);
+    }, timeoutMs);
   });
+
+/** Send a complete HTTP request string over a TCP connection */
+const sendHttpRequest = (port: number, request: string): Promise<string> =>
+  connectWithTimeout(port, (client) => {
+    client.write(request);
+  });
+
+/**
+ * Send an HTTP request in multiple TCP chunks to simulate fragmentation.
+ * This exercises the TCP stream reassembly logic that buffers data events
+ * until the complete HTTP request (headers + Content-Length body) is received.
+ *
+ * @param port - Server port to connect to
+ * @param request - Complete HTTP request string (headers + body)
+ * @param chunkSize - Size in bytes of each TCP chunk (simulates MSS fragmentation)
+ * @returns Raw HTTP response string from server
+ */
+const sendChunkedHttpRequest = (port: number, request: string, chunkSize: number): Promise<string> => {
+  const INTER_CHUNK_DELAY_MS = 5; // Small delay to simulate TCP packet spacing
+
+  return connectWithTimeout(
+    port,
+    (client) => {
+      const buf = Buffer.from(request);
+      let offset = 0;
+
+      const sendNextChunk = () => {
+        if (offset >= buf.length) return;
+        const end = Math.min(offset + chunkSize, buf.length);
+        client.write(buf.subarray(offset, end));
+        offset = end;
+        if (offset < buf.length) {
+          setTimeout(sendNextChunk, INTER_CHUNK_DELAY_MS);
+        }
+      };
+
+      sendNextChunk();
+    },
+    10000,
+  );
 };
