@@ -41,6 +41,12 @@ Full plan: `.claude/plans/response-bugs-and-logging-revamp.md`
 - [x] **Cleanup**: Deleted dead `app/core/utils/cors.ts` (89 lines) + `app/core/utils/__tests__/cors.spec.ts` (637 lines)
 - **Result**: 899 tests passing (39 removed with dead cors.spec.ts), 0 failures
 
+### Publish Script — COMPLETE
+- [x] Created `scripts/publish.ts` — zero-dep release script with pre-flight checks, AI changelog, rollback
+- [x] Added `publish:release` script to package.json
+- [x] Added `scripts/` to .npmignore
+- [x] Deleted old `publish.sh`
+
 ### Phase 1: Fix Response Header Bugs (RESPONSE SIDE)
 - [ ] **STOP: Create detailed implementation plan for Phase 1 before coding**
 - [ ] Fix `_parseResponseIntoString()` ordering — set Date/Content-Length BEFORE building `_stringBody`
@@ -159,3 +165,4 @@ See `.claude/plans/performance-optimization.md` for detailed performance strateg
 - [2026-02-17] Phase 2: CORS Module Conversion - 7 chunks, 933 tests passing
 - [2026-02-19] Bug Fix Phase 0: TCP Stream Reassembly - buffered TCP data handler, +5 tests, 938 passing
 - [2026-02-19] Audit Fixes: Performance, DRY, security, test infra across YinzerFlow.ts/Cors.ts/YinzerFlow.spec.ts + dead code cleanup, 899 passing
+- [2026-02-19] Publish Script: Created scripts/publish.ts, replaced publish.sh, added publish:release script
