@@ -1,15 +1,13 @@
 # Development files
 real-world-tests/
 app/
-build.ts
-build-watch.ts
+scripts/
 tsconfig.json
 eslint.config.mjs
 .prettierrc
 cspell.json
 FUTURE_IDEAS.md
 SECURITY.md
-publish.sh
 
 # Build artifacts
 lib/
