@@ -47,9 +47,10 @@ const run = (cmd: string[], opts?: { cwd?: string }): { ok: boolean; stdout: str
   };
 };
 
-const runInherit = (cmd: string[], opts?: { cwd?: string }): boolean => {
+const runInherit = (cmd: string[], opts?: { cwd?: string; env?: Record<string, string | undefined> }): boolean => {
   const result = Bun.spawnSync(cmd, {
     cwd: opts?.cwd ?? process.cwd(),
+    env: opts?.env,
     stdio: ['inherit', 'inherit', 'inherit'],
   });
   return result.exitCode === 0;
@@ -232,7 +233,7 @@ const preflight = async (): Promise<PreflightResult> => {
   let whoami = run(['npm', 'whoami']);
   if (!whoami.ok) {
     log.warn('Not authenticated with npm. Launching npm login...');
-    const loginOk = runInherit(['npm', 'login']);
+    const loginOk = runInherit(['npm', 'login'], { env: { ...process.env, BROWSER: '' } });
     if (!loginOk) {
       log.error('npm login failed');
       process.exit(1);
