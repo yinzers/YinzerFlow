@@ -25,8 +25,8 @@
 - Bug fix plan Phases 1-4 (Phase 0 complete, audit fixes complete, Phase 1 next)
 
 **Recently Completed** (last 3-5 items):
+- Merged `scripts/build.ts` into `scripts/publish.ts` — quality checks now run in pre-flight (before mutations), build inlined in mutation phase. Deleted `build.ts`, removed `build`/`clean` scripts from package.json.
 - Created `scripts/publish.ts` — full release script with pre-flight checks, AI changelog, rollback, npm publish
-- Updated package.json (`publish:release` script), .npmignore (exclude `scripts/`), deleted old `publish.sh`
 - Audit fixes: O(n²) buffer fix, CORS Set optimization, DRY extractions, test infra improvements, dead code cleanup — 899 tests passing
 - Phase 0: TCP stream reassembly fix — buffered TCP data handler in `_handleConnection`, +5 tests, 938 passing
 - Created `.claude/plans/response-bugs-and-logging-revamp.md` with 5 phases
@@ -44,9 +44,6 @@
 ```bash
 # Test
 bun test
-
-# Build
-bun run build
 
 # Build watch
 bun run build:watch
