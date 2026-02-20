@@ -5,7 +5,7 @@ import { contentType } from '@constants/http.ts';
 import { parseUrlEncodedForm } from '@core/execution/utils/parseUrlEncodedForm.ts';
 import type { InternalContentType } from '@typedefs/constants/http.js';
 import { inferContentTypeFromString } from '@core/execution/utils/inferContentType.ts';
-import type { InternalBodyParserOptions } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalBodyParserOptions, InternalFileUploadOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { Logger } from '@typedefs/public/Logger.js';
 
 /**
@@ -101,7 +101,10 @@ export const parseBody = (body: string, options: ParseBodyOptions = {}): unknown
 
   if (mainContentType === contentType.multipart) {
     if (!boundary) throw new Error('Invalid multipart form data: missing boundary');
-    return parseMultipartFormData(body, boundary, { config: config?.fileUploads, logger });
+    const multipartOpts: { config?: InternalFileUploadOptions; logger?: Logger } = {};
+    if (config?.fileUploads) multipartOpts.config = config.fileUploads;
+    if (logger) multipartOpts.logger = logger;
+    return parseMultipartFormData(body, boundary, multipartOpts);
   }
 
   if (mainContentType === contentType.form) {
