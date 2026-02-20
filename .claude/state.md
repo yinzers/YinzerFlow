@@ -19,17 +19,17 @@
 ## Current Context (REPLACE each update)
 
 **Goal**: Fix critical bugs + logging revamp per `.claude/plans/response-bugs-and-logging-revamp.md`
-**Immediate Task**: Phase 1 — Fix response header bugs (Date/Content-Length)
+**Immediate Task**: Phase 2 — Fix information disclosure
 
 **In Progress**:
-- Bug fix plan Phases 1-4 (Phase 0 complete, audit fixes complete, Phase 1 next)
+- Bug fix plan Phases 2-4 (Phases 0-1 complete, audit fixes complete)
 
 **Recently Completed** (last 3-5 items):
-- Merged `scripts/build.ts` into `scripts/publish.ts` — quality checks now run in pre-flight (before mutations), build inlined in mutation phase. Deleted `build.ts`, removed `build`/`clean` scripts from package.json.
-- Created `scripts/publish.ts` — full release script with pre-flight checks, AI changelog, rollback, npm publish
+- Audit bug fixes: CRLF \r\n, dayjs→cached Date header, afterHooks error flow, no-op try/catch, error handler blame msg, _matchesPattern prefix bug, _shouldRunHook defaults, DRY _applyHookResponse, timer leak, forEach→for..of, "handeling" typo, private→underscore consistency — 904 tests passing
+- Phase 1: Fixed response header bugs — Date/Content-Length now set BEFORE string assembly, Content-Length measures body bytes only, removed duplicate header code from error paths, +5 tests
+- Merged `scripts/build.ts` into `scripts/publish.ts` — quality checks now run in pre-flight (before mutations), build inlined in mutation phase
 - Audit fixes: O(n²) buffer fix, CORS Set optimization, DRY extractions, test infra improvements, dead code cleanup — 899 tests passing
-- Phase 0: TCP stream reassembly fix — buffered TCP data handler in `_handleConnection`, +5 tests, 938 passing
-- Created `.claude/plans/response-bugs-and-logging-revamp.md` with 5 phases
+- Phase 0: TCP stream reassembly fix — buffered TCP data handler in `_handleConnection`, +5 tests
 
 ---
 

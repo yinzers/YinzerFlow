@@ -47,13 +47,32 @@ Full plan: `.claude/plans/response-bugs-and-logging-revamp.md`
 - [x] Added `scripts/` to .npmignore
 - [x] Deleted old `publish.sh`
 
-### Phase 1: Fix Response Header Bugs (RESPONSE SIDE)
-- [ ] **STOP: Create detailed implementation plan for Phase 1 before coding**
-- [ ] Fix `_parseResponseIntoString()` ordering — set Date/Content-Length BEFORE building `_stringBody`
-- [ ] Fix `Content-Length` to measure body bytes only (not entire response string)
-- [ ] Remove duplicate header logic from error paths in `RequestHandlerImpl.ts`
-- [ ] Add tests verifying headers reach the wire
-- [ ] Add integration test confirming headers in real HTTP response
+### Phase 1: Fix Response Header Bugs (RESPONSE SIDE) — COMPLETE
+- [x] Created detailed implementation plan (`.claude/plans/response-bugs-and-logging-revamp.md` Phase 1 section)
+- [x] Fix `_parseResponseIntoString()` ordering — set Date/Content-Length BEFORE building `_stringBody`
+- [x] Fix `Content-Length` to measure body bytes only (`Buffer.byteLength(body)` not entire response)
+- [x] Remove duplicate header logic from error paths in `RequestHandlerImpl.ts` (lines 118-121, 134-137)
+- [x] Remove unused `dayjs` import from `RequestHandlerImpl.ts`
+- [x] Remove unused `calculateContentSizeInBytes` import from `ResponseImpl.ts`
+- [x] Add 5 tests: Date header present, Content-Length = body bytes, multi-byte correctness, error response headers, not-found response headers
+- **Result**: 904 tests passing, 0 failures
+
+### Phase 1.5: Audit Bug Fixes (ResponseImpl, RequestHandlerImpl, HookRegistryImpl, Tests) — COMPLETE
+- [x] **ResponseImpl.ts**: CRLF `\n` → `\r\n` (RFC 7230 compliance)
+- [x] **ResponseImpl.ts**: Replace `dayjs()` with cached Date header (1s setInterval, `.unref()`)
+- [x] **ResponseImpl.ts**: Fix `_formatHttpDate` hoisting (moved before `_cachedDateHeader` init)
+- [x] **RequestHandlerImpl.ts**: Move `_setBody(routeResponse)` before afterHooks (error flow fix)
+- [x] **RequestHandlerImpl.ts**: Remove no-op try/catch around handler call
+- [x] **RequestHandlerImpl.ts**: Fix error handler blame message ("internal error" → "your onError handler")
+- [x] **RequestHandlerImpl.ts**: Fix `_matchesPattern` prefix match bug (`/api/*` no longer matches `/api-internal`)
+- [x] **RequestHandlerImpl.ts**: Add defensive defaults to `_shouldRunHook` destructuring
+- [x] **RequestHandlerImpl.ts**: Remove `private` keyword from underscore-prefixed methods (consistency)
+- [x] **RequestHandlerImpl.ts**: Extract `_applyHookResponse()` DRY helper (3 identical blocks → 1)
+- [x] **HookRegistryImpl.ts**: Fix "handeling" → "handling" typo
+- [x] **YinzerFlow.spec.ts**: Fix `connectWithTimeout` timer leak (clearTimeout on end/error)
+- [x] **YinzerFlow.spec.ts**: Replace `forEach` with `for...of` using `entries()`
+- [x] **Tests**: Update `\n\n` splits to `\r\n\r\n` in ResponseImpl.spec.ts and YinzerFlow.spec.ts
+- **Result**: 904 tests passing, 0 failures
 
 ### Phase 2: Fix Information Disclosure
 - [ ] **STOP: Create detailed implementation plan for Phase 2 before coding**
@@ -67,6 +86,13 @@ Full plan: `.claude/plans/response-bugs-and-logging-revamp.md`
 - [ ] Reclassify noisy network logs to `debug` level
 - [ ] Clean up network log output (parseable, less noise at default level)
 - [ ] Wire `logLevel` through YinzerFlow constructor
+- [ ] **Logging: Slow Request/Response Thresholds**
+  - `logSlowRequestsThreshold` (ms), `logResponseSizeOver` (bytes)
+  - Builds on the logging revamp foundation
+
+- [ ] **Heap/Memory Usage Logging**
+  - Periodic heap/memory stats at configurable intervals
+  - Development/benchmarking mode feature
 
 ### Phase 4: Tests & Cleanup
 - [ ] **STOP: Create detailed implementation plan for Phase 4 before coding**
@@ -122,13 +148,7 @@ Full plan: `.claude/plans/response-bugs-and-logging-revamp.md`
   - Add `enabled` flag to each parser type (json, urlEncoded, fileUploads)
   - Part of bodyParser module refactor (Architecture Phase 4)
 
-- [ ] **Logging: Slow Request/Response Thresholds**
-  - `logSlowRequestsThreshold` (ms), `logResponseSizeOver` (bytes)
-  - Builds on the logging revamp foundation
 
-- [ ] **Heap/Memory Usage Logging (Optional)**
-  - Periodic heap/memory stats at configurable intervals
-  - Development/benchmarking mode feature
 
 ---
 
