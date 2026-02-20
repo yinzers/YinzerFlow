@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.13] - 2026-02-20
+
+- ``` 🔧 chore: update progress to Phase 2 (7a55239)
+- ♻️ refactor(hook-registry): fix typo in error log (057a458)
+- ♻️ refactor(request-response-handling): optimize headers (a133d7c)
+
 All notable changes to YinzerFlow will be documented in this file.
 
 ## [0.6.12] - 2026-02-20
