@@ -303,9 +303,20 @@ const preflight = async (): Promise<PreflightResult> => {
     process.exit(1);
   }
 
-  // Get last tag and commit count
-  const lastTagResult = run(['git', 'describe', '--tags', '--abbrev=0']);
-  const lastTag = lastTagResult.ok ? lastTagResult.stdout : '';
+  // Get last PUBLISHED tag — walk back through git tags to find one actually on npm.
+  // This handles aborted publishes where git tag exists but npm publish never ran.
+  const allTagsResult = run(['git', 'tag', '--sort=-v:refname']);
+  const allTags = allTagsResult.ok ? allTagsResult.stdout.split('\n').filter(Boolean) : [];
+  let lastTag = '';
+  for (const tag of allTags) {
+    const version = tag.replace(/^v/, '');
+    const npmCheck = run(['npm', 'view', `${packageName}@${version}`, 'version']);
+    if (npmCheck.ok && npmCheck.stdout === version) {
+      lastTag = tag;
+      break;
+    }
+    log.dim(`Tag ${tag} not published to npm — skipping`);
+  }
 
   let commitCount = 0;
   if (lastTag) {
@@ -516,7 +527,7 @@ const showConfirmation = (opts: {
   }
 
   console.log('');
-  console.log(`  ${c.bold}Steps:${c.reset} bump → changelog → compile → commit → tag → push → publish`);
+  console.log(`  ${c.bold}Steps:${c.reset} bump → changelog → compile → commit → tag → publish → push`);
   console.log(line);
 };
 
@@ -663,6 +674,15 @@ const main = async (): Promise<void> => {
   }
 
   // ── Mutations (rollback from here on failure) ──
+  // Catch ctrl+c during mutations to trigger rollback
+  const sigintHandler = async () => {
+    console.log('');
+    log.error('Interrupted during release — rolling back...');
+    await rollback();
+    process.exit(1);
+  };
+  process.on('SIGINT', sigintHandler);
+
   try {
     log.step('Executing release');
 
@@ -719,19 +739,20 @@ const main = async (): Promise<void> => {
     // 4. Verify lib/package.json has correct version
     await verifyLibVersion(newVersion);
 
-    // 5. Git commit + tag
+    // 5. Git commit + tag (local only — not pushed yet)
     gitCommitAndTag(newVersion, changelog);
 
-    // 6. Git push
-    gitPush();
-
-    // 7. npm publish
+    // 6. npm publish FIRST — if this fails, we can still rollback local commit+tag
     npmPublish();
+
+    // 7. Git push (only after npm succeeds — once pushed, rollback is manual)
+    gitPush();
 
     // 8. GitHub release (optional)
     createGithubRelease(newVersion, changelog, packageName);
 
-    // ── Success ──
+    // ── Success — remove SIGINT handler ──
+    process.removeListener('SIGINT', sigintHandler);
     console.log(`\n${c.green}${c.bold}  Release complete!${c.reset}\n`);
     console.log(`  ${c.bold}npm:${c.reset}    https://www.npmjs.com/package/${packageName}/v/${newVersion}`);
     console.log(`  ${c.bold}git:${c.reset}    v${newVersion}`);
