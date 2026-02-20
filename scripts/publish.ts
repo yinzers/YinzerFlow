@@ -295,11 +295,11 @@ const preflight = async (): Promise<PreflightResult> => {
   const packageName = pkg.name as string;
 
   // 9. Anthropic API key (required for AI changelog)
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (process.env.CLAUDE_API_KEY) {
     hasApiKey = true;
     log.success(`[${++passed}/${total}] Anthropic API key found`);
   } else {
-    log.error(`[${++passed}/${total}] Missing ANTHROPIC_API_KEY — set it in ~/.bashrc: export ANTHROPIC_API_KEY=sk-ant-...`);
+    log.error(`[${++passed}/${total}] Missing CLAUDE_API_KEY — set it in ~/.bashrc: export CLAUDE_API_KEY=sk-ant-...`);
     process.exit(1);
   }
 
