@@ -11,11 +11,14 @@ import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { GroupApp } from '@core/setup/GroupApp.ts';
 import { ensureCompleteRouteOptions } from '@core/setup/utils/routeUtils.js';
 import type { RouteGroup } from '@typedefs/public/Setup.js';
+import { log } from '@core/utils/log.ts';
 
 export class SetupImpl implements InternalSetupImpl {
   readonly _configuration: InternalServerOptions;
   readonly _routeRegistry = new RouteRegistryImpl();
   readonly _hooks = new HookRegistryImpl();
+  /** Per-instance logger. Defaults to module-level `log`, replaced by `_configureLogging()` in YinzerFlow. */
+  _log: typeof log = log;
 
   constructor(customConfiguration?: ServerOptions) {
     this._configuration = handleCustomConfiguration(customConfiguration);
