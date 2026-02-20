@@ -33,7 +33,7 @@ const app = new YinzerFlow({
 
 ### level — @default <span style="color: #2ecc71">`'warn'`</span>
 
-Minimum log level for the app logger. Controls which messages are output.
+Log level threshold — messages at this severity and above are output. From least to most severe: `debug` → `info` → `warn` → `error`.
 
 ```typescript
 const app = new YinzerFlow({

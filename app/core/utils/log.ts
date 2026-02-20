@@ -129,7 +129,7 @@ const _logTable = (opts: { prefix: string; personality: boolean; output: Logger 
 /**
  * Creates a logger instance with isolated state.
  *
- * @param initialConfig.level - Minimum log level (default: 'info')
+ * @param initialConfig.level - Log level threshold — messages at this severity and above are output (default: 'info')
  * @param initialConfig.prefix - Log line prefix (default: 'YINZER')
  * @returns Logger instance with logging methods and Symbol-branded state for framework use
  */
