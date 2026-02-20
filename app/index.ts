@@ -8,7 +8,7 @@ export { YinzerFlow } from '@core/YinzerFlow.ts';
 // Public Helper Functions
 // ============================================
 // Logging utilities
-export { log, createLogger } from '@core/utils/log.ts';
+export { createLogger } from '@core/utils/log.ts';
 
 // CORS hooks
 export { corsHook } from '@core/modules/cors/corsHooks.ts';

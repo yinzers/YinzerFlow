@@ -1,7 +1,6 @@
 import type { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.ts';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js';
-import { log } from '@core/utils/log.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.js';
@@ -107,7 +106,7 @@ export class RequestHandlerImpl {
       context._response._parseResponseIntoString();
     } catch (errorHandlerError) {
       // If the error handler itself fails, fall back to basic response
-      log.error('Your custom error handler threw an error. Check your onError() handler for bugs: ', errorHandlerError);
+      this.setup._log.error('Your custom error handler threw an error. Check your onError() handler for bugs: ', errorHandlerError);
 
       context.response.setStatusCode(500);
       context._response._setBody({
