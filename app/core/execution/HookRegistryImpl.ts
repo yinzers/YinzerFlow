@@ -25,7 +25,7 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
     this._beforeAll = new Set();
     this._afterAll = new Set();
     this._onError = (ctx, error: unknown): unknown => {
-      log.error('Error while handeling your request: ', error);
+      log.error('Error while handling your request: ', error);
       ctx.response.setStatusCode(httpStatusCode.internalServerError);
       return { success: false, message: 'Internal Server Error' };
     };
