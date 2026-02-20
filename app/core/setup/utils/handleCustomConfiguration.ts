@@ -1,7 +1,9 @@
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
-import type { InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
-import { log } from '@core/utils/log.ts';
+import type { InternalLoggingOptions, InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
+import { log, loggerBrand } from '@core/utils/log.ts';
+import { logLevels } from '@constants/log.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
+import { _convertBytesToBytes, _formatBytesForDisplay } from '@core/utils/bytes.ts';
 
 /**
  * Default body parser configuration with secure defaults
@@ -43,16 +45,39 @@ const DEFAULT_IP_SECURITY_CONFIG = {
 };
 
 /**
+ * Default diagnostics configuration — all disabled (zero noise)
+ */
+const DEFAULT_DIAGNOSTICS_CONFIG = {
+  slowRequests: false as const,
+  largeResponses: false as const,
+  largeRequests: false as const,
+  memory: false as const,
+  eventLoop: false as const,
+  rateLimits: false,
+};
+
+/**
+ * Default logging configuration
+ */
+const DEFAULT_LOGGING_CONFIG: InternalLoggingOptions = {
+  level: 'warn',
+  prefix: 'YINZER',
+  personality: true,
+  requests: false,
+  diagnostics: DEFAULT_DIAGNOSTICS_CONFIG,
+};
+
+/**
  * Default configuration object
  */
 const DEFAULT_CONFIGURATION: InternalServerOptions = {
   port: 5000,
   host: '0.0.0.0',
-  networkLogs: false,
   gracefulShutdownTimeout: '15m', // Enabled by default
   cors: {
     enabled: false, // Disabled by default
   },
+  logging: DEFAULT_LOGGING_CONFIG,
   bodyParser: DEFAULT_BODY_PARSER_CONFIG,
   ipSecurity: DEFAULT_IP_SECURITY_CONFIG,
 };
@@ -164,7 +189,7 @@ const _warnJsonConfig = (config: InternalServerOptions['bodyParser']['json']): v
   if (config.maxSize > 10485760) {
     // 10MB
     log.warn(
-      `[SECURITY WARNING] bodyParser.json.maxSize is set to ${config.maxSize} bytes (${Math.round(config.maxSize / 1024 / 1024)}MB). ` +
+      `[SECURITY WARNING] bodyParser.json.maxSize is set to ${config.maxSize} bytes (${_formatBytesForDisplay(config.maxSize)}). ` +
         'Large JSON payloads can cause memory exhaustion and DoS attacks. Consider if this size is necessary.',
     );
   }
@@ -186,7 +211,7 @@ const _warnFileUploadConfig = (config: InternalServerOptions['bodyParser']['file
   if (config.maxFileSize > 104857600) {
     // 100MB
     log.warn(
-      `[SECURITY WARNING] bodyParser.fileUploads.maxFileSize is set to ${config.maxFileSize} bytes (${Math.round(config.maxFileSize / 1024 / 1024)}MB). ` +
+      `[SECURITY WARNING] bodyParser.fileUploads.maxFileSize is set to ${config.maxFileSize} bytes (${_formatBytesForDisplay(config.maxFileSize)}). ` +
         'Large file uploads can consume significant server resources.',
     );
   }
@@ -194,7 +219,7 @@ const _warnFileUploadConfig = (config: InternalServerOptions['bodyParser']['file
   if (config.maxTotalSize > 1073741824) {
     // 1GB
     log.warn(
-      `[SECURITY WARNING] bodyParser.fileUploads.maxTotalSize is set to ${config.maxTotalSize} bytes (${Math.round(config.maxTotalSize / 1024 / 1024 / 1024)}GB). ` +
+      `[SECURITY WARNING] bodyParser.fileUploads.maxTotalSize is set to ${config.maxTotalSize} bytes (${_formatBytesForDisplay(config.maxTotalSize)}). ` +
         'Very large total upload sizes can cause memory and disk space exhaustion.',
     );
   }
@@ -314,16 +339,110 @@ const _validateBodyParserConfig = (config: InternalServerOptions['bodyParser']):
 };
 
 /**
+ * Valid log level values for validation
+ */
+const VALID_LOG_LEVELS = new Set(Object.values(logLevels));
+
+/**
+ * Keys that have dedicated deep-merge handlers in handleCustomConfiguration.
+ * These are skipped during the shallow merge pass to avoid clobbering the
+ * deep-merged result with a raw user-provided value.
+ */
+const DEEP_MERGE_KEYS = new Set(['logging', 'bodyParser', 'ipSecurity']);
+
+/**
+ * Validate a single diagnostic threshold field (TimeString or ByteString).
+ * Wraps the converter call, re-throws with a descriptive field-specific message.
+ */
+const _validateThresholdField = (opts: { field: string; value: number | string; converter: (v: never) => number; examples: string }): void => {
+  try {
+    opts.converter(opts.value as never);
+  } catch {
+    throw new Error(`logging.diagnostics.${opts.field} must be a valid threshold value (e.g. ${opts.examples}). Got: "${String(opts.value)}"`);
+  }
+};
+
+/**
+ * Validate logging configuration values
+ */
+const _validateLoggingConfig = (config: InternalLoggingOptions): void => {
+  if (!VALID_LOG_LEVELS.has(config.level)) {
+    throw new Error(`logging.level must be one of: ${[...VALID_LOG_LEVELS].join(', ')}. Got: "${config.level}"`);
+  }
+
+  const diag = config.diagnostics;
+
+  // Validate TimeString/number thresholds
+  if (diag.slowRequests !== false) {
+    _validateThresholdField({ field: 'slowRequests', value: diag.slowRequests, converter: _convertTimeToMs, examples: "'100ms', '1s', '30s'" });
+  }
+  if (diag.memory !== false) {
+    _validateThresholdField({ field: 'memory', value: diag.memory, converter: _convertTimeToMs, examples: "'100ms', '1s', '30s'" });
+  }
+  if (diag.eventLoop !== false) {
+    _validateThresholdField({ field: 'eventLoop', value: diag.eventLoop, converter: _convertTimeToMs, examples: "'100ms', '1s', '30s'" });
+  }
+
+  // Validate ByteString/number thresholds
+  if (diag.largeResponses !== false) {
+    _validateThresholdField({ field: 'largeResponses', value: diag.largeResponses, converter: _convertBytesToBytes, examples: "'1mb', '256kb', '10mb'" });
+  }
+  if (diag.largeRequests !== false) {
+    _validateThresholdField({ field: 'largeRequests', value: diag.largeRequests, converter: _convertBytesToBytes, examples: "'1mb', '256kb', '10mb'" });
+  }
+};
+
+/**
+ * Handle logging configuration merging and validation
+ */
+const _handleLoggingConfig = (defaultConfig: InternalServerOptions, userConfig?: ServerOptions): void => {
+  if (userConfig?.logging) {
+    // If the user passed a branded logger (created with createLogger()), inherit its settings.
+    // Merge cascade: DEFAULT_LOGGING_CONFIG → branded logger settings → explicit user config
+    let brandedDefaults: Partial<InternalLoggingOptions> = {};
+    const customLogger = userConfig.logging.logger as Record<string | symbol, unknown> | undefined;
+    if (customLogger && loggerBrand in customLogger) {
+      const branded = customLogger[loggerBrand] as { level: string; prefix: string; personality: boolean };
+      brandedDefaults = {
+        level: branded.level as InternalLoggingOptions['level'],
+        prefix: branded.prefix,
+        personality: branded.personality,
+      };
+    }
+
+    defaultConfig.logging = {
+      ...DEFAULT_LOGGING_CONFIG,
+      ...brandedDefaults,
+      ...userConfig.logging,
+      diagnostics: {
+        ...DEFAULT_DIAGNOSTICS_CONFIG,
+        ...userConfig.logging.diagnostics,
+      },
+    };
+
+    _validateLoggingConfig(defaultConfig.logging);
+  }
+};
+
+/**
  * Handle custom configuration
  */
 export const handleCustomConfiguration = (configuration?: ServerOptions): InternalServerOptions => {
   // Start with default configuration
   const result = { ...DEFAULT_CONFIGURATION };
 
-  // Merge user configuration with proper handling of nested objects
-  Object.assign(result, configuration);
+  // Shallow merge — filter out explicit undefined values so they don't overwrite defaults.
+  // Without this, `new YinzerFlow({ logging: undefined })` would clobber the default logging config.
+  if (configuration) {
+    for (const key of Object.keys(configuration)) {
+      if (!DEEP_MERGE_KEYS.has(key) && (configuration as Record<string, unknown>)[key] !== undefined) {
+        (result as Record<string, unknown>)[key] = (configuration as Record<string, unknown>)[key];
+      }
+    }
+  }
 
-  // Handle special configuration sections
+  // Handle special configuration sections (deep merge + validation)
+  _handleLoggingConfig(result, configuration);
   _handleBodyParserConfig(result, configuration);
   _handleIpSecurityConfig(result, configuration);
   _validatePort(result, configuration);

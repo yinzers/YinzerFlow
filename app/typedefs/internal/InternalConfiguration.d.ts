@@ -1,5 +1,7 @@
 import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
+import type { LogLevel } from '@typedefs/constants/log.js';
 import type { Logger } from '@typedefs/public/Logger.js';
+import type { ByteString } from '@typedefs/public/Bytes.js';
 import type { CookieParserOptions } from '@typedefs/public/CookieParser.js';
 import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
 import type { TimeString } from '@typedefs/public/Time.js';
@@ -306,34 +308,14 @@ export interface InternalServerOptions {
   host: string;
 
   /**
-   * Custom logger instance
+   * Logging configuration — controls app logger, access logs, and diagnostics.
    *
-   * Use createLogger() to create logger instances with custom configuration
-   * @default undefined (uses built-in logger with default settings)
-   *
-   * @example
-   * ```typescript
-   * const logger = createLogger({ prefix: 'APP', logLevel: 'info' });
-   * new YinzerFlow({ logger });
-   * ```
+   * Three independent channels:
+   * - **App logger**: Developer logs + framework errors/warnings (gated by `level`)
+   * - **Access log**: nginx-style request/response lines (gated by `requests` on/off)
+   * - **Diagnostics**: Framework health monitoring (gated by individual thresholds)
    */
-  logger?: Logger;
-
-  /**
-   * Network request/response logging (nginx-style logs)
-   * Completely separate from application logs - simple on/off toggle
-   * @default false
-   */
-  networkLogs: boolean;
-
-  /**
-   * Custom logger for network logs (optional)
-   * If provided, network logs will be routed to this logger instead of built-in formatting
-   * Can be the same as the application logger or a different one
-   * Useful for unified monitoring (e.g., Winston with Datadog transport for both app and network logs)
-   * @default undefined (uses built-in network logging)
-   */
-  networkLogger?: Logger;
+  logging: InternalLoggingOptions;
 
   /**
    * Cross-Origin Resource Sharing configuration
@@ -375,4 +357,102 @@ export interface InternalServerOptions {
    * @default true
    */
   gracefulShutdownTimeout: TimeString | number;
+}
+
+/**
+ * Internal Logging Configuration
+ * Controls three independent channels: app logger, access logs, and diagnostics.
+ */
+export interface InternalLoggingOptions {
+  /**
+   * Minimum log level for the app logger
+   * @default 'warn'
+   */
+  level: LogLevel;
+
+  /**
+   * Log line prefix shown in brackets, e.g. [YINZER]
+   * @default 'YINZER'
+   */
+  prefix: string;
+
+  /**
+   * Enable Pittsburgh personality phrases in log output
+   * @default true
+   */
+  personality: boolean;
+
+  /**
+   * Enable nginx-style access logs (one line per request/response)
+   * @default false
+   */
+  requests: boolean;
+
+  /**
+   * Custom logger for application logs (optional)
+   * If provided, app logs route to this logger instead of built-in formatting
+   * @default undefined
+   */
+  logger?: Logger;
+
+  /**
+   * Custom logger for access logs (optional)
+   * If provided, access logs route to this logger instead of built-in formatting
+   * @default undefined
+   */
+  accessLogger?: Logger;
+
+  /**
+   * Framework diagnostics — health monitoring independent of app log level.
+   * All thresholds default to false (disabled). Set a threshold to enable.
+   */
+  diagnostics: InternalDiagnosticsOptions;
+}
+
+/**
+ * Internal Diagnostics Configuration
+ * Framework health monitoring that fires independently of the app log level.
+ * Even with `level: 'off'`, diagnostics still fire when thresholds are exceeded.
+ */
+export interface InternalDiagnosticsOptions {
+  /**
+   * Log requests slower than this threshold
+   * @default false (disabled)
+   * @example '500ms' or 500 (milliseconds)
+   */
+  slowRequests: TimeString | number | false;
+
+  /**
+   * Log responses larger than this threshold
+   * @default false (disabled)
+   * @example '1mb' or 1048576 (bytes)
+   */
+  largeResponses: ByteString | number | false;
+
+  /**
+   * Log requests with bodies larger than this threshold
+   * @default false (disabled)
+   * @example '1mb' or 1048576 (bytes)
+   */
+  largeRequests: ByteString | number | false;
+
+  /**
+   * Log periodic memory/heap usage at this interval
+   * @default false (disabled)
+   * @example '30s' or 30000 (milliseconds)
+   */
+  memory: TimeString | number | false;
+
+  /**
+   * Log event loop lag exceeding this threshold
+   * @default false (disabled)
+   * @example '100ms' or 100 (milliseconds)
+   */
+  eventLoop: TimeString | number | false;
+
+  /**
+   * Log rate limit hits
+   * @default false (disabled)
+   */
+  rateLimits: boolean;
 }

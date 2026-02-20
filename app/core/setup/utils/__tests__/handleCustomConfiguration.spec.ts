@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { handleCustomConfiguration } from '@core/setup/utils/handleCustomConfiguration.ts';
+import { createLogger, loggerBrand } from '@core/utils/log.ts';
 
 describe('handleCustomConfiguration', () => {
   describe('Basic Configuration', () => {
@@ -340,6 +341,102 @@ describe('handleCustomConfiguration', () => {
           });
         }).not.toThrow();
       });
+    });
+  });
+
+  describe('Logging Configuration', () => {
+    it('should have default logging config', () => {
+      const config = handleCustomConfiguration({});
+      expect(config.logging).toBeDefined();
+      expect(config.logging.level).toBe('warn');
+      expect(config.logging.personality).toBe(true);
+      expect(config.logging.requests).toBe(false);
+    });
+
+    it('should merge partial logging config with defaults', () => {
+      const config = handleCustomConfiguration({
+        logging: { level: 'debug' },
+      });
+      expect(config.logging.level).toBe('debug');
+      expect(config.logging.personality).toBe(true); // default preserved
+      expect(config.logging.requests).toBe(false); // default preserved
+    });
+
+    it('should merge diagnostics config with defaults', () => {
+      const config = handleCustomConfiguration({
+        logging: {
+          diagnostics: { slowRequests: 500 },
+        },
+      });
+      expect(config.logging.diagnostics.slowRequests).toBe(500);
+      expect(config.logging.diagnostics.largeResponses).toBe(false); // default
+      expect(config.logging.diagnostics.rateLimits).toBe(false); // default
+    });
+
+    it('should accept all diagnostic thresholds', () => {
+      const config = handleCustomConfiguration({
+        logging: {
+          diagnostics: {
+            slowRequests: '1s',
+            largeResponses: '1mb',
+            largeRequests: '256kb',
+            memory: '5s',
+            eventLoop: '1s',
+            rateLimits: true,
+          },
+        },
+      });
+      expect(config.logging.diagnostics.slowRequests).toBe('1s');
+      expect(config.logging.diagnostics.largeResponses).toBe('1mb');
+      expect(config.logging.diagnostics.rateLimits).toBe(true);
+    });
+
+    it('should validate invalid log level', () => {
+      expect(() =>
+        handleCustomConfiguration({
+          logging: { level: 'invalid' as any },
+        }),
+      ).toThrow('logging.level must be one of');
+    });
+
+    it('should disable personality', () => {
+      const config = handleCustomConfiguration({
+        logging: { personality: false },
+      });
+      expect(config.logging.personality).toBe(false);
+    });
+
+    it('should inherit level from branded logger', () => {
+      const brandedLogger = createLogger({ level: 'debug', prefix: 'MY_APP', personality: false });
+      const config = handleCustomConfiguration({
+        logging: { logger: brandedLogger },
+      });
+      expect(config.logging.level).toBe('debug');
+      expect(config.logging.prefix).toBe('MY_APP');
+      expect(config.logging.personality).toBe(false);
+    });
+
+    it('should let explicit config override branded logger settings', () => {
+      const brandedLogger = createLogger({ level: 'debug', prefix: 'MY_APP' });
+      const config = handleCustomConfiguration({
+        logging: { logger: brandedLogger, level: 'warn', prefix: 'OVERRIDE' },
+      });
+      expect(config.logging.level).toBe('warn');
+      expect(config.logging.prefix).toBe('OVERRIDE');
+    });
+
+    it('should not inherit from non-branded logger (Winston/Pino)', () => {
+      const plainLogger = {
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      };
+      const config = handleCustomConfiguration({
+        logging: { logger: plainLogger },
+      });
+      // Should use defaults, not attempt to read _state or Symbol
+      expect(config.logging.level).toBe('warn');
+      expect(config.logging.prefix).toBe('YINZER');
     });
   });
 
