@@ -159,7 +159,7 @@ export class YinzerFlow extends SetupImpl {
   private _isListening = false;
   private _server?: ReturnType<typeof createServer>;
   private _globalRateLimiter?: RateLimiter | undefined;
-  private _maxBufferSize: number;
+  private readonly _maxBufferSize: number;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
@@ -339,7 +339,7 @@ export class YinzerFlow extends SetupImpl {
     networkLog.log.info(`New visitor from ${clientAddress}`);
 
     // TCP stream reassembly state
-    const chunks: Buffer[] = [];
+    const chunks: Array<Buffer> = [];
     let totalLength = 0;
     let headersParsed = false;
     let expectedBodyLength = 0;
@@ -373,11 +373,11 @@ export class YinzerFlow extends SetupImpl {
             received: totalLength,
           });
           const errorResponse =
-            'HTTP/1.1 413 Payload Too Large\r\n' +
-            'Content-Type: application/json\r\n' +
+            `HTTP/1.1 413 Payload Too Large\r\n` +
+            `Content-Type: application/json\r\n` +
             `Content-Length: ${Buffer.byteLength(errorBody, 'utf8')}\r\n` +
-            'Connection: close\r\n\r\n' +
-            errorBody;
+            `Connection: close\r\n\r\n${ 
+            errorBody}`;
           socket.write(errorResponse);
         }
         networkLog.log.warn(
@@ -426,7 +426,7 @@ export class YinzerFlow extends SetupImpl {
         // Headers found — parse Content-Length to know how much body to expect
         headersParsed = true;
         const headersStr = buffer.subarray(0, headerEndIndex).toString();
-        const contentLengthMatch = headersStr.match(/content-length:\s*(\d+)/i);
+        const contentLengthMatch = /content-length:\s*(\d+)/i.exec(headersStr);
         expectedBodyLength = contentLengthMatch ? parseInt(contentLengthMatch[1] ?? '0', 10) : 0;
 
         // Check if body is already complete in this same buffer (common for small requests)

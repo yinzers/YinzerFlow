@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import net from 'net';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { httpStatusCode } from '@constants/http.ts';
@@ -1012,7 +1012,7 @@ describe('YinzerFlow', () => {
  * @param timeoutMs - Maximum time to wait for response before force-closing
  * @returns Raw HTTP response string from server
  */
-const connectWithTimeout = (
+const connectWithTimeout = async (
   port: number,
   writeStrategy: (client: net.Socket) => void,
   timeoutMs = 5000,
@@ -1047,7 +1047,7 @@ const connectWithTimeout = (
   });
 
 /** Send a complete HTTP request string over a TCP connection */
-const sendHttpRequest = (port: number, request: string): Promise<string> =>
+const sendHttpRequest = async (port: number, request: string): Promise<string> =>
   connectWithTimeout(port, (client) => {
     client.write(request);
   });
@@ -1062,7 +1062,7 @@ const sendHttpRequest = (port: number, request: string): Promise<string> =>
  * @param chunkSize - Size in bytes of each TCP chunk (simulates MSS fragmentation)
  * @returns Raw HTTP response string from server
  */
-const sendChunkedHttpRequest = (port: number, request: string, chunkSize: number): Promise<string> => {
+const sendChunkedHttpRequest = async (port: number, request: string, chunkSize: number): Promise<string> => {
   const INTER_CHUNK_DELAY_MS = 5; // Small delay to simulate TCP packet spacing
 
   return connectWithTimeout(
