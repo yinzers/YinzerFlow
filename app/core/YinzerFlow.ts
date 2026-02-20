@@ -4,10 +4,9 @@ import type { Socket } from 'net';
 import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
-import { log } from '@core/utils/log.ts';
+import { createLogger, loggerBrand } from '@core/utils/log.ts';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
-import { getStatusEmoji, logPerformanceDetails, networkLog } from '@core/utils/networkLog.ts';
-import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInBytes.ts';
+import { accessLogBaseConfig, getStatusEmoji } from '@core/utils/accessLog.ts';
 import { _createGlobalRateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
 import { RateLimiter } from '@core/modules/rateLimit/RateLimiter.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
@@ -17,6 +16,8 @@ import { CookieParserConfig } from '@core/modules/cookieParser/CookieParserConfi
 import { corsHook } from '@core/modules/cors/corsHooks.ts';
 import { CorsConfig } from '@core/modules/cors/CorsConfig.ts';
 import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConfiguration.js';
+import { DiagnosticsMonitor } from '@core/modules/diagnostics/DiagnosticsMonitor.ts';
+import { _sanitizeLogField } from '@core/utils/sanitize.ts';
 
 /**
  * Maximum overhead allowance for HTTP headers on top of body parser limits (64KB).
@@ -108,17 +109,16 @@ const maxHeaderOverhead = 65_536;
  * const app = new YinzerFlow({
  *   port: 8080,
  *   host: '0.0.0.0',
- *   logLevel: 'debug',
- *   networkLogs: true,
- *   autoGracefulShutdown: true,
- *   logger: {
- *     info: (message, ...args) => console.log(`[INFO] ${message}`, ...args),
- *     warn: (message, ...args) => console.warn(`[WARN] ${message}`, ...args),
- *     error: (message, ...args) => console.error(`[ERROR] ${message}`, ...args),
- *     debug: (message, ...args) => console.debug(`[DEBUG] ${message}`, ...args)
- *   },
- *   networkLogger: {
- *     info: (message, ...args) => console.log(`[NETWORK] ${message}`, ...args)
+ *   logging: {
+ *     level: 'debug',
+ *     personality: true,
+ *     requests: true,
+ *     logger: {
+ *       info: (message, ...args) => console.log(`[INFO] ${message}`, ...args),
+ *       warn: (message, ...args) => console.warn(`[WARN] ${message}`, ...args),
+ *       error: (message, ...args) => console.error(`[ERROR] ${message}`, ...args),
+ *       debug: (message, ...args) => console.debug(`[DEBUG] ${message}`, ...args)
+ *     }
  *   }
  * });
  *
@@ -159,7 +159,10 @@ export class YinzerFlow extends SetupImpl {
   private _isListening = false;
   private _server?: ReturnType<typeof createServer>;
   private _globalRateLimiter?: RateLimiter | undefined;
+  private _diagnostics?: DiagnosticsMonitor | undefined;
   private readonly _maxBufferSize: number;
+  private _accessLog?: ReturnType<typeof createLogger>;
+  private _accessLogEnabled = false;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
@@ -172,28 +175,20 @@ export class YinzerFlow extends SetupImpl {
         this._configuration.bodyParser.fileUploads.maxTotalSize,
       ) + maxHeaderOverhead;
 
-    // Replace global logger if custom logger is provided
-    if (this._configuration.logger) {
-      // Replace the global log instance with the custom logger
-      Object.assign(log, this._configuration.logger);
-    }
-
-    // Set network logger if provided (optional - can be same as app logger or different)
-    if (this._configuration.networkLogs) {
-      networkLog.enable(this._configuration.networkLogger);
-    }
+    this._configureLogging();
 
     // Setup global rate limiting, if there is none provided, it will be enabled by default. We need to set the confgratin before the conditional since it is defaulted on and users might not pass it in the configuration.
-    const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit);
+    const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit, this._log);
     if (configuration?.rateLimit?.enabled) {
       this._globalRateLimiter = new RateLimiter(rateLimitConfig);
-      const hook = _createGlobalRateLimitHook(this._globalRateLimiter);
+      const onRateLimitHit = this._diagnostics ? (ip: string, path: string): void => this._diagnostics?.onRateLimitHit(ip, path) : undefined;
+      const hook = _createGlobalRateLimitHook(this._globalRateLimiter, onRateLimitHit);
       this.beforeAll([hook]);
     }
 
     // Setup cookie parser, if enabled, since it is deisabled by default we can set the configuration after the conditional
     if (configuration?.cookieParser?.enabled) {
-      const cookieParserConfig = new CookieParserConfig(configuration.cookieParser);
+      const cookieParserConfig = new CookieParserConfig(configuration.cookieParser, this._log);
       const cookieParserHookFunc = cookieParserHook(cookieParserConfig.config);
       this.beforeAll([cookieParserHookFunc]);
     }
@@ -216,6 +211,59 @@ export class YinzerFlow extends SetupImpl {
     }
   }
 
+  /** Public accessor for this instance's logger. */
+  get log(): typeof this._log {
+    return this._log;
+  }
+
+  /**
+   * Configure all three logging channels: app logger, access logs, diagnostics.
+   *
+   * Creates a per-instance logger (D1 fix — no more singleton mutation).
+   * Uses Symbol brand to detect framework loggers (D2/2.4 fix — replaces duck-typed `_state`).
+   */
+  private _configureLogging(): void {
+    const loggingConfig = this._configuration.logging;
+
+    // C2 fix: If a branded logger was provided, extract its underlying output sink
+    // instead of mutating the user's branded logger state. Mutating caused cross-instance
+    // side effects when the same branded logger was shared between YinzerFlow instances.
+    // The per-instance this._log handles its own formatting (prefix, personality).
+    let loggerSink = loggingConfig.logger;
+    if (loggerSink && loggerBrand in (loggerSink as Record<string | symbol, unknown>)) {
+      const brandedState = (loggerSink as Record<string | symbol, unknown>)[loggerBrand] as { logger?: typeof loggerSink };
+      loggerSink = brandedState.logger ?? undefined;
+    }
+
+    // Create per-instance logger (D1 fix: no more Object.assign to module-level singleton)
+    this._log = createLogger({
+      level: loggingConfig.level,
+      prefix: loggingConfig.prefix,
+      personality: loggingConfig.personality,
+      logger: loggerSink,
+    });
+
+    // Thread logger into subsystems
+    this._hooks.setLogger(this._log);
+
+    // C1 fix: Create per-instance access log (no more module-level singleton)
+    if (loggingConfig.requests) {
+      this._accessLog = createLogger({
+        ...accessLogBaseConfig,
+        level: 'info',
+        logger: loggingConfig.accessLogger,
+      });
+      this._accessLogEnabled = true;
+    }
+
+    // Setup diagnostics monitor if any thresholds are configured
+    const diagnostics = new DiagnosticsMonitor(loggingConfig.diagnostics, loggingConfig.personality);
+    if (diagnostics.hasAnyEnabled()) {
+      this._diagnostics = diagnostics;
+      this._diagnostics.start();
+    }
+  }
+
   /**
    * Setup server with all event listeners
    */
@@ -223,7 +271,7 @@ export class YinzerFlow extends SetupImpl {
     if (!this._server) return;
 
     this._server.on('error', (error: Error) => {
-      networkLog.log.error(`YinzerFlow server error at ${this._configuration.host}:${this._configuration.port} - ${error.message}`);
+      this._log.error(`YinzerFlow server error at ${this._configuration.host}:${this._configuration.port} - ${error.message}`);
       // Clean up the failed server to prevent handle leaks on re-listen
       this._server?.close();
       delete this._server;
@@ -232,7 +280,7 @@ export class YinzerFlow extends SetupImpl {
 
     this._server.on('listening', () => {
       this._isListening = true;
-      networkLog.log.info(`YinzerFlow server at ${this._configuration.host}:${this._configuration.port} is up and running`);
+      this._log.info(`YinzerFlow server at ${this._configuration.host}:${this._configuration.port} is up and running`);
       resolve();
     });
 
@@ -257,9 +305,6 @@ export class YinzerFlow extends SetupImpl {
   }): Promise<void> {
     const startTime = Date.now();
 
-    // Log incoming request
-    networkLog.log.info('Incoming request', `${clientAddress} ${calculateContentSizeInBytes(data)}bytes`);
-
     const context = new ContextImpl(data, this, clientAddress);
 
     await requestHandler.handle(context);
@@ -270,16 +315,32 @@ export class YinzerFlow extends SetupImpl {
       socket.end();
     }
 
-    const endTime = Date.now();
-    const processingTime = endTime - startTime;
+    const processingTime = Date.now() - startTime;
 
-    // Log request response — use Buffer.byteLength on already-serialized string body
-    // instead of re-serializing with calculateContentSizeInBytes
-    const responseBytes = Buffer.byteLength(context._response._stringBody, 'utf8');
-    networkLog.log.info(
-      `${getStatusEmoji(context._response._statusCode)} ${clientAddress} "${context.request.method} ${context.request.path} ${context.request.protocol}" ${context._response._statusCode} ${responseBytes}bytes "${context.request.headers.referer ?? '-'}" "${context.request.headers['user-agent'] ?? '-'}" ${processingTime}ms`,
-    );
-    logPerformanceDetails(processingTime);
+    // Only compute byte length and build log strings when something will consume them
+    if (this._accessLogEnabled || this._diagnostics) {
+      const responseBytes = Buffer.byteLength(context._response._stringBody, 'utf8');
+
+      // H3 fix: Sanitize attacker-controlled fields once for both channels
+      const safeMethod = _sanitizeLogField(context.request.method);
+      const safePath = _sanitizeLogField(context.request.path);
+
+      // Access log — one nginx-style line per request (C1: per-instance, H4: separate guard)
+      if (this._accessLogEnabled) {
+        this._accessLog?.info(
+          `${getStatusEmoji(context._response._statusCode)} ${clientAddress} "${safeMethod} ${safePath} ${context.request.protocol}" ${context._response._statusCode} ${responseBytes}bytes "${_sanitizeLogField(context.request.headers.referer ?? '-')}" "${_sanitizeLogField(context.request.headers['user-agent'] ?? '-')}" ${processingTime}ms`,
+        );
+      }
+
+      // Diagnostics — check thresholds after response is sent (receives pre-sanitized values)
+      this._diagnostics?.checkRequest({
+        duration: processingTime,
+        reqBytes: data.length,
+        resBytes: responseBytes,
+        method: safeMethod,
+        path: safePath,
+      });
+    }
   }
 
   /**
@@ -287,7 +348,7 @@ export class YinzerFlow extends SetupImpl {
    */
   private _handleRequestError(error: unknown, clientAddress: string, socket: Socket): void {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    networkLog.log.error(`Visitor from ${clientAddress} experienced an error during request processing: ${errorMessage}`, error);
+    this._log.error(`Request processing error from ${clientAddress}: ${errorMessage}`, error);
     if (!socket.destroyed) {
       socket.destroy();
     }
@@ -339,7 +400,7 @@ export class YinzerFlow extends SetupImpl {
           `Connection: close\r\n\r\n${errorBody}`,
       );
     }
-    networkLog.log.warn(
+    this._log.warn(
       `Request from ${clientAddress} exceeded maximum buffer size (${totalLength} > ${this._maxBufferSize} bytes). ` +
         `Current limits: json=${this._configuration.bodyParser.json.maxSize}, ` +
         `urlEncoded=${this._configuration.bodyParser.urlEncoded.maxSize}, ` +
@@ -402,7 +463,7 @@ export class YinzerFlow extends SetupImpl {
     const connectionStartTime = Date.now();
     let hasReceivedData = false;
 
-    networkLog.log.info(`New visitor from ${clientAddress}`);
+    this._log.debug(`New connection from ${clientAddress}`);
 
     // TCP stream reassembly state — mutable, read/written by data handler
     const chunks: Array<Buffer> = [];
@@ -417,7 +478,7 @@ export class YinzerFlow extends SetupImpl {
         hasReceivedData = true;
         const delay = Date.now() - connectionStartTime;
         if (delay > 100) {
-          networkLog.log.warn(`Delayed data from ${clientAddress} (${delay}ms connection delay)`);
+          this._log.debug(`Delayed data from ${clientAddress} (${delay}ms connection delay)`);
         }
       }
 
@@ -463,21 +524,21 @@ export class YinzerFlow extends SetupImpl {
     });
 
     socket.on('error', (error: Error) => {
-      networkLog.log.error(`Visitor from ${clientAddress} experienced an error during socket connection: ${error.message}`, error);
+      this._log.error(`Socket error from ${clientAddress}: ${error.message}`, error);
     });
 
     socket.on('close', () => {
       const connectionDuration = Date.now() - connectionStartTime;
 
       if (hasReceivedData) {
-        networkLog.log.info(`Visitor from ${clientAddress} headed out (${connectionDuration}ms total)`);
+        this._log.debug(`Connection closed from ${clientAddress} (${connectionDuration}ms total)`);
         return;
       }
 
       if (connectionDuration < 10) {
-        networkLog.log.info(`${clientAddress} quick connectivity check (${connectionDuration}ms) - health probe`);
+        this._log.debug(`${clientAddress} quick connectivity check (${connectionDuration}ms) - health probe`);
       } else {
-        networkLog.log.warn(`${clientAddress} disconnected without sending data (${connectionDuration}ms) - potential probe`);
+        this._log.debug(`${clientAddress} disconnected without sending data (${connectionDuration}ms) - potential probe`);
       }
     });
   }
@@ -507,6 +568,12 @@ export class YinzerFlow extends SetupImpl {
       this._globalRateLimiter = undefined;
     }
 
+    // Clean up diagnostics timers
+    if (this._diagnostics) {
+      this._diagnostics.destroy();
+      this._diagnostics = undefined;
+    }
+
     return new Promise((resolve) => {
       if (!this._server) {
         this._isListening = false; // Probably redundant but just in case
@@ -516,7 +583,7 @@ export class YinzerFlow extends SetupImpl {
 
       this._server.close(() => {
         this._isListening = false;
-        networkLog.log.warn(`YinzerFlow server at ${this._configuration.host}:${this._configuration.port} is shutting down - See yinz later`);
+        this._log.warn(`YinzerFlow server at ${this._configuration.host}:${this._configuration.port} is shutting down`);
         resolve();
       });
     });
@@ -545,15 +612,15 @@ export class YinzerFlow extends SetupImpl {
     // Only setup if no handlers are already registered
     if (process.listenerCount('SIGTERM') === 0 && process.listenerCount('SIGINT') === 0) {
       const shutdown = (signal: string): void => {
-        log.info(`🛑 Received ${signal}, shutting down gracefully in ${this._configuration.gracefulShutdownTimeout}...`);
+        this._log.info(`🛑 Received ${signal}, shutting down gracefully in ${this._configuration.gracefulShutdownTimeout}...`);
         setTimeout(() => {
           this.close()
             .then(() => {
-              log.info('✅ Server shut down gracefully');
+              this._log.info('✅ Server shut down gracefully');
               process.exit(0);
             })
             .catch((error) => {
-              log.error('❌ Error during graceful shutdown:', error);
+              this._log.error('❌ Error during graceful shutdown:', error);
               process.exit(1);
             });
         }, gracefulShutdownTimeout);

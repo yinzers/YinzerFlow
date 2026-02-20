@@ -182,7 +182,7 @@ describe('YinzerFlow', () => {
 
     describe('Manual Graceful Shutdown', () => {
       it('should handle manual graceful shutdown correctly', async () => {
-        app = new YinzerFlow({ gracefulShutdownTimeout: 0 });
+        ({ app } = createTestApp({ gracefulShutdownTimeout: 0 }));
 
         await app.listen();
         expect(app.status().isListening).toBe(true);
@@ -192,7 +192,7 @@ describe('YinzerFlow', () => {
       });
 
       it('should handle multiple close calls gracefully', async () => {
-        app = new YinzerFlow({ gracefulShutdownTimeout: 0 });
+        ({ app } = createTestApp({ gracefulShutdownTimeout: 0 }));
 
         await app.listen();
         await app.close();
@@ -1080,6 +1080,25 @@ describe('YinzerFlow', () => {
       const contentLength = Number(clMatch?.groups?.digits);
       const [, bodyStr] = response.split('\r\n\r\n');
       expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
+    });
+  });
+
+  describe('Per-Instance Logger (D1/D2 fix)', () => {
+    it('should expose log accessor', () => {
+      const { app: testApp } = createTestApp();
+      expect(testApp.log).toBeDefined();
+      expect(typeof testApp.log.info).toBe('function');
+      expect(typeof testApp.log.warn).toBe('function');
+      expect(typeof testApp.log.error).toBe('function');
+      expect(typeof testApp.log.debug).toBe('function');
+    });
+
+    it('should have independent loggers per instance', () => {
+      const { app: app1 } = createTestApp({ logging: { prefix: 'APP1' } });
+      const { app: app2 } = createTestApp({ logging: { prefix: 'APP2' } });
+
+      // Each should have their own logger — the D1 fix
+      expect(app1.log).not.toBe(app2.log);
     });
   });
 });
