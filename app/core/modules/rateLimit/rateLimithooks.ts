@@ -70,7 +70,7 @@ export const rateLimitHook =
  * This function is used to create the global rate limiting hook used internally by the framework
  */
 export const _createGlobalRateLimitHook =
-  <T extends HandlerCallbackGenerics>(rateLimiter: RateLimiter): HandlerCallback<T> =>
+  <T extends HandlerCallbackGenerics>(rateLimiter: RateLimiter, onRateLimitHit?: (ip: string, path: string) => void): HandlerCallback<T> =>
   // Return the hook function
   async (context) => {
     // Check if request is within rate limit
@@ -83,6 +83,7 @@ export const _createGlobalRateLimitHook =
 
     // Check if limit exceeded
     if (!result.allowed) {
+      onRateLimitHit?.(context.request.ipAddress, context.request.path);
       return rateLimiter.config.handler(context);
     }
 
