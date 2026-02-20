@@ -197,7 +197,7 @@ interface PreflightResult {
 const preflight = async (): Promise<PreflightResult> => {
   log.step('Running pre-flight checks');
   let passed = 0;
-  const total = 9;
+  const total = 10;
   let hasApiKey = false;
 
   // 1. Inside git repo
@@ -316,6 +316,20 @@ const preflight = async (): Promise<PreflightResult> => {
     commitCount = parseInt(countResult.stdout, 10) || 0;
   }
 
+  // 10. Docs staleness check
+  const docsRange = lastTag ? `${lastTag}..HEAD` : 'HEAD';
+  const docsChanged = run(['git', 'diff', '--name-only', docsRange, '--', 'docs/']);
+  if (docsChanged.stdout === '') {
+    log.warn(`[${++passed}/${total}] No changes in docs/ since ${lastTag || 'beginning'}`);
+    const skipDocs = await confirm('No documentation updates found. Continue anyway?');
+    if (!skipDocs) {
+      log.info('Aborted. Update docs/ and try again.');
+      process.exit(0);
+    }
+  } else {
+    log.success(`[${++passed}/${total}] Documentation updated`);
+  }
+
   console.log('');
   log.success(`All checks passed! (${packageName}@${currentVersion}, ${commitCount} commits since ${lastTag || 'beginning'})`);
 
@@ -381,22 +395,26 @@ const generateChangelog = async (
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 2048,
-        system: `You generate concise changelogs for an npm framework package called YinzerFlow (a lightweight HTTP server framework for Node.js/Bun).
+        system: `You generate well-formatted changelogs for YinzerFlow, a lightweight HTTP server framework for Node.js/Bun. The audience is developers who use and contribute to the framework.
 
 Rules:
-- Only include USER-FACING changes that matter to framework consumers
-- IGNORE: CI/CD, .claude/ files, docs-only changes, internal refactors that don't change public API, chore commits, version bumps
-- Group into sections (only include sections that have entries):
+- Include ALL meaningful changes — both user-facing and internal. Developers care about bug fixes, refactors, performance, and code quality improvements.
+- IGNORE ONLY: version bumps, .claude/ file changes, CI config tweaks, and trivial whitespace/formatting commits.
+- Group into these sections (only include sections that have entries):
   ### Breaking Changes
   ### Features
   ### Bug Fixes
   ### Performance
   ### Security
-- Each entry: "- Description (commit_hash)" — rewrite commit messages to be clear and user-facing
-- Keep the short hash in parentheses at the end of each line
-- If there are NO user-facing changes at all, respond with exactly: NO_USER_CHANGES
-- Do NOT include section headers for empty sections
-- Do NOT include a version header — I'll add that myself`,
+  ### Internal
+- For **Breaking Changes**: include a brief code snippet showing the migration path (old → new). Use fenced code blocks.
+- For **Bug Fixes**: explain what was broken and how it's fixed, not just "fixed X".
+- Each entry: "- **Short title** — description (commit_hash)"
+- Keep the short hash in parentheses at the end of each line.
+- Rewrite commit messages to be clear and descriptive. Don't just copy the raw commit message.
+- If there are absolutely NO meaningful changes (only version bumps/CI), respond with exactly: NO_USER_CHANGES
+- Do NOT include section headers for empty sections.
+- Do NOT include a version header — I'll add that myself.`,
         messages: [
           {
             role: 'user',
