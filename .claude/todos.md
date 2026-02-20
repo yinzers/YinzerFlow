@@ -1,15 +1,13 @@
 # Todos: yinzerflow
 
 ## Current Goal
-Awaiting commit. All audit fixes applied. 933 tests pass, lint clean. Docs rewrite (H1) deferred.
+All code fixes + docs rewrite complete. 933 tests pass, lint clean. Ready for commit.
 
 ---
 
-## Awaiting Commit: D1/D2/2.4 Per-Instance Logger Refactor + Audit Fixes
+## Completed: D1/D2/2.4 Per-Instance Logger Refactor + Audit Fixes + Docs
 
-All code fixes complete. 933 tests pass, lint clean.
-
-### Audit — COMPLETE (code fixes)
+### Code Fixes — COMPLETE
 - [x] C1: accessLog singleton → per-instance (`YinzerFlow.ts`, `accessLog.ts`)
 - [x] C2: Branded logger mutation → extract output sink, no mutation (`YinzerFlow.ts`)
 - [x] H2: Regex hoist in sanitizer (`sanitize.ts`)
@@ -23,8 +21,13 @@ All code fixes complete. 933 tests pass, lint clean.
 - [x] D2: `LOGGER_BRAND` → `loggerBrand` rename (5 files)
 - **Skipped**: M1 (timer race already mitigated), M2 (timezone change), D3 (TS catches it), D4 (internal only)
 
+### Default Level + Docs — COMPLETE
+- [x] Default logging level changed from `'info'` → `'warn'` (handleCustomConfiguration.ts, 2 test assertions)
+- [x] H1: Full rewrite of `docs/core/logging.md` — all options, 3-channel architecture, 4 diagnostic presets
+- [x] Updated `docs/configuration/configuration.md` — replaced stale `logger`/`networkLogs`/`networkLogger` with `logging` block
+- [x] Fixed ambiguous "minimum log level" wording → "log level threshold" in docs + JSDoc
+
 ### Deferred
-- [ ] **H1: Docs rewrite** — `docs/core/logging.md` 88% stale, `docs/configuration/configuration.md` 30% stale. Do after commit.
 - [ ] **D1 (discussion): Rename `logging.requests` → `logging.accessLog`** — deferred pending user input
 
 ---

@@ -18,29 +18,24 @@
 
 ## Current Context (REPLACE each update)
 
-**Goal**: Awaiting commit. All D1/D2/2.4 + audit code fixes applied. 933 tests, lint clean.
-**Immediate Task**: User deciding on docs rewrite (H1) and `logging.requests` rename. Then commit.
+**Goal**: All code fixes + docs rewrite complete. 933 tests pass, lint clean. Ready for commit.
+**Immediate Task**: Awaiting user — commit, or further changes.
 
 **In Progress**:
-- Nothing actively in progress — all code fixes done
+- Nothing actively in progress — all work done
 
 **Recently Completed** (last 3-5 items):
-- Audit fix phase: 12 fixes applied (C1, C2, H2-H6, M3-M5, D2 rename)
-- Audit coordination: 7 agents, 20 findings, coordinated report in .analysis/audit-report.md
-- D1/D2/2.4: Per-instance loggers + Symbol brand — 6 phases
+- Fixed ambiguous "minimum log level" → "log level threshold" wording (docs + JSDoc)
+- Default logging level changed from `'info'` → `'warn'`
+- H1: Full rewrite of `docs/core/logging.md` — all options, 3-channel architecture, 4 diagnostic presets
+- Updated `docs/configuration/configuration.md` — replaced stale logger/networkLogs/networkLogger with logging block
+- Audit fix phase: 12 code fixes applied (C1, C2, H2-H6, M3-M5, D2 rename)
 
-**Audit Fixes Applied**:
-- C1: accessLog singleton → per-instance (accessLog.ts, YinzerFlow.ts)
-- C2: Branded logger mutation → extract output sink, no mutation (YinzerFlow.ts)
-- H2: Regex hoist in sanitizer (sanitize.ts)
-- H3: Pre-sanitize method/path once for both channels (YinzerFlow.ts, DiagnosticsMonitor.ts)
-- H4: Separate access log guard — absorbed into C1 (YinzerFlow.ts)
-- H5: `_formatBytesForDisplay` helper (bytes.ts + 3 consumer files)
-- H6: Format examples in threshold errors (handleCustomConfiguration.ts)
-- M3: Remove redundant ternary (RateLimitConfig.ts)
-- M4: Skip deep-merge keys in shallow merge (handleCustomConfiguration.ts)
-- M5: Unicode BiDi chars in sanitizer (sanitize.ts)
-- D2: `LOGGER_BRAND` → `loggerBrand` rename (5 files)
+**All Changes This Session**:
+- **Code**: C1, C2, H2, H3, H4, H5, H6, M3, M4, M5, D2 (12 code fixes)
+- **Default level**: `'info'` → `'warn'` in handleCustomConfiguration.ts + 2 test assertions
+- **Docs**: Full rewrite of logging.md, updated configuration.md stale references
+- **JSDoc**: Fixed level description in InternalConfiguration.d.ts and log.ts
 
 **Skipped (with reasoning)**:
 - M1: Timer race already mitigated by `_destroyed` flag, closure/sec negligible
@@ -49,7 +44,6 @@
 - D4: User said keep `getStatusEmoji` internal only
 
 **Deferred**:
-- H1: Docs rewrite — `docs/core/logging.md` 88% stale, `docs/configuration/configuration.md` 30% stale
 - D1 discussion: Rename `logging.requests` → `logging.accessLog` — pending user input
 
 ---
@@ -87,6 +81,8 @@ bun run publish:release
 - [2026-02-20] **C1 fix approach**: Removed accessLog module-level singleton. Access log logger now created per-instance in `_configureLogging()` with `_accessLogEnabled` boolean guard.
 - [2026-02-20] **loggerBrand rename**: `LOGGER_BRAND` → `loggerBrand` for project camelCase convention. Internal-only symbol, no public API impact.
 - [2026-02-20] **Audit disagreements**: M1 (timer race) — already mitigated by _destroyed flag. M2 (timestamp) — changes timezone from local to UTC, not just a perf fix. Both rejected with reasoning.
+- [2026-02-20] **Default log level**: Changed from `'info'` to `'warn'`. Rationale: production servers shouldn't be noisy by default. Users who want verbose output set `level: 'info'` or `'debug'` explicitly. Security warnings and errors still visible at `'warn'`.
+- [2026-02-20] **Log level description**: Changed from "Minimum log level" to "Log level threshold — messages at this severity and above are output" to avoid ambiguity about what "minimum" means.
 
 ---
 
@@ -111,3 +107,5 @@ bun run publish:release
 - `loggerBrand` (formerly `LOGGER_BRAND`) is the Symbol used for framework logger identification
 - accessLog is now per-instance — no more module-level singleton
 - `_formatBytesForDisplay` in bytes.ts handles auto-unit formatting (B/KB/MB/GB)
+- Default logging level is now `'warn'` (changed from `'info'`)
+- All logging config is under `logging` key — old top-level `logger`/`networkLogs`/`networkLogger` are gone
