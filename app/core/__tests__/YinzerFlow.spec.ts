@@ -979,10 +979,10 @@ describe('YinzerFlow', () => {
 
         const responses = await Promise.all(requests);
 
-        responses.forEach((response, index) => {
+        for (const [index, response] of responses.entries()) {
           expect(response).toContain('200 OK');
           expect(response).toContain(`"id":"${index}"`);
-        });
+        }
       });
 
       it('should handle async route handlers', async () => {
@@ -999,6 +999,87 @@ describe('YinzerFlow', () => {
         expect(response).toContain('"async":true');
         expect(response).toContain('"delayed":true');
       });
+    });
+  });
+
+  describe('Response Headers (Date & Content-Length)', () => {
+    it('should include Date header in wire response', async () => {
+      app.get('/date-test', () => ({ ok: true }));
+      await app.listen();
+
+      const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/date-test'));
+
+      // Date header must appear in the actual wire response
+      expect(response).toMatch(/Date: .+GMT/);
+    });
+
+    it('should include Content-Length matching body bytes only', async () => {
+      const body = { message: 'hello' };
+      app.get('/cl-test', () => body);
+      await app.listen();
+
+      const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/cl-test'));
+
+      // Extract Content-Length header value from wire response
+      const clMatch = /Content-Length: (?<digits>\d+)/.exec(response);
+      expect(clMatch?.groups).toBeDefined();
+      const contentLength = Number(clMatch?.groups?.digits);
+
+      // Extract actual body (everything after the blank line separator)
+      const [, bodyStr] = response.split('\r\n\r\n');
+      expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
+    });
+
+    it('should compute Content-Length as byte count for multi-byte characters', async () => {
+      const body = { emoji: '🔥🎉✨' };
+      app.get('/multibyte', () => body);
+      await app.listen();
+
+      const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/multibyte'));
+
+      const clMatch = /Content-Length: (?<digits>\d+)/.exec(response);
+      expect(clMatch?.groups).toBeDefined();
+      const contentLength = Number(clMatch?.groups?.digits);
+
+      const [, bodyStr] = response.split('\r\n\r\n');
+      const byteLength = Buffer.byteLength(bodyStr, 'utf8');
+
+      // Byte length must differ from char length for multi-byte content
+      expect(byteLength).toBeGreaterThan(bodyStr.length);
+      expect(contentLength).toBe(byteLength);
+    });
+
+    it('should include Date and Content-Length in error responses', async () => {
+      app.get('/error-headers', () => {
+        throw new Error('Intentional test error');
+      });
+      await app.listen();
+
+      const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/error-headers'));
+
+      expect(response).toContain('500');
+      expect(response).toMatch(/Date: .+GMT/);
+
+      const clMatch = /Content-Length: (?<digits>\d+)/.exec(response);
+      expect(clMatch?.groups).toBeDefined();
+      const contentLength = Number(clMatch?.groups?.digits);
+      const [, bodyStr] = response.split('\r\n\r\n');
+      expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
+    });
+
+    it('should include Date and Content-Length in not-found responses', async () => {
+      await app.listen();
+
+      const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/nonexistent'));
+
+      expect(response).toContain('404');
+      expect(response).toMatch(/Date: .+GMT/);
+
+      const clMatch = /Content-Length: (?<digits>\d+)/.exec(response);
+      expect(clMatch?.groups).toBeDefined();
+      const contentLength = Number(clMatch?.groups?.digits);
+      const [, bodyStr] = response.split('\r\n\r\n');
+      expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
     });
   });
 });
@@ -1024,15 +1105,7 @@ const connectWithTimeout = async (port: number, writeStrategy: (client: net.Sock
       response += data.toString();
     });
 
-    client.on('end', () => {
-      resolve(response);
-    });
-
-    client.on('error', (error) => {
-      reject(error);
-    });
-
-    setTimeout(() => {
+    const timeoutHandle = setTimeout(() => {
       client.destroy();
       if (response) {
         resolve(response);
@@ -1040,6 +1113,16 @@ const connectWithTimeout = async (port: number, writeStrategy: (client: net.Sock
         reject(new Error('Request timeout'));
       }
     }, timeoutMs);
+
+    client.on('end', () => {
+      clearTimeout(timeoutHandle);
+      resolve(response);
+    });
+
+    client.on('error', (error) => {
+      clearTimeout(timeoutHandle);
+      reject(error);
+    });
   });
 
 /** Send a complete HTTP request string over a TCP connection */

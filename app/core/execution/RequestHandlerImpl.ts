@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import type { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.ts';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js';
@@ -54,41 +53,32 @@ export class RequestHandlerImpl {
         return void 0;
       }
 
-      // 5. Execute route handler.
-      // * We are saving the response to a variable because in this case we might not
-      // * send a response to the client until after the after hooks since the after hooks might modify the response.
-      let routeResponse: unknown = null;
-      try {
-        routeResponse = await handler(context);
-      } catch (handlerError) {
-        throw handlerError;
-      }
+      // 5. Execute route handler
+      const routeResponse = await handler(context);
 
-      // 6. Run afterRoute hooks and afterGroup hooks
+      // 6. Set body BEFORE after-hooks so it's preserved even if a hook throws
+      context._response._setBody(routeResponse);
+
+      // 7. Run afterRoute hooks and afterGroup hooks
       // * The after group hooks and afterRoute hooks are in the same array and ordered on route registration.
       for (const hook of afterHooks) await hook(context);
 
-      // 7. Run afterAll hooks
+      // 8. Run afterAll hooks
       const afterAllHooks = this.setup._hooks._afterAll;
       for (const hook of afterAllHooks) {
-        // Check if hook should run based on route options
         if (!this._shouldRunHook(hook.options, context.request.path)) {
           continue;
         }
         await hook.handler(context);
       }
 
-      // 8. Build response (set content-type, etc.)
-      context._response._setBody(routeResponse);
-
-      // 9. If this was a HEAD request, remove the body and convert it to a GET request.
-      // Im waiting to do this until after the after hooks since the after hooks might modify the response, headers, etc.
+      // 9. If this was a HEAD request, remove the body.
+      // Waiting until after hooks since they might modify the response, headers, etc.
       if (context.request.method === 'HEAD') {
         context._response._setBody(null);
       }
 
       // 10. Add default framework headers and parse the body into a string
-      // This is done when we call context._response._parseResponseIntoString()
       context._response._parseResponseIntoString();
 
       return void 0;
@@ -115,13 +105,9 @@ export class RequestHandlerImpl {
 
       // Format the response for sending (same as normal flow)
       context._response._parseResponseIntoString();
-      context._response._setHeadersIfNotSet({
-        Date: dayjs().format('ddd, DD MMM YYYY HH:mm:ss [GMT]'),
-        'Content-Length': context._response._stringBody.split('\n\n')[1]?.length.toString() ?? '0',
-      });
     } catch (errorHandlerError) {
       // If the error handler itself fails, fall back to basic response
-      log.error('Error handler failed, this might be an internal error in the YinzerFlow framework: ', errorHandlerError);
+      log.error('Your custom error handler threw an error. Check your onError() handler for bugs: ', errorHandlerError);
 
       context.response.setStatusCode(500);
       context._response._setBody({
@@ -131,14 +117,10 @@ export class RequestHandlerImpl {
 
       // Format the fallback response too
       context._response._parseResponseIntoString();
-      context._response._setHeadersIfNotSet({
-        Date: dayjs().format('ddd, DD MMM YYYY HH:mm:ss [GMT]'),
-        'Content-Length': context._response._stringBody.split('\n\n')[1]?.length.toString() ?? '0',
-      });
     }
   }
 
-  private async _handleBeforeRoutingHooks(context: InternalContextImpl): Promise<boolean> {
+  async _handleBeforeRoutingHooks(context: InternalContextImpl): Promise<boolean> {
     const beforeRoutingHooks = this.setup._hooks._beforeRouting;
     for (const hook of beforeRoutingHooks) {
       // Check if hook should run based on route options
@@ -147,16 +129,12 @@ export class RequestHandlerImpl {
       }
 
       const result = await hook.handler(context);
-      if (result !== undefined) {
-        context._response._setBody(result);
-        context._response._parseResponseIntoString();
-        return true; // Signal that we should stop processing
-      }
+      if (this._applyHookResponse(result, context)) return true;
     }
-    return false; // Signal that we should continue processing
+    return false;
   }
 
-  private async _matchRoute(context: InternalContextImpl): Promise<InternalRouteRegistry | null> {
+  async _matchRoute(context: InternalContextImpl): Promise<InternalRouteRegistry | null> {
     const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, context.request.path);
 
     if (!matchedRoute) {
@@ -169,7 +147,7 @@ export class RequestHandlerImpl {
     return matchedRoute;
   }
 
-  private async _handleBeforeAllHooks(context: InternalContextImpl): Promise<boolean> {
+  async _handleBeforeAllHooks(context: InternalContextImpl): Promise<boolean> {
     const beforeAllHooks = this.setup._hooks._beforeAll;
     for (const hook of beforeAllHooks) {
       // Check if hook should run based on route options
@@ -178,36 +156,36 @@ export class RequestHandlerImpl {
       }
 
       const result = await hook.handler(context);
-      if (result !== undefined) {
-        context._response._setBody(result);
-        context._response._parseResponseIntoString();
-        return true; // Signal that we should stop processing
-      }
+      if (this._applyHookResponse(result, context)) return true;
     }
-    return false; // Signal that we should continue processing
+    return false;
   }
 
-  private async _handleBeforeHooks(context: InternalContextImpl, hooks: Array<HandlerCallback>): Promise<boolean> {
+  async _handleBeforeHooks(context: InternalContextImpl, hooks: Array<HandlerCallback>): Promise<boolean> {
     for (const hook of hooks) {
       const result = await hook(context);
-      if (result !== undefined) {
-        context._response._setBody(result);
-        context._response._parseResponseIntoString();
-        return true; // Signal that we should stop processing
-      }
+      if (this._applyHookResponse(result, context)) return true;
     }
-    return false; // Signal that we should continue processing
+    return false;
+  }
+
+  /** Apply a hook's return value as the response. Returns true if hook short-circuited. */
+  _applyHookResponse(result: unknown, context: InternalContextImpl): boolean {
+    if (result === undefined) return false;
+    context._response._setBody(result);
+    context._response._parseResponseIntoString();
+    return true;
   }
 
   /**
    * Determines if a hook should run based on its options and the current request path
    */
-  private _shouldRunHook(options: InternalGlobalHookOptions | undefined, requestPath: string): boolean {
+  _shouldRunHook(options: InternalGlobalHookOptions | undefined, requestPath: string): boolean {
     if (!options) {
       return true; // No options means run for all routes
     }
 
-    const { routesToInclude, routesToExclude } = options;
+    const { routesToInclude = [], routesToExclude = [] } = options;
 
     // If routesToExclude contains the current path, don't run
     if (routesToExclude.some((pattern) => this._matchesPattern(requestPath, pattern))) {
@@ -227,16 +205,16 @@ export class RequestHandlerImpl {
    * Simple pattern matching for route filtering
    * Supports basic wildcard patterns like /api/* and exact matches
    */
-  private _matchesPattern(path: string, pattern: string): boolean {
+  _matchesPattern(path: string, pattern: string): boolean {
     // Exact match
     if (pattern === path) {
       return true;
     }
 
-    // Wildcard pattern (e.g., /api/*)
+    // Wildcard pattern (e.g., /api/*) — must match segment boundary
     if (pattern.endsWith('/*')) {
-      const prefix = pattern.slice(0, -2);
-      return path.startsWith(prefix);
+      const prefix = pattern.slice(0, -1); // Keep trailing slash: "/api/" from "/api/*"
+      return path.startsWith(prefix) || path === pattern.slice(0, -2);
     }
 
     // No match

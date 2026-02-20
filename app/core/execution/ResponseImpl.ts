@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import { formatBodyIntoString } from '@core/execution/utils/formatBodyIntoString.ts';
 import { determineEncoding } from '@core/execution/utils/determineEncoding.ts';
 import { inferContentType } from '@core/execution/utils/inferContentType.ts';
@@ -8,7 +7,22 @@ import { httpEncoding, httpStatus, httpStatusCode } from '@constants/http.ts';
 import type { InternalHttpEncoding, InternalHttpHeaders, InternalHttpStatus, InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { Request } from '@typedefs/public/Request.ts';
 import type { InternalResponseImpl } from '@typedefs/internal/InternalResponseImpl.d.ts';
-import { calculateContentSizeInBytes } from '@core/utils/calculateContentSizeInBytes.ts';
+
+/** Format current time as HTTP Date header (RFC 7231 §7.1.1.1) */
+const _formatHttpDate = (): string => {
+  const d = new Date();
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+  const pad = (n: number): string => (n < 10 ? `0${n}` : String(n));
+  return `${days[d.getUTCDay()]}, ${pad(d.getUTCDate())} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} GMT`;
+};
+
+/** Cached HTTP Date header — refreshed every second. Avoids Date allocation per response. */
+let _cachedDateHeader = _formatHttpDate();
+const _dateRefreshTimer = setInterval(() => {
+  _cachedDateHeader = _formatHttpDate();
+}, 1000);
+_dateRefreshTimer.unref();
 
 export class ResponseImpl implements InternalResponseImpl {
   readonly _request: Request;
@@ -27,36 +41,25 @@ export class ResponseImpl implements InternalResponseImpl {
   }
 
   _parseResponseIntoString(): void {
-    // Example: HTTP/1.1 200 OK
     const statusLine = `${this._request.protocol} ${this._statusCode} ${this._status}`;
-
-    // Example: Content-Type: text/html
-    const headerLines = Object.entries(this._headers).map(([key, value]) => `${key}: ${value}`);
-
-    // Add multiple Set-Cookie headers
-    const setCookieLines = this._setCookies.map((value) => `Set-Cookie: ${value}`);
-
-    // Combine all header lines (regular headers + Set-Cookie headers)
-    const allHeaderLines = [...headerLines, ...setCookieLines];
-
-    // Determine encoding based on Content-Type header and body content
     const encoding = determineEncoding(this._headers['content-type'], this._body);
-
-    // Example: <html><body><h1>Hello, world!</h1></body></html> or { "message": "Hello, world!" }
     const body = formatBodyIntoString(this._body, { encoding });
 
-    // Example: HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Hello, world!</h1></body></html>
+    // Set Date + Content-Length BEFORE assembling headers into the response string.
+    // Content-Length = body bytes only (not status line + headers), per HTTP/1.1 spec.
+    this._setHeadersIfNotSet({
+      Date: _cachedDateHeader,
+      'Content-Length': String(Buffer.byteLength(body, 'utf8')),
+    });
+
     this._encoding = encoding;
 
-    // Fix: Handle the case when there are no headers properly
-    const headersSection = allHeaderLines.length > 0 ? `${allHeaderLines.join('\n')}\n` : '';
-    this._stringBody = `${statusLine}\n${headersSection}\n${body}`;
+    const headerLines = Object.entries(this._headers).map(([key, value]) => `${key}: ${value}`);
+    const setCookieLines = this._setCookies.map((value) => `Set-Cookie: ${value}`);
+    const allHeaderLines = [...headerLines, ...setCookieLines];
+    const headersSection = allHeaderLines.length > 0 ? `${allHeaderLines.join('\r\n')}\r\n` : '';
 
-    const contentLength = calculateContentSizeInBytes(this._stringBody);
-    this._setHeadersIfNotSet({
-      Date: dayjs().format('ddd, DD MMM YYYY HH:mm:ss [GMT]'),
-      'Content-Length': String(contentLength),
-    });
+    this._stringBody = `${statusLine}\r\n${headersSection}\r\n${body}`;
   }
 
   _setHeadersIfNotSet(headers: Partial<Record<InternalHttpHeaders, string>>): void {

@@ -310,7 +310,7 @@ describe('ResponseImpl', () => {
         response._parseResponseIntoString();
 
         expect(response._stringBody).toContain('HTTP/1.1 204 No Content');
-        expect(response._stringBody).toContain('\n\n'); // Empty headers section
+        expect(response._stringBody).toContain('\r\n\r\n'); // CRLF header/body separator
       });
 
       it('should handle different protocols', () => {
