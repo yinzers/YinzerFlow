@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.0] - 2026-02-20
+
+### Bug Fixes
+
+- **Clarify log level threshold behavior** — Fixed logging logic to properly enforce log level thresholds, ensuring messages below the configured level are correctly filtered (f2ff105)
+
+### Internal
+
+- **Move bundle check to preflight in publish workflow** — Reorganized publish process to validate bundles earlier in the pipeline (4b42643)
+- **Improve type safety across core flow** — Enhanced type annotations and removed unsafe `typeof` checks in favor of explicit interfaces (36eb059, 1f29acf, 266a1bd)
+- **Restructure logging into three independent channels** — Refactored logging system to separate concerns with per-instance loggers instead of a global singleton, improving isolation and testability (bb7d752, dc9738d, 534c8e7, 86e1207, 5b769d3, 8c10c1f)
+- **Inject logger dependencies throughout middleware** — Threaded logger instances through cookie parser, rate limiter, and hook registry instead of relying on global state (874f6a4, e8277b3)
+- **Consolidate logging configuration** — Unified logging config handling and clarified log level documentation in InternalConfiguration (15b9158, e9888db)
+- **Improve utility functions** — Enhanced time utilities validation logic, added byte size conversion helpers, and removed unused utility functions (2e2a0bf, 004df51, 5e70bd2)
+- **Verify npm credentials before git operations** — Updated publish script to check npm access before attempting git pushes (65dbead)
+- **Remove dayjs dependency** — Eliminated unnecessary dayjs library from project dependencies (36c57ba)
+
 ## [0.6.14] - 2026-02-20
 
 ### Bug Fixes
