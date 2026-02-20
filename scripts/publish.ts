@@ -172,7 +172,7 @@ interface PreflightResult {
 const preflight = async (): Promise<PreflightResult> => {
   log.step('Running pre-flight checks');
   let passed = 0;
-  const total = 9;
+  const total = 8;
   let hasApiKey = false;
 
   // 1. Inside git repo
@@ -252,15 +252,7 @@ const preflight = async (): Promise<PreflightResult> => {
   const currentVersion = pkg.version as string;
   const packageName = pkg.name as string;
 
-  // 8. Current version not already on npm
-  const npmView = run(['npm', 'view', `${packageName}@${currentVersion}`, 'version']);
-  if (npmView.ok && npmView.stdout === currentVersion) {
-    log.error(`Version ${currentVersion} is already published on npm`);
-    process.exit(1);
-  }
-  log.success(`[${++passed}/${total}] Version ${currentVersion} not yet on npm`);
-
-  // 9. Anthropic API key
+  // 8. Anthropic API key
   if (process.env.ANTHROPIC_API_KEY) {
     hasApiKey = true;
     log.success(`[${++passed}/${total}] Anthropic API key found`);
@@ -580,6 +572,14 @@ const main = async (): Promise<void> => {
 
   // ── Version selection ──
   const { type, newVersion } = await selectVersion(currentVersion);
+
+  // ── Verify new version isn't already on npm ──
+  const npmView = run(['npm', 'view', `${packageName}@${newVersion}`, 'version']);
+  if (npmView.ok && npmView.stdout === newVersion) {
+    log.error(`Version ${newVersion} is already published on npm`);
+    process.exit(1);
+  }
+  log.success(`${newVersion} is available on npm`);
 
   // ── Changelog generation ──
   const commits = getCommitsSinceTag(lastTag);
