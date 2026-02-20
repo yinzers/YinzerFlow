@@ -1012,11 +1012,7 @@ describe('YinzerFlow', () => {
  * @param timeoutMs - Maximum time to wait for response before force-closing
  * @returns Raw HTTP response string from server
  */
-const connectWithTimeout = async (
-  port: number,
-  writeStrategy: (client: net.Socket) => void,
-  timeoutMs = 5000,
-): Promise<string> =>
+const connectWithTimeout = async (port: number, writeStrategy: (client: net.Socket) => void, timeoutMs = 5000): Promise<string> =>
   new Promise((resolve, reject) => {
     const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
       writeStrategy(client);

@@ -165,11 +165,12 @@ export class YinzerFlow extends SetupImpl {
     super(configuration);
 
     // Pre-compute max buffer size from body parser limits (immutable after construction)
-    this._maxBufferSize = Math.max(
-      this._configuration.bodyParser.json.maxSize,
-      this._configuration.bodyParser.urlEncoded.maxSize,
-      this._configuration.bodyParser.fileUploads.maxTotalSize,
-    ) + maxHeaderOverhead;
+    this._maxBufferSize =
+      Math.max(
+        this._configuration.bodyParser.json.maxSize,
+        this._configuration.bodyParser.urlEncoded.maxSize,
+        this._configuration.bodyParser.fileUploads.maxTotalSize,
+      ) + maxHeaderOverhead;
 
     // Replace global logger if custom logger is provided
     if (this._configuration.logger) {
@@ -286,10 +287,7 @@ export class YinzerFlow extends SetupImpl {
    */
   private _handleRequestError(error: unknown, clientAddress: string, socket: Socket): void {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    networkLog.log.error(
-      `Visitor from ${clientAddress} experienced an error during request processing: ${errorMessage}`,
-      error,
-    );
+    networkLog.log.error(`Visitor from ${clientAddress} experienced an error during request processing: ${errorMessage}`, error);
     if (!socket.destroyed) {
       socket.destroy();
     }
@@ -310,8 +308,7 @@ export class YinzerFlow extends SetupImpl {
     requestHandler: RequestHandlerImpl;
     clientAddress: string;
   }): void {
-    this._processRequest({ data, socket, requestHandler, clientAddress })
-      .catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
+    this._processRequest({ data, socket, requestHandler, clientAddress }).catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
   }
 
   /**
@@ -337,16 +334,16 @@ export class YinzerFlow extends SetupImpl {
       });
       socket.write(
         `HTTP/1.1 413 Payload Too Large\r\n` +
-        `Content-Type: application/json\r\n` +
-        `Content-Length: ${Buffer.byteLength(errorBody, 'utf8')}\r\n` +
-        `Connection: close\r\n\r\n${errorBody}`,
+          `Content-Type: application/json\r\n` +
+          `Content-Length: ${Buffer.byteLength(errorBody, 'utf8')}\r\n` +
+          `Connection: close\r\n\r\n${errorBody}`,
       );
     }
     networkLog.log.warn(
       `Request from ${clientAddress} exceeded maximum buffer size (${totalLength} > ${this._maxBufferSize} bytes). ` +
-      `Current limits: json=${this._configuration.bodyParser.json.maxSize}, ` +
-      `urlEncoded=${this._configuration.bodyParser.urlEncoded.maxSize}, ` +
-      `fileUploads=${this._configuration.bodyParser.fileUploads.maxTotalSize}`,
+        `Current limits: json=${this._configuration.bodyParser.json.maxSize}, ` +
+        `urlEncoded=${this._configuration.bodyParser.urlEncoded.maxSize}, ` +
+        `fileUploads=${this._configuration.bodyParser.fileUploads.maxTotalSize}`,
     );
     socket.destroy();
   }
@@ -361,6 +358,7 @@ export class YinzerFlow extends SetupImpl {
   private _looksLikeHttp(chunks: Array<Buffer>, totalLength: number, buffer: Buffer): boolean {
     if (totalLength >= 1) {
       const firstByte = chunks[0]?.[0] ?? 0;
+      // cspell:disable-next-line
       // HTTP methods start with: G(ET)=0x47, P(OST/UT/ATCH)=0x50, D(ELETE)=0x44, H(EAD)=0x48, O(PTIONS)=0x4f
       if (firstByte !== 0x47 && firstByte !== 0x50 && firstByte !== 0x44 && firstByte !== 0x48 && firstByte !== 0x4f) {
         return false;

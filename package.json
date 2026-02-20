@@ -28,6 +28,7 @@
   "scripts": {
     "test": "bun test --watch --coverage",
     "test:production": "bun test --timeout=5000 --rerun-each=1 --bail --coverage",
+    "validate": "bun run find-unused-packages && bun run lint && bun run lint:format && bun run lint:spelling && bun run test:production",
     "build:watch": "bun scripts/build-watch.ts",
     "lint": "eslint app --fix --quiet --color --cache",
     "lint:format": "prettier --check app",
