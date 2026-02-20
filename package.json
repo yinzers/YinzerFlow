@@ -2,45 +2,11 @@
   "name": "yinzerflow",
   "version": "0.6.14",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
-  "license": "MIT",
-  "homepage": "https://github.com/yinzers/YinzerFlow/blob/main/docs/start-here.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yinzers/YinzerFlow.git"
   },
-  "description": "A simple, fast, and lightweight web framework for Node and Bun",
-  "keywords": [
-    "http",
-    "rest",
-    "server",
-    "router",
-    "app",
-    "api",
-    "web",
-    "framework",
-    "node",
-    "bun",
-    "yinzerflow"
-  ],
-  "types": "index.d.ts",
   "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "test": "bun test --watch --coverage",
-    "test:production": "bun test --timeout=5000 --rerun-each=1 --bail --coverage",
-    "validate": "bun run find-unused-packages && bun run lint && bun run lint:format && bun run lint:spelling && bun run test:production",
-    "build:watch": "bun scripts/build-watch.ts",
-    "lint": "eslint app --fix --quiet --color --cache",
-    "lint:format": "prettier --check app",
-    "lint:spelling": "cspell app --no-progress --unique",
-    "lint:size": "gzip-size lib/index.js --include-original",
-    "format": "prettier --write app",
-    "find-unused-packages": "bunx depcheck --quiet --ignores=cspell,eslint-import-resolver-typescript --skip-missing",
-    "publish:release": "bun scripts/publish.ts"
-  },
-  "dependencies": {
-    "dayjs": "^1.11.13"
-  },
   "devDependencies": {
     "@eslint/compat": "^1.2.7",
     "bun-plugin-dts": "^0.3.0",
@@ -59,5 +25,36 @@
     "typescript": "^5.0.0",
     "redis": "^5.0.0",
     "ioredis": "^5.0.0"
-  }
+  },
+  "description": "A simple, fast, and lightweight web framework for Node and Bun",
+  "homepage": "https://github.com/yinzers/YinzerFlow/blob/main/docs/start-here.md",
+  "keywords": [
+    "http",
+    "rest",
+    "server",
+    "router",
+    "app",
+    "api",
+    "web",
+    "framework",
+    "node",
+    "bun",
+    "yinzerflow"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "bun test --watch --coverage",
+    "test:production": "bun test --timeout=5000 --rerun-each=1 --bail --coverage",
+    "validate": "bun run find-unused-packages && bun run lint && bun run lint:format && bun run lint:spelling && bun run test:production",
+    "build:watch": "bun scripts/build-watch.ts",
+    "lint": "eslint app --fix --quiet --color --cache",
+    "lint:format": "prettier --check app",
+    "lint:spelling": "cspell app --no-progress --unique",
+    "lint:size": "gzip-size lib/index.js --include-original",
+    "format": "prettier --write app",
+    "find-unused-packages": "bunx depcheck --quiet --ignores=cspell,eslint-import-resolver-typescript --skip-missing",
+    "publish:release": "bun scripts/publish.ts"
+  },
+  "type": "module",
+  "types": "index.d.ts"
 }

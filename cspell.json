@@ -33,12 +33,14 @@
     "rizzardi",
     "sayin",
     "SEVENZ",
+    "unforgeable",
     "unsign",
     "XXSS",
     "yinz",
     "yinzer",
     "yinzerflow",
-    "yinzjs"
+    "yinzjs",
+    "yuge"
   ],
   /**
    * flagWords - list of words to be always considered incorrect
