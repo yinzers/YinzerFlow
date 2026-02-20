@@ -365,7 +365,8 @@ export interface InternalServerOptions {
  */
 export interface InternalLoggingOptions {
   /**
-   * Minimum log level for the app logger
+   * Log level threshold — messages at this severity and above are output.
+   * From least to most severe: debug → info → warn → error.
    * @default 'warn'
    */
   level: LogLevel;
