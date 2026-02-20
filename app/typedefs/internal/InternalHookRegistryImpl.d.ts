@@ -26,4 +26,5 @@ export interface InternalHookRegistryImpl {
   _addAfterHooks: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
   _addOnError: (handler: HandlerCallback) => void;
   _addOnNotFound: (handler: HandlerCallback) => void;
+  setLogger: (logger: { info: (...args: Array<unknown>) => void; warn: (...args: Array<unknown>) => void; error: (...args: Array<unknown>) => void }) => void;
 }

@@ -20,12 +20,20 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   _onError: HandlerCallback;
   _onNotFound: HandlerCallback;
 
+  /** Per-instance logger. Reads `this._logger` at call time so it picks up the logger set by YinzerFlow. */
+  private _logger: typeof log = log;
+
+  /** Called by YinzerFlow._configureLogging() to inject the per-instance logger. */
+  setLogger(logger: typeof log): void {
+    this._logger = logger;
+  }
+
   constructor() {
     this._beforeRouting = new Set();
     this._beforeAll = new Set();
     this._afterAll = new Set();
     this._onError = (ctx, error: unknown): unknown => {
-      log.error('Error while handling your request: ', error);
+      this._logger.error('Error while handling your request: ', error);
       ctx.response.setStatusCode(httpStatusCode.internalServerError);
       return { success: false, message: 'Internal Server Error' };
     };
@@ -65,7 +73,7 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
     }
 
     if (handlers.length === 0) {
-      log.warn(`${methodName}() called with empty array. No hooks will be registered.`);
+      this._logger.warn(`${methodName}() called with empty array. No hooks will be registered.`);
       return;
     }
 
