@@ -296,49 +296,117 @@ export class YinzerFlow extends SetupImpl {
   }
 
   /**
+   * Dispatch assembled request buffer to the request processor.
+   * Wraps `_processRequest` with the standard error catch handler.
+   */
+  private _dispatchRequest({
+    data,
+    socket,
+    requestHandler,
+    clientAddress,
+  }: {
+    data: Buffer;
+    socket: Socket;
+    requestHandler: RequestHandlerImpl;
+    clientAddress: string;
+  }): void {
+    this._processRequest({ data, socket, requestHandler, clientAddress })
+      .catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
+  }
+
+  /**
+   * Reject an oversized request with HTTP 413 (if headers were parsed) and destroy the socket.
+   * Logs the current body parser limits for debugging.
+   */
+  private _rejectOversizedRequest({
+    socket,
+    clientAddress,
+    totalLength,
+    headersParsed,
+  }: {
+    socket: Socket;
+    clientAddress: string;
+    totalLength: number;
+    headersParsed: boolean;
+  }): void {
+    if (headersParsed) {
+      const errorBody = JSON.stringify({
+        error: 'Payload too large',
+        maxSize: this._maxBufferSize,
+        received: totalLength,
+      });
+      socket.write(
+        `HTTP/1.1 413 Payload Too Large\r\n` +
+        `Content-Type: application/json\r\n` +
+        `Content-Length: ${Buffer.byteLength(errorBody, 'utf8')}\r\n` +
+        `Connection: close\r\n\r\n${errorBody}`,
+      );
+    }
+    networkLog.log.warn(
+      `Request from ${clientAddress} exceeded maximum buffer size (${totalLength} > ${this._maxBufferSize} bytes). ` +
+      `Current limits: json=${this._configuration.bodyParser.json.maxSize}, ` +
+      `urlEncoded=${this._configuration.bodyParser.urlEncoded.maxSize}, ` +
+      `fileUploads=${this._configuration.bodyParser.fileUploads.maxTotalSize}`,
+    );
+    socket.destroy();
+  }
+
+  /**
+   * Check if buffered data looks like the start of an HTTP request.
+   *
+   * First checks the first byte against known HTTP method start characters
+   * (G, P, D, H, O), then validates the first 8 bytes against the full method pattern.
+   * Returns `false` for non-HTTP traffic so it can be dispatched for a graceful error.
+   */
+  private _looksLikeHttp(chunks: Array<Buffer>, totalLength: number, buffer: Buffer): boolean {
+    if (totalLength >= 1) {
+      const firstByte = chunks[0]?.[0] ?? 0;
+      // HTTP methods start with: G(ET)=0x47, P(OST/UT/ATCH)=0x50, D(ELETE)=0x44, H(EAD)=0x48, O(PTIONS)=0x4f
+      if (firstByte !== 0x47 && firstByte !== 0x50 && firstByte !== 0x44 && firstByte !== 0x48 && firstByte !== 0x4f) {
+        return false;
+      }
+    }
+    if (totalLength >= 8) {
+      const start = buffer.subarray(0, 8).toString();
+      if (!/^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s/.test(start)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Extract Content-Length value from raw HTTP headers.
+   * Returns 0 if the header is missing (e.g. GET requests with no body).
+   */
+  private _parseContentLength(buffer: Buffer, headerEndIndex: number): number {
+    const headersStr = buffer.subarray(0, headerEndIndex).toString();
+    const match = /content-length:\s*(?<digits>\d+)/i.exec(headersStr);
+    return match?.groups?.digits ? parseInt(match.groups.digits, 10) : 0;
+  }
+
+  /**
    * Handle incoming TCP socket connections and their complete lifecycle.
    *
-   * ## TCP Stream Reassembly
+   * Implements a TCP stream reassembly state machine that buffers chunks until the
+   * complete HTTP request is received, then dispatches to `_processRequest`.
    *
-   * TCP is a stream protocol — a single HTTP request may arrive across multiple
-   * `data` events (especially for bodies > ~1.4KB TCP MSS on real networks).
-   * This method implements a state machine to buffer chunks until the complete
-   * HTTP request is received:
+   * **Header Phase**: Accumulate chunks, search for `\r\n\r\n`, parse Content-Length.
+   * **Body Phase**: Track totalLength without concatenating until body is complete.
+   * **Dispatch**: `Buffer.concat(chunks)` once to produce the final contiguous buffer.
    *
-   * 1. **Header Phase**: Accumulate chunks and search for the `\r\n\r\n` boundary.
-   *    Once found, parse `Content-Length` to determine expected body size.
-   *    During this phase, `Buffer.concat` is used since headers are small (< 8KB).
-   *
-   * 2. **Body Phase**: Track `totalLength` without concatenating. When
-   *    `totalLength - headerBoundary >= expectedBodyLength`, the request is complete.
-   *
-   * 3. **Dispatch**: `Buffer.concat(chunks)` is called exactly once to produce
-   *    the final contiguous buffer for request parsing.
-   *
-   * ## Non-HTTP Early Detection
-   *
-   * If the first bytes don't match any HTTP method start character (G, P, D, H, O),
-   * or the first 8 bytes don't match an HTTP method + space pattern, the data is
-   * dispatched immediately — the request parser handles malformed data gracefully.
-   *
-   * ## Security
-   *
-   * - Buffer size is capped at `_maxBufferSize` (largest body parser limit + 1MB header overhead)
-   * - Oversized requests get HTTP 413 if headers were parsed, or silent socket destroy if not
-   * - `requestDispatched` flag prevents double-dispatch on trailing TCP segments
-   *
+   * @see _looksLikeHttp for non-HTTP early detection
+   * @see _rejectOversizedRequest for DoS protection (413 + socket destroy)
    * @see _processRequest for how the assembled buffer is parsed and handled
    */
   private _handleConnection(socket: Socket, requestHandler: RequestHandlerImpl): void {
     const clientAddress = socket.remoteAddress ?? 'unknown';
     const connectionStartTime = Date.now();
-
     let hasReceivedData = false;
-    let dataReceiveTime: number | null = null;
 
     networkLog.log.info(`New visitor from ${clientAddress}`);
 
-    // TCP stream reassembly state
+    // TCP stream reassembly state — mutable, read/written by data handler
     const chunks: Array<Buffer> = [];
     let totalLength = 0;
     let headersParsed = false;
@@ -347,112 +415,52 @@ export class YinzerFlow extends SetupImpl {
     let requestDispatched = false;
 
     socket.on('data', (chunk) => {
-      // Track first data receipt for timing analysis
       if (!hasReceivedData) {
         hasReceivedData = true;
-        dataReceiveTime = Date.now();
-        const connectionToDataDelay = dataReceiveTime - connectionStartTime;
-        if (connectionToDataDelay > 100) {
-          networkLog.log.warn(`Delayed data from ${clientAddress} (${connectionToDataDelay}ms connection delay)`);
+        const delay = Date.now() - connectionStartTime;
+        if (delay > 100) {
+          networkLog.log.warn(`Delayed data from ${clientAddress} (${delay}ms connection delay)`);
         }
       }
 
       if (requestDispatched) return;
 
-      // Accumulate chunks without copying — O(1) per data event
       chunks.push(chunk);
       totalLength += chunk.length;
 
-      // DoS protection: reject requests that exceed the maximum allowed size
       if (totalLength > this._maxBufferSize) {
-        if (headersParsed) {
-          // We know this is HTTP — send a proper 413 before destroying
-          const errorBody = JSON.stringify({
-            error: 'Payload too large',
-            maxSize: this._maxBufferSize,
-            received: totalLength,
-          });
-          const errorResponse =
-            `HTTP/1.1 413 Payload Too Large\r\n` +
-            `Content-Type: application/json\r\n` +
-            `Content-Length: ${Buffer.byteLength(errorBody, 'utf8')}\r\n` +
-            `Connection: close\r\n\r\n${ 
-            errorBody}`;
-          socket.write(errorResponse);
-        }
-        networkLog.log.warn(
-          `Request from ${clientAddress} exceeded maximum buffer size (${totalLength} > ${this._maxBufferSize} bytes). ` +
-          `Current limits: json=${this._configuration.bodyParser.json.maxSize}, ` +
-          `urlEncoded=${this._configuration.bodyParser.urlEncoded.maxSize}, ` +
-          `fileUploads=${this._configuration.bodyParser.fileUploads.maxTotalSize}`,
-        );
-        socket.destroy();
+        this._rejectOversizedRequest({ socket, clientAddress, totalLength, headersParsed });
         return;
       }
 
-      // Phase 1: Find the end of HTTP headers (\r\n\r\n boundary)
+      // Header phase: find \r\n\r\n boundary and parse Content-Length
       if (!headersParsed) {
-        // Concat accumulated data to search for header boundary.
-        // Headers are small (< 8KB typically), so this is negligible overhead.
         const buffer = Buffer.concat(chunks, totalLength);
         headerEndIndex = buffer.indexOf('\r\n\r\n');
 
         if (headerEndIndex === -1) {
-          // No header boundary found yet — check if this even looks like HTTP.
-          // If not, dispatch immediately so the parser can return a graceful error.
-          let looksLikeHttp = true;
-
-          if (totalLength >= 1) {
-            // HTTP methods start with: G(ET)=0x47, P(OST/UT/ATCH)=0x50, D(ELETE)=0x44, H(EAD)=0x48, O(PTIONS)=0x4f
-            const firstByte = chunks[0]![0]!;
-            looksLikeHttp = firstByte === 0x47 || firstByte === 0x50 || firstByte === 0x44 || firstByte === 0x48 || firstByte === 0x4f;
-          }
-
-          // If first byte matched, do a fuller method check once we have enough data
-          if (looksLikeHttp && totalLength >= 8) {
-            const start = buffer.subarray(0, 8).toString();
-            looksLikeHttp = /^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s/.test(start);
-          }
-
-          if (!looksLikeHttp) {
+          if (!this._looksLikeHttp(chunks, totalLength, buffer)) {
             requestDispatched = true;
-            this._processRequest({ data: buffer, socket, requestHandler, clientAddress })
-              .catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
+            this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
           }
-
           return;
         }
 
-        // Headers found — parse Content-Length to know how much body to expect
         headersParsed = true;
-        const headersStr = buffer.subarray(0, headerEndIndex).toString();
-        const contentLengthMatch = /content-length:\s*(\d+)/i.exec(headersStr);
-        expectedBodyLength = contentLengthMatch ? parseInt(contentLengthMatch[1] ?? '0', 10) : 0;
-
-        // Check if body is already complete in this same buffer (common for small requests)
+        expectedBodyLength = this._parseContentLength(buffer, headerEndIndex);
         const bodyStart = headerEndIndex + 4;
-        const currentBodyLength = buffer.length - bodyStart;
 
-        if (currentBodyLength >= expectedBodyLength) {
+        if (buffer.length - bodyStart >= expectedBodyLength) {
           requestDispatched = true;
-          // Reuse the buffer we already concatenated — no second concat needed
-          this._processRequest({ data: buffer, socket, requestHandler, clientAddress })
-            .catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
+          this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
         }
-
         return;
       }
 
-      // Phase 2: Body accumulation — just check totalLength, no concat needed
-      const bodyStart = headerEndIndex + 4;
-      const currentBodyLength = totalLength - bodyStart;
-
-      if (currentBodyLength >= expectedBodyLength) {
+      // Body phase: check if accumulated length satisfies Content-Length
+      if (totalLength - (headerEndIndex + 4) >= expectedBodyLength) {
         requestDispatched = true;
-        // Single final concat — O(n) total for the entire request
-        const buffer = Buffer.concat(chunks, totalLength);
-        this._processRequest({ data: buffer, socket, requestHandler, clientAddress })
-          .catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
+        this._dispatchRequest({ data: Buffer.concat(chunks, totalLength), socket, requestHandler, clientAddress });
       }
     });
 
