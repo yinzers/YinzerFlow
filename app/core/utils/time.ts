@@ -23,19 +23,14 @@ import type { TimeString } from '@typedefs/public/Time.js';
  */
 export const _convertTimeToMs = (time: TimeString | number): number => {
   if (typeof time === 'number') {
+    if (!Number.isFinite(time) || time <= 0) {
+      throw new Error(`Invalid time value: "${time}". Must be a positive number`);
+    }
     return time;
   }
 
   // Validate string format
-  if (typeof time !== 'string') {
-    throw new Error('Invalid time format. Expected format: 1ms, 1s, 1m, 1h, 1d');
-  }
-
-  if (time.length < 2) {
-    throw new Error('Invalid time format. Expected format: 1ms, 1s, 1m, 1h, 1d');
-  }
-
-  if (time.length > 3) {
+  if (typeof time !== 'string' || time.length < 2) {
     throw new Error('Invalid time format. Expected format: 1ms, 1s, 1m, 1h, 1d');
   }
 
