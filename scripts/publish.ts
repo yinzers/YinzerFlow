@@ -294,12 +294,13 @@ const preflight = async (): Promise<PreflightResult> => {
   const currentVersion = pkg.version as string;
   const packageName = pkg.name as string;
 
-  // 9. Anthropic API key
+  // 9. Anthropic API key (required for AI changelog)
   if (process.env.ANTHROPIC_API_KEY) {
     hasApiKey = true;
     log.success(`[${++passed}/${total}] Anthropic API key found`);
   } else {
-    log.warn(`[${++passed}/${total}] No ANTHROPIC_API_KEY — will use raw commit list for changelog`);
+    log.error(`[${++passed}/${total}] Missing ANTHROPIC_API_KEY — set it in ~/.bashrc: export ANTHROPIC_API_KEY=sk-ant-...`);
+    process.exit(1);
   }
 
   // Get last tag and commit count
