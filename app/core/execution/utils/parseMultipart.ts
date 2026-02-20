@@ -1,6 +1,8 @@
 import type { InternalContentDisposition, InternalFileUpload, InternalMultipartFormData } from '@typedefs/internal/InternalRequestImpl.ts';
 import type { InternalFileUploadOptions } from '@typedefs/internal/InternalConfiguration.js';
 import { log } from '@core/utils/log.ts';
+import { _formatBytesForDisplay } from '@core/utils/bytes.ts';
+import type { Logger } from '@typedefs/public/Logger.js';
 
 /**
  * Split a multipart section into headers and content
@@ -106,16 +108,16 @@ const calculateContentLength = (content: Buffer | string): number => (Buffer.isB
 /**
  * Validate file against security configuration
  */
-const _validateFileUpload = (file: InternalFileUpload, config?: InternalFileUploadOptions): void => {
+const _validateFileUpload = (file: InternalFileUpload, config?: InternalFileUploadOptions, logger?: Logger): void => {
   if (!config) return;
+  const _log = logger ?? log;
 
   // SECURITY: Check file size
   if (file.size > config.maxFileSize) {
-    log.warn('[SECURITY] File upload too large', {
+    _log.warn('[SECURITY] File upload too large', {
       filename: file.filename,
-      size: file.size,
+      size: _formatBytesForDisplay(file.size),
       limit: config.maxFileSize,
-      sizeMB: Math.round(file.size / 1024 / 1024),
     });
     throw new Error(`File too large: ${file.filename} is ${file.size} bytes, exceeds limit of ${config.maxFileSize} bytes`);
   }
@@ -131,7 +133,7 @@ const _validateFileUpload = (file: InternalFileUpload, config?: InternalFileUplo
 
     // Check blocked extensions
     if (config.blockedExtensions.includes(extension)) {
-      log.warn('[SECURITY] Blocked file type upload attempt', {
+      _log.warn('[SECURITY] Blocked file type upload attempt', {
         filename: file.filename,
         extension,
         blockedExtensions: config.blockedExtensions,
@@ -162,11 +164,13 @@ const handleFileUpload = ({
   contentSection,
   headersSection,
   config,
+  logger,
 }: {
   contentDisposition: InternalContentDisposition;
   contentSection: string;
   headersSection: string;
   config?: InternalFileUploadOptions | undefined;
+  logger?: Logger | undefined;
 }): InternalFileUpload => {
   const contentTypeValue = extractSectionContentType(headersSection);
 
@@ -184,7 +188,7 @@ const handleFileUpload = ({
   };
 
   // SECURITY: Validate file against configuration
-  _validateFileUpload(file, config);
+  _validateFileUpload(file, config, logger);
 
   return file;
 };
@@ -205,7 +209,13 @@ const handleFileUpload = ({
  * // Returns { fields: { ... }, files: [...] }
  * ```
  */
-export const parseMultipartFormData = (body: string, boundary: string, config?: InternalFileUploadOptions): InternalMultipartFormData => {
+export const parseMultipartFormData = (
+  body: string,
+  boundary: string,
+  opts?: { config?: InternalFileUploadOptions; logger?: Logger },
+): InternalMultipartFormData => {
+  const config = opts?.config;
+  const _log = opts?.logger ?? log;
   const result: InternalMultipartFormData = {
     fields: {},
     files: [],
@@ -236,7 +246,7 @@ export const parseMultipartFormData = (body: string, boundary: string, config?: 
     if (contentDisposition.filename !== undefined) {
       // SECURITY: Check file count limit
       if (config && result.files.length >= config.maxFiles) {
-        log.warn('[SECURITY] Too many files in upload request', {
+        _log.warn('[SECURITY] Too many files in upload request', {
           fileCount: result.files.length,
           maxFiles: config.maxFiles,
         });
@@ -248,16 +258,16 @@ export const parseMultipartFormData = (body: string, boundary: string, config?: 
         contentSection,
         headersSection,
         config,
+        logger: _log,
       });
 
       totalFileSize += file.size;
 
       // SECURITY: Check total file size
       if (config && totalFileSize > config.maxTotalSize) {
-        log.warn('[SECURITY] Total upload size too large', {
-          totalSize: totalFileSize,
+        _log.warn('[SECURITY] Total upload size too large', {
+          totalSize: _formatBytesForDisplay(totalFileSize),
           limit: config.maxTotalSize,
-          totalSizeMB: Math.round(totalFileSize / 1024 / 1024),
         });
         throw new Error(`Total file size too large: ${totalFileSize} bytes exceeds limit of ${config.maxTotalSize} bytes`);
       }

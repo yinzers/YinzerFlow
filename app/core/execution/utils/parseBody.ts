@@ -6,6 +6,7 @@ import { parseUrlEncodedForm } from '@core/execution/utils/parseUrlEncodedForm.t
 import type { InternalContentType } from '@typedefs/constants/http.js';
 import { inferContentTypeFromString } from '@core/execution/utils/inferContentType.ts';
 import type { InternalBodyParserOptions } from '@typedefs/internal/InternalConfiguration.js';
+import type { Logger } from '@typedefs/public/Logger.js';
 
 /**
  * Options for parsing request body
@@ -25,6 +26,11 @@ export interface ParseBodyOptions {
    * Body parser security configuration
    */
   config?: InternalBodyParserOptions;
+
+  /**
+   * Optional logger for security warnings. Falls back to module-level log.
+   */
+  logger?: Logger | undefined;
 }
 
 /**
@@ -70,7 +76,7 @@ const _validateBodySize = (body: string, mainContentType: string, config: Intern
  * @throws Error if body is too large, malformed, or contains security threats
  */
 export const parseBody = (body: string, options: ParseBodyOptions = {}): unknown => {
-  const { headerContentType, boundary, config } = options;
+  const { headerContentType, boundary, config, logger } = options;
 
   // Handle empty body
   if (!body || !body.trim()) {
@@ -90,12 +96,12 @@ export const parseBody = (body: string, options: ParseBodyOptions = {}): unknown
     if (!config) {
       throw new Error('Body parser configuration is required for JSON parsing');
     }
-    return parseApplicationJson(body, config.json);
+    return parseApplicationJson(body, config.json, logger);
   }
 
   if (mainContentType === contentType.multipart) {
     if (!boundary) throw new Error('Invalid multipart form data: missing boundary');
-    return parseMultipartFormData(body, boundary, config?.fileUploads);
+    return parseMultipartFormData(body, boundary, { config: config?.fileUploads, logger });
   }
 
   if (mainContentType === contentType.form) {

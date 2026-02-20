@@ -72,6 +72,7 @@ export class RequestImpl implements InternalRequestImpl {
         headerContentType: mainContentType,
         boundary,
         config: this._setup._configuration.bodyParser,
+        logger: this._setup._log,
       }),
       query: parseQuery(path),
       params: {}, // Route params will be set in RequestHandlerImpl when route is matched
