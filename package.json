@@ -28,8 +28,6 @@
   "scripts": {
     "test": "bun test --watch --coverage",
     "test:production": "bun test --timeout=5000 --rerun-each=1 --bail --coverage",
-    "clean": "rm -rf lib && rm -rf storage && echo 'Done.'",
-    "build": "bun clean; bun scripts/build.ts",
     "build:watch": "bun scripts/build-watch.ts",
     "lint": "eslint app --fix --quiet --color --cache",
     "lint:format": "prettier --check app",

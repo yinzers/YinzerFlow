@@ -2,11 +2,17 @@
 /**
  * YinzerFlow Release Script
  *
- * Handles version bumping, AI changelog generation, git tagging, and npm publish.
- * Zero external dependencies — uses Bun APIs + fetch for Claude API.
+ * Handles the full release pipeline: pre-flight checks (including quality gates),
+ * version bumping, AI changelog generation, bundle compilation, git tagging, and npm publish.
+ *
+ * Quality checks (lint, tests, spelling, etc.) run BEFORE any mutations, so a failure
+ * never requires rollback. Only bundle compilation, git, and npm steps can trigger rollback.
  *
  * Usage: bun scripts/publish.ts
  */
+
+import dts from 'bun-plugin-dts';
+import { existsSync, mkdirSync } from 'node:fs';
 
 // ─── ANSI Colors ────────────────────────────────────────────────────────────────
 
@@ -55,6 +61,25 @@ const runInherit = (cmd: string[], opts?: { cwd?: string; env?: Record<string, s
   });
   return result.exitCode === 0;
 };
+
+// ─── Build Configuration ────────────────────────────────────────────────────────
+
+const BUILD_CONFIG = {
+  entrypoints: ['./app/index.ts'],
+  outdir: './lib',
+  target: 'node' as const,
+  minify: true,
+  sourcemap: 'external' as const,
+  maxBundleSize: 100_000, // 100KB
+  external: ['redis', 'ioredis', 'typescript'],
+  distFiles: [
+    { src: 'docs', dest: 'lib/docs', type: 'directory' as const },
+    { src: 'CHANGELOG.md', dest: 'lib/CHANGELOG.md', type: 'file' as const },
+    { src: 'LICENSE', dest: 'lib/LICENSE', type: 'file' as const },
+    { src: 'README.md', dest: 'lib/README.md', type: 'file' as const },
+    { src: 'package.json', dest: 'lib/package.json', type: 'file' as const },
+  ],
+} as const;
 
 // ─── Interactive Prompt ─────────────────────────────────────────────────────────
 
@@ -172,7 +197,7 @@ interface PreflightResult {
 const preflight = async (): Promise<PreflightResult> => {
   log.step('Running pre-flight checks');
   let passed = 0;
-  const total = 8;
+  const total = 9;
   let hasApiKey = false;
 
   // 1. Inside git repo
@@ -246,13 +271,30 @@ const preflight = async (): Promise<PreflightResult> => {
   }
   log.success(`[${++passed}/${total}] npm authenticated as ${whoami.stdout}`);
 
+  // 8. Quality checks (lint, tests, formatting, spelling, unused packages)
+  log.dim('Running quality checks (this may take a moment)...');
+  const qualityChecks = [
+    { cmd: ['bun', 'run', 'find-unused-packages'], name: 'Unused packages' },
+    { cmd: ['bun', 'run', 'lint'], name: 'Linter' },
+    { cmd: ['bun', 'run', 'lint:format'], name: 'Code formatting' },
+    { cmd: ['bun', 'run', 'lint:spelling'], name: 'Spelling' },
+    { cmd: ['bun', 'run', 'test:production'], name: 'Tests' },
+  ];
+  for (const { cmd, name } of qualityChecks) {
+    if (!runInherit(cmd)) {
+      log.error(`Quality check failed: ${name}`);
+      process.exit(1);
+    }
+  }
+  log.success(`[${++passed}/${total}] Quality checks passed`);
+
   // Read package.json
   const pkgJson = await Bun.file('package.json').text();
   const pkg = JSON.parse(pkgJson);
   const currentVersion = pkg.version as string;
   const packageName = pkg.name as string;
 
-  // 8. Anthropic API key
+  // 9. Anthropic API key
   if (process.env.ANTHROPIC_API_KEY) {
     hasApiKey = true;
     log.success(`[${++passed}/${total}] Anthropic API key found`);
@@ -455,7 +497,7 @@ const showConfirmation = (opts: {
   }
 
   console.log('');
-  console.log(`  ${c.bold}Steps:${c.reset} bump → changelog → build → commit → tag → push → publish`);
+  console.log(`  ${c.bold}Steps:${c.reset} bump → changelog → compile → commit → tag → push → publish`);
   console.log(line);
 };
 
@@ -469,15 +511,6 @@ const bumpPackageVersion = async (newVersion: string): Promise<void> => {
   pkg.version = newVersion;
   await Bun.write('package.json', JSON.stringify(pkg, null, 2) + '\n');
   log.success(`package.json bumped to ${newVersion}`);
-};
-
-const runBuild = (): void => {
-  log.dim('Running bun run build (quality checks + compile + bundle)...');
-  const ok = runInherit(['bun', 'run', 'build']);
-  if (!ok) {
-    throw new Error('Build failed');
-  }
-  log.success('Build succeeded');
 };
 
 const verifyLibVersion = async (newVersion: string): Promise<void> => {
@@ -620,8 +653,49 @@ const main = async (): Promise<void> => {
     // 2. Write changelog
     await writeChangelog(changelog);
 
-    // 3. Build (quality checks + compile + bundle validation)
-    runBuild();
+    // 3. Build bundle (clean → compile → validate size → copy dist files)
+    log.dim('Cleaning output directory...');
+    run(['rm', '-rf', 'lib']);
+    mkdirSync('lib');
+
+    log.dim('Compiling bundle...');
+    await Bun.build({
+      entrypoints: [...BUILD_CONFIG.entrypoints],
+      outdir: BUILD_CONFIG.outdir,
+      target: BUILD_CONFIG.target,
+      minify: BUILD_CONFIG.minify,
+      sourcemap: BUILD_CONFIG.sourcemap,
+      external: [...BUILD_CONFIG.external],
+      plugins: [
+        dts({
+          output: {
+            noBanner: true,
+            exportReferencedTypes: true,
+          },
+        }),
+      ],
+    });
+
+    const bundleSize = Bun.file('lib/index.js').size;
+    const sizeKB = Math.round(bundleSize / 1024);
+    const maxSizeKB = Math.round(BUILD_CONFIG.maxBundleSize / 1024);
+    if (bundleSize > BUILD_CONFIG.maxBundleSize) {
+      throw new Error(`Bundle size ${sizeKB}KB exceeds ${maxSizeKB}KB limit`);
+    }
+    log.success(`Bundle compiled (${sizeKB}KB / ${maxSizeKB}KB limit)`);
+
+    log.dim('Copying distribution files...');
+    for (const { src, dest, type } of BUILD_CONFIG.distFiles) {
+      if (type === 'directory') {
+        if (!existsSync(dest)) run(['mkdir', '-p', dest]);
+        run(['sh', '-c', `cp -R ${src}/* ${dest}/ 2>/dev/null || true`]);
+        run(['sh', '-c', `rm -rf ${dest}/node_modules ${dest}/bun.lock ${dest}/storage ${dest}/.gitignore 2>/dev/null || true`]);
+      } else {
+        const result = run(['cp', src, dest]);
+        if (!result.ok) log.warn(`Could not copy ${src} to ${dest}`);
+      }
+    }
+    log.success('Distribution files copied');
 
     // 4. Verify lib/package.json has correct version
     await verifyLibVersion(newVersion);
