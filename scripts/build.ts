@@ -40,6 +40,7 @@ const copyFiles = (): void => {
 
   const filesToCopy = [
     { src: 'docs', dest: 'lib/docs', type: 'directory' },
+    { src: 'CHANGELOG.md', dest: 'lib/CHANGELOG.md', type: 'file' },
     { src: 'LICENSE', dest: 'lib/LICENSE', type: 'file' },
     { src: 'README.md', dest: 'lib/README.md', type: 'file' },
     { src: 'package.json', dest: 'lib/package.json', type: 'file' },
