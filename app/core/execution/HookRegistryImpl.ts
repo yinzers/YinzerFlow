@@ -21,10 +21,10 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   _onNotFound: HandlerCallback;
 
   /** Per-instance logger. Reads `this._logger` at call time so it picks up the logger set by YinzerFlow. */
-  private _logger: typeof log = log;
+  private _logger: { info: (...args: Array<unknown>) => void; warn: (...args: Array<unknown>) => void; error: (...args: Array<unknown>) => void } = log;
 
   /** Called by YinzerFlow._configureLogging() to inject the per-instance logger. */
-  setLogger(logger: typeof log): void {
+  setLogger(logger: { info: (...args: Array<unknown>) => void; warn: (...args: Array<unknown>) => void; error: (...args: Array<unknown>) => void }): void {
     this._logger = logger;
   }
 
