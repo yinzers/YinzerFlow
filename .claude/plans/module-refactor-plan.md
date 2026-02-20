@@ -49,8 +49,11 @@ Refactor YinzerFlow's centralized features into self-contained modules following
   - Create `bodyParserHooks.ts`
   - Register in YinzerFlow constructor
 - [ ] **logging Module** (optional)
-  - Core logging options and enhancements (slow logging, response size, memory/network/cpu debug)
-  - Modular debug helpers for security/performance investigation
+  - Already has structured `logging` config block (level, personality, prefix, requests, logger, accessLogger, diagnostics)
+  - Three channels implemented: app logger, access logs, diagnostics monitor
+  - DiagnosticsMonitor already lives in `app/core/modules/diagnostics/`
+  - Refactor would move `_configureLogging()` logic from YinzerFlow.ts into `app/core/modules/logging/`
+  - Diagnostics module would nest under logging module
 
 ### 4. Hook Definition Pattern Analysis - DECIDED
 - **Decision**: Keep as-is

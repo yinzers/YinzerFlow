@@ -69,81 +69,44 @@ Options: `string`
 
 </aside>
 
-### logger — @default <span style="color: #2ecc71">`undefined`</span>
+### logging — @default <span style="color: #2ecc71">`{ level: 'warn', prefix: 'YINZER', personality: true, requests: false }`</span>
 
-Custom logger instance for application logs.
-
-<span style="color: #3498db">**💡 Tip:**</span> Use `createLogger()` to create custom logger instances with different prefixes or log levels.
+Logging configuration — controls app logger, access logs, and diagnostics. Three independent channels under one key.
 
 ```typescript
-import { YinzerFlow, createLogger } from "yinzerflow";
-
-const customLogger = createLogger({ 
-  prefix: "MY-APP", 
-  logLevel: "info" 
-});
+import { YinzerFlow } from "yinzerflow";
 
 const app = new YinzerFlow({
   port: 3000,
-  logger: customLogger,
+  logging: {
+    level: "info",             // 'off' | 'error' | 'warn' | 'info' | 'debug'
+    prefix: "MY-APP",         // Log line prefix: [MY-APP]
+    personality: true,         // Pittsburgh personality phrases
+    requests: true,            // nginx-style access logs
+    logger: winstonLogger,     // Custom app logger (optional)
+    accessLogger: pinoLogger,  // Custom access logger (optional)
+    diagnostics: {             // Framework health monitoring
+      slowRequests: "500ms",
+      largeResponses: "1mb",
+      memory: "30s",
+      eventLoop: "100ms",
+      rateLimits: true,
+    },
+  },
 });
 ```
 
 <aside>
 
-Options: `Logger | undefined`
+Key settings:
 
-- ✅ `undefined`: Uses built-in logger (default)
-- 🎨 `Logger`: Custom logger instance via `createLogger()`
+- 🔊 `level`: Minimum app log level (`'warn'` default)
+- 🏷️ `prefix`: Log line prefix (`'YINZER'` default)
+- 🎭 `personality`: Pittsburgh phrases (`true` default)
+- 📊 `requests`: Access logs on/off (`false` default)
+- 🔧 `diagnostics`: Health monitoring thresholds (all `false` default)
 
-<span style="color: #3498db">🔗 See [Logging Documentation](../core/logging.md) for details</span>
-
-</aside>
-
-### networkLogs — @default <span style="color: #2ecc71">`false`</span>
-
-Enable nginx-style network request/response logging.
-
-<span style="color: #e74c3c">**⚠️ Warning:**</span> Network logs are separate from application logs and can generate significant output in high-traffic scenarios.
-
-```typescript
-const app = new YinzerFlow({
-  port: 3000,
-  networkLogs: true, // Enable network logging
-});
-```
-
-<aside>
-
-Options: `boolean`
-
-- 🔴 `false`: Disabled (default, recommended for production)
-- 🟢 `true`: Enabled (useful for debugging)
-
-</aside>
-
-### networkLogger — @default <span style="color: #2ecc71">`undefined`</span>
-
-Custom logger for network logs (nginx-style request/response logging).
-
-```typescript
-import { YinzerFlow, createLogger } from "yinzerflow";
-
-const networkLogger = createLogger({ prefix: "NETWORK" });
-
-const app = new YinzerFlow({
-  port: 3000,
-  networkLogs: true,
-  networkLogger, // Route network logs to custom logger
-});
-```
-
-<aside>
-
-Options: `Logger | undefined`
-
-- ✅ `undefined`: Uses built-in network logging format (default)
-- 🎨 `Logger`: Custom logger for network logs
+<span style="color: #3498db">🔗 See [Logging Documentation](../core/logging.md) for all options, diagnostic presets, and `createLogger()` usage</span>
 
 </aside>
 
@@ -293,7 +256,7 @@ Options: `TimeString | number`
 
 - ✅ **Use environment variables**: Store configuration in environment variables for different environments
 - 🔒 **Start secure**: Begin with strict limits and relax as needed
-- 📊 **Enable logging**: Use `networkLogs: true` in development for debugging
+- 📊 **Enable logging**: Use `logging: { requests: true }` in development for debugging
 - 🎯 **Validate configuration**: Test configuration before deploying to production
 - 🔑 **Configure proxies**: Set `trustedProxies` for load balancers and CDNs
 - ⚡ **Optimize for use case**: Adjust limits based on your specific workload
@@ -364,7 +327,10 @@ import { YinzerFlow } from "yinzerflow";
 
 const app = new YinzerFlow({
   port: 3000,
-  networkLogs: true, // Verbose request logging
+  logging: {
+    level: "debug",
+    requests: true, // Verbose request logging
+  },
   cors: {
     enabled: true,
     origin: "*", // Allow all origins (DEV ONLY!)
@@ -588,7 +554,10 @@ const app = new YinzerFlow({
   port: parseInt(process.env.PORT || "3000"),
   host: process.env.HOST || "0.0.0.0",
   
-  networkLogs: isDevelopment, // Only in development
+  logging: {
+    level: isDevelopment ? "debug" : "warn",
+    requests: isDevelopment, // Only in development
+  },
   
   cors: {
     enabled: true,

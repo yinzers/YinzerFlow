@@ -1,6 +1,6 @@
 # Session State: yinzerflow
 
-**Last Updated**: 2026-02-19
+**Last Updated**: 2026-02-20
 
 ---
 
@@ -18,18 +18,39 @@
 
 ## Current Context (REPLACE each update)
 
-**Goal**: Fix critical bugs + logging revamp per `.claude/plans/response-bugs-and-logging-revamp.md`
-**Immediate Task**: Phase 2 — Fix information disclosure
+**Goal**: Awaiting commit. All D1/D2/2.4 + audit code fixes applied. 933 tests, lint clean.
+**Immediate Task**: User deciding on docs rewrite (H1) and `logging.requests` rename. Then commit.
 
 **In Progress**:
-- Bug fix plan Phases 2-4 (Phases 0-1 complete, audit fixes complete)
+- Nothing actively in progress — all code fixes done
 
 **Recently Completed** (last 3-5 items):
-- Audit bug fixes: CRLF \r\n, dayjs→cached Date header, afterHooks error flow, no-op try/catch, error handler blame msg, _matchesPattern prefix bug, _shouldRunHook defaults, DRY _applyHookResponse, timer leak, forEach→for..of, "handeling" typo, private→underscore consistency — 904 tests passing
-- Phase 1: Fixed response header bugs — Date/Content-Length now set BEFORE string assembly, Content-Length measures body bytes only, removed duplicate header code from error paths, +5 tests
-- Merged `scripts/build.ts` into `scripts/publish.ts` — quality checks now run in pre-flight (before mutations), build inlined in mutation phase
-- Audit fixes: O(n²) buffer fix, CORS Set optimization, DRY extractions, test infra improvements, dead code cleanup — 899 tests passing
-- Phase 0: TCP stream reassembly fix — buffered TCP data handler in `_handleConnection`, +5 tests
+- Audit fix phase: 12 fixes applied (C1, C2, H2-H6, M3-M5, D2 rename)
+- Audit coordination: 7 agents, 20 findings, coordinated report in .analysis/audit-report.md
+- D1/D2/2.4: Per-instance loggers + Symbol brand — 6 phases
+
+**Audit Fixes Applied**:
+- C1: accessLog singleton → per-instance (accessLog.ts, YinzerFlow.ts)
+- C2: Branded logger mutation → extract output sink, no mutation (YinzerFlow.ts)
+- H2: Regex hoist in sanitizer (sanitize.ts)
+- H3: Pre-sanitize method/path once for both channels (YinzerFlow.ts, DiagnosticsMonitor.ts)
+- H4: Separate access log guard — absorbed into C1 (YinzerFlow.ts)
+- H5: `_formatBytesForDisplay` helper (bytes.ts + 3 consumer files)
+- H6: Format examples in threshold errors (handleCustomConfiguration.ts)
+- M3: Remove redundant ternary (RateLimitConfig.ts)
+- M4: Skip deep-merge keys in shallow merge (handleCustomConfiguration.ts)
+- M5: Unicode BiDi chars in sanitizer (sanitize.ts)
+- D2: `LOGGER_BRAND` → `loggerBrand` rename (5 files)
+
+**Skipped (with reasoning)**:
+- M1: Timer race already mitigated by `_destroyed` flag, closure/sec negligible
+- M2: Changes timestamps local→UTC — behavioral change, not perf fix
+- D3: TypeScript catches unknown keys, not worth it at 0.x
+- D4: User said keep `getStatusEmoji` internal only
+
+**Deferred**:
+- H1: Docs rewrite — `docs/core/logging.md` 88% stale, `docs/configuration/configuration.md` 30% stale
+- D1 discussion: Rename `logging.requests` → `logging.accessLog` — pending user input
 
 ---
 
@@ -45,6 +66,9 @@
 # Test
 bun test
 
+# Lint
+bun run lint
+
 # Build watch
 bun run build:watch
 
@@ -56,14 +80,22 @@ bun run publish:release
 
 ## Active Decisions (append with reasoning)
 
-- [2026-02-17] **Docs consolidation**: Moved loose root MD files into .claude/ structure per project conventions. TODO split into active todos + architecture plan. FUTURE_IDEAS became a plans doc. SECURITY.md was an audit dump, actionable item extracted to todos.
-- [2026-02-19] **Publish script**: Replaced bare-bones `publish.sh` (Docker-based `npm publish` only) with comprehensive `scripts/publish.ts` — zero-dep Bun script with 9 pre-flight checks, semver bumping, AI changelog (Claude Haiku), git tagging, rollback on failure, optional GitHub release. Run via `bun run publish:release`.
+- [2026-02-17] **Docs consolidation**: Moved loose root MD files into .claude/ structure per project conventions.
+- [2026-02-19] **Publish script**: Replaced `publish.sh` with `scripts/publish.ts` — zero-dep Bun script with pre-flight checks, AI changelog, rollback.
+- [2026-02-19] **Logging revamp architecture**: Three channels (app logger, access log, diagnostics). Diagnostics independent of app log level. New `logging` config block replaces flat `networkLogs`/`logger`/`networkLogger`. Breaking change (0.x semver, acceptable).
+- [2026-02-20] **C2 fix approach**: Instead of mutating branded logger state (cross-instance bug), extract the branded logger's underlying output sink and pass it to the per-instance logger. No mutation, same behavior.
+- [2026-02-20] **C1 fix approach**: Removed accessLog module-level singleton. Access log logger now created per-instance in `_configureLogging()` with `_accessLogEnabled` boolean guard.
+- [2026-02-20] **loggerBrand rename**: `LOGGER_BRAND` → `loggerBrand` for project camelCase convention. Internal-only symbol, no public API impact.
+- [2026-02-20] **Audit disagreements**: M1 (timer race) — already mitigated by _destroyed flag. M2 (timestamp) — changes timezone from local to UTC, not just a perf fix. Both rejected with reasoning.
 
 ---
 
 ## Superseded/Archived
 
-- (none yet)
+- [2026-02-20] **External logger ANSI formatting (Path 2)**: Originally designed to format output for external loggers. Replaced with raw delegation — external loggers handle their own formatting.
+- [2026-02-20] **_sanitizeLogField co-located**: Originally defined locally in both YinzerFlow.ts and DiagnosticsMonitor.ts. Superseded by shared util in sanitize.ts.
+- [2026-02-20] **accessLog module singleton**: Module-level mutable singleton replaced by per-instance access log in C1 fix.
+- [2026-02-20] **Branded logger state mutation**: `_configureLogging()` used to mutate user's branded logger state (personality/prefix). Replaced by output sink extraction in C2 fix.
 
 ---
 
@@ -74,3 +106,8 @@ bun run publish:release
 - There are 3 outstanding bugs to verify (IP security, beforeAll route filtering, error info disclosure)
 - Code-indexer path is `/code/development/npm/yinzerflow` (not `/home/patrick/...`)
 - Publish script is at `scripts/publish.ts` — uses Claude Haiku API for changelogs, falls back to raw commits
+- networkLog.ts is deleted — replaced by accessLog.ts
+- `_sanitizeLogField` is shared in `app/core/utils/sanitize.ts`
+- `loggerBrand` (formerly `LOGGER_BRAND`) is the Symbol used for framework logger identification
+- accessLog is now per-instance — no more module-level singleton
+- `_formatBytesForDisplay` in bytes.ts handles auto-unit formatting (B/KB/MB/GB)
