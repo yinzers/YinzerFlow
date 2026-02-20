@@ -3,142 +3,119 @@ import type { LogLevel } from '@typedefs/constants/log.js';
 /**
  * Logger Interface for YinzerFlow.
  *
- * Users can implement this interface to use their own logging system
- * (Winston, Pino, etc.) instead of the built-in YinzerFlow logger.
+ * Any object with `info`, `warn`, and `error` methods satisfies this interface.
+ * Most logging libraries (Winston, Pino, Bunyan, Datadog) work out of the box.
  *
- * ## Logging Levels
+ * ## How It Works
  *
- * - **info**: General application information and status updates
- * - **warn**: Warning messages for potentially problematic situations
- * - **error**: Error messages for failed operations and exceptions
- * - **debug**: Detailed debugging information (optional)
- * - **trace**: Very detailed tracing information (optional)
+ * Pass your logger to `logging.logger` in the framework config. YinzerFlow sends
+ * raw args to your logger — no ANSI formatting, no timestamps. Your logger handles
+ * its own formatting.
  *
- * ## Implementation Requirements
+ * This wires **framework-internal logs** (startup, shutdown, errors, warnings)
+ * to your logger instead of `console`. In your own route handlers, import your
+ * logger directly — you keep the full API (child loggers, serializers, metadata)
+ * and avoid double log-level filtering.
  *
- * - **Required**: `info`, `warn`, `error` methods must be implemented
- * - **Optional**: `debug` and `trace` methods can be omitted
- * - **Arguments**: All methods accept variable arguments for flexible logging
- * - **Return**: Methods should not return values (void)
+ * ## Recommended Setup
+ *
+ * ```
+ * // your-logger.ts — your Winston/Pino/custom logger
+ * import winston from 'winston';
+ * export default winston.createLogger({ ... });
+ *
+ * // app.ts — wire framework logs to your logger
+ * import logger from './your-logger';
+ * const app = new YinzerFlow({
+ *   logging: { logger },  // Framework internal logs → Winston
+ * });
+ *
+ * // routes/*.ts — import YOUR logger, not the framework's
+ * import logger from '../your-logger';
+ * app.get('/api/users', () => {
+ *   logger.info('handling request', { correlationId: '...' });
+ *   return { users: [] };
+ * });
+ * ```
+ *
+ * **Why import your logger directly instead of `import { log } from 'yinzerflow'`?**
+ *
+ * - **Full API**: Winston child loggers, Pino serializers/redaction, structured
+ *   metadata — the framework `log` only exposes `info`/`warn`/`error`/`debug`.
+ * - **No double filtering**: The framework applies its own `logging.level` before
+ *   delegating. If framework level is `'warn'` but your logger is `'info'`,
+ *   `log.info()` through the framework is silently dropped.
+ * - **Ecosystem convention**: Every Winston/Pino guide imports the logger directly.
+ *   `logging.logger` exists to capture framework-internal logs, not to replace
+ *   your logger in your own code.
+ *
+ * ## Two Logger Channels
+ *
+ * - `logging.logger` — receives framework app logs (startup, errors, warnings)
+ * - `logging.accessLogger` — receives per-request access log lines
+ *
+ * ## Required Methods
+ *
+ * - `info`, `warn`, `error` — must be implemented
+ * - `debug` — optional, debug messages are dropped if omitted
  *
  * @example
  * ```typescript
+ * // Winston — pass directly, no wrapper needed
+ * import winston from 'winston';
  * import { YinzerFlow } from 'yinzerflow';
  *
- * // Winston logger implementation
- * import winston from 'winston';
- *
- * const winstonLogger: Logger = {
- *   info: (...args) => winston.info(args.join(' ')),
- *   warn: (...args) => winston.warn(args.join(' ')),
- *   error: (...args) => winston.error(args.join(' ')),
- *   debug: (...args) => winston.debug(args.join(' ')),
- *   trace: (...args) => winston.verbose(args.join(' '))
- * };
+ * const winstonLogger = winston.createLogger({
+ *   level: 'info',
+ *   transports: [new winston.transports.Console()],
+ * });
  *
  * const app = new YinzerFlow({
- *   port: 3000,
- *   logger: winstonLogger
+ *   logging: {
+ *     logger: winstonLogger,        // Framework logs → Winston
+ *     accessLogger: winstonLogger,   // Access logs → Winston (can be separate)
+ *   },
+ * });
+ *
+ * // In route handlers, import your logger directly for the full API:
+ * app.get('/api/users', () => {
+ *   winstonLogger.info('handling request', { correlationId: 'abc' });
+ *   return { users: [] };
  * });
  * ```
  *
  * @example
  * ```typescript
- * // Pino logger implementation
+ * // Pino — same pattern
  * import pino from 'pino';
+ * import { YinzerFlow } from 'yinzerflow';
  *
  * const pinoLogger = pino({ level: 'info' });
  *
- * const logger: Logger = {
- *   info: (...args) => pinoLogger.info(args),
- *   warn: (...args) => pinoLogger.warn(args),
- *   error: (...args) => pinoLogger.error(args),
- *   debug: (...args) => pinoLogger.debug(args)
- * };
- *
  * const app = new YinzerFlow({
- *   port: 3000,
- *   logger
+ *   logging: {
+ *     logger: pinoLogger,
+ *   },
  * });
  * ```
  *
  * @example
  * ```typescript
- * // Console-based custom logger
- * const customLogger: Logger = {
- *   info: (...args) => {
- *     const timestamp = new Date().toISOString();
- *     console.log(`[${timestamp}] [INFO]`, ...args);
- *   },
- *   warn: (...args) => {
- *     const timestamp = new Date().toISOString();
- *     console.warn(`[${timestamp}] [WARN]`, ...args);
- *   },
- *   error: (...args) => {
- *     const timestamp = new Date().toISOString();
- *     console.error(`[${timestamp}] [ERROR]`, ...args);
- *   },
- *   debug: (...args) => {
- *     if (process.env.NODE_ENV === 'development') {
- *       const timestamp = new Date().toISOString();
- *       console.debug(`[${timestamp}] [DEBUG]`, ...args);
- *     }
- *   }
- * };
+ * // Minimal custom logger
+ * import { YinzerFlow } from 'yinzerflow';
  *
  * const app = new YinzerFlow({
- *   port: 3000,
- *   logger: customLogger
+ *   logging: {
+ *     logger: {
+ *       info: (...args) => console.log('[INFO]', ...args),
+ *       warn: (...args) => console.warn('[WARN]', ...args),
+ *       error: (...args) => console.error('[ERROR]', ...args),
+ *     },
+ *   },
  * });
  * ```
  *
- * @example
- * ```typescript
- * // Structured logging with JSON output
- * const structuredLogger: Logger = {
- *   info: (...args) => {
- *     const logEntry = {
- *       timestamp: new Date().toISOString(),
- *       level: 'info',
- *       message: args.map(arg =>
- *         typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
- *       ).join(' '),
- *       args: args
- *     };
- *     console.log(JSON.stringify(logEntry));
- *   },
- *   warn: (...args) => {
- *     const logEntry = {
- *       timestamp: new Date().toISOString(),
- *       level: 'warn',
- *       message: args.map(arg =>
- *         typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
- *       ).join(' '),
- *       args: args
- *     };
- *     console.warn(JSON.stringify(logEntry));
- *   },
- *   error: (...args) => {
- *     const logEntry = {
- *       timestamp: new Date().toISOString(),
- *       level: 'error',
- *       message: args.map(arg =>
- *         typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
- *       ).join(' '),
- *       args: args
- *     };
- *     console.error(JSON.stringify(logEntry));
- *   }
- * };
- *
- * const app = new YinzerFlow({
- *   port: 3000,
- *   logger: structuredLogger
- * });
- * ```
- *
- * @see {@link YinzerFlow} for how to use custom loggers
- * @see {@link ServerOptions} for logger configuration options
+ * @see {@link ServerOptions} for full logging configuration options
  */
 export interface Logger {
   /**
@@ -225,10 +202,23 @@ export interface Logger {
    * ```
    */
   error: (...args: Array<unknown>) => void;
+
+  /**
+   * Logs detailed debugging information.
+   *
+   * Use this level for verbose connection details, internal state,
+   * and information only needed during active debugging.
+   * This method is optional — if not provided on a custom logger,
+   * debug messages will be silently dropped.
+   *
+   * @param args - Variable arguments to log (strings, objects, etc.)
+   */
+  debug?: ((...args: Array<unknown>) => void) | undefined;
 }
 
 export interface LoggerConfig {
-  logLevel?: LogLevel | undefined;
+  level?: LogLevel | undefined;
   prefix?: string | undefined;
-  logger?: { info: (...args: Array<unknown>) => void; warn: (...args: Array<unknown>) => void; error: (...args: Array<unknown>) => void } | undefined;
+  /** @deprecated Use `level` instead. Will be removed in a future version. */
+  logLevel?: LogLevel | undefined;
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { createLogger, log } from '@core/utils/log.js';
-import { getStatusEmoji, logPerformanceDetails, networkLog } from '@core/utils/networkLog.js';
+import { createLogger, log, loggerBrand } from '@core/utils/log.js';
+import { accessLogBaseConfig, getStatusEmoji } from '@core/utils/accessLog.js';
 import type { Logger } from '@typedefs/public/Logger.js';
 
 // Mock console methods to capture output
@@ -8,6 +8,7 @@ const mockConsole = {
   info: mock(() => {}),
   warn: mock(() => {}),
   error: mock(() => {}),
+  debug: mock(() => {}),
 };
 
 describe('YinzerFlow Logging System', () => {
@@ -16,6 +17,7 @@ describe('YinzerFlow Logging System', () => {
     mockConsole.info.mockClear();
     mockConsole.warn.mockClear();
     mockConsole.error.mockClear();
+    mockConsole.debug.mockClear();
 
     // Mock console methods
     global.console = {
@@ -23,6 +25,7 @@ describe('YinzerFlow Logging System', () => {
       info: mockConsole.info,
       warn: mockConsole.warn,
       error: mockConsole.error,
+      debug: mockConsole.debug,
     };
   });
 
@@ -147,7 +150,7 @@ describe('YinzerFlow Logging System', () => {
       });
 
       it('should create logger with custom log level', () => {
-        const customLogger = createLogger({ logLevel: 'error' });
+        const customLogger = createLogger({ level: 'error' });
         customLogger.info('This should not log');
         customLogger.warn('This should not log');
         customLogger.error('This should log');
@@ -178,7 +181,7 @@ describe('YinzerFlow Logging System', () => {
 
     describe('Log Level Filtering', () => {
       it('should respect off level (no logging)', () => {
-        const logger = createLogger({ logLevel: 'off' });
+        const logger = createLogger({ level: 'off' });
         logger.info('Should not log');
         logger.warn('Should not log');
         logger.error('Should not log');
@@ -189,7 +192,7 @@ describe('YinzerFlow Logging System', () => {
       });
 
       it('should respect error level (only errors)', () => {
-        const logger = createLogger({ logLevel: 'error' });
+        const logger = createLogger({ level: 'error' });
         logger.info('Should not log');
         logger.warn('Should not log');
         logger.error('Should log');
@@ -200,7 +203,7 @@ describe('YinzerFlow Logging System', () => {
       });
 
       it('should respect warn level (warnings and errors)', () => {
-        const logger = createLogger({ logLevel: 'warn' });
+        const logger = createLogger({ level: 'warn' });
         logger.info('Should not log');
         logger.warn('Should log');
         logger.error('Should log');
@@ -211,7 +214,7 @@ describe('YinzerFlow Logging System', () => {
       });
 
       it('should respect info level (all messages)', () => {
-        const logger = createLogger({ logLevel: 'info' });
+        const logger = createLogger({ level: 'info' });
         logger.info('Should log');
         logger.warn('Should log');
         logger.error('Should log');
@@ -224,8 +227,8 @@ describe('YinzerFlow Logging System', () => {
 
     describe('Logger State Isolation', () => {
       it('should maintain separate state for different logger instances', () => {
-        const logger1 = createLogger({ prefix: 'LOGGER1', logLevel: 'error' });
-        const logger2 = createLogger({ prefix: 'LOGGER2', logLevel: 'info' });
+        const logger1 = createLogger({ prefix: 'LOGGER1', level: 'error' });
+        const logger2 = createLogger({ prefix: 'LOGGER2', level: 'info' });
 
         logger1.info('Should not log');
         logger2.info('Should log');
@@ -241,50 +244,150 @@ describe('YinzerFlow Logging System', () => {
     });
   });
 
-  describe('Network Logging', () => {
-    describe('networkLog Object', () => {
-      it('should have log property with logger methods', () => {
-        expect(networkLog.log).toBeDefined();
-        expect(typeof networkLog.log.info).toBe('function');
-        expect(typeof networkLog.log.warn).toBe('function');
-        expect(typeof networkLog.log.error).toBe('function');
+  describe('Debug Level', () => {
+    it('should log debug messages when level is debug', () => {
+      const logger = createLogger({ level: 'debug' });
+      logger.debug('Debug message');
+      expect(mockConsole.debug).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not log debug messages at info level', () => {
+      const logger = createLogger({ level: 'info' });
+      logger.debug('Should not appear');
+      expect(mockConsole.debug).not.toHaveBeenCalled();
+    });
+
+    it('should log all levels when set to debug', () => {
+      const logger = createLogger({ level: 'debug' });
+      logger.info('Info');
+      logger.warn('Warn');
+      logger.error('Error');
+      logger.debug('Debug');
+
+      expect(mockConsole.info).toHaveBeenCalledTimes(1);
+      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
+      expect(mockConsole.error).toHaveBeenCalledTimes(1);
+      expect(mockConsole.debug).toHaveBeenCalledTimes(1);
+    });
+
+    it('should include DEBUG tag in output', () => {
+      const logger = createLogger({ level: 'debug' });
+      logger.debug('Test');
+      const [call] = mockConsole.debug.mock.calls;
+      expect(call).toBeDefined();
+      if (call) {
+        const logMessage = call as Array<string>;
+        expect(logMessage[0]).toContain('[DEBUG]');
+      }
+    });
+
+    it('should pass through to custom logger debug method', () => {
+      const customLogger = {
+        info: mock(() => {}),
+        warn: mock(() => {}),
+        error: mock(() => {}),
+        debug: mock(() => {}),
+      };
+      const logger = createLogger({ level: 'debug', logger: customLogger });
+      logger.debug('Test');
+      expect(customLogger.debug).toHaveBeenCalledTimes(1);
+    });
+
+    it('should silently drop debug if custom logger has no debug method', () => {
+      const customLogger = {
+        info: mock(() => {}),
+        warn: mock(() => {}),
+        error: mock(() => {}),
+      };
+      const logger = createLogger({ level: 'debug', logger: customLogger });
+      expect(() => logger.debug('Test')).not.toThrow();
+    });
+  });
+
+  describe('Personality Toggle', () => {
+    it('should include phrases when personality is true (default)', () => {
+      const logger = createLogger({ personality: true });
+      logger.info('Test');
+      const [call] = mockConsole.info.mock.calls;
+      expect(call).toBeDefined();
+      if (call) {
+        const logMessage = call as Array<string>;
+        const lastArg = logMessage[logMessage.length - 1] ?? '';
+        // Should end with a phrase (contains " - ")
+        expect(lastArg).toMatch(/ - /);
+      }
+    });
+
+    it('should not include phrases when personality is false', () => {
+      const logger = createLogger({ personality: false });
+      logger.info('Test');
+      const [call] = mockConsole.info.mock.calls;
+      expect(call).toBeDefined();
+      if (call) {
+        const logMessage = call as Array<string>;
+        const lastArg = logMessage[logMessage.length - 1] ?? '';
+        // Should NOT contain " - " phrase suffix
+        expect(lastArg).not.toMatch(/n'at|yinz|jagoff|what can ya do/);
+      }
+    });
+
+    it('should default to personality enabled', () => {
+      const logger = createLogger();
+      logger.info('Test');
+      const [call] = mockConsole.info.mock.calls;
+      expect(call).toBeDefined();
+      if (call) {
+        const logMessage = call as Array<string>;
+        const lastArg = logMessage[logMessage.length - 1] ?? '';
+        expect(lastArg).toMatch(/ - /);
+      }
+    });
+  });
+
+  describe('Access Logging', () => {
+    describe('accessLogBaseConfig', () => {
+      it('should have ACCESS prefix', () => {
+        expect(accessLogBaseConfig.prefix).toBe('ACCESS');
       });
 
-      it('should have enable method', () => {
-        expect(typeof networkLog.enable).toBe('function');
+      it('should default to level off', () => {
+        expect(accessLogBaseConfig.level).toBe('off');
       });
 
-      it('should use NETWORK prefix by default', () => {
-        // Enable network logging first
-        networkLog.enable();
-        networkLog.log.info('Test message');
+      it('should have personality disabled', () => {
+        expect(accessLogBaseConfig.personality).toBe(false);
+      });
+    });
+
+    describe('per-instance access log creation', () => {
+      it('should create access log with ACCESS prefix when enabled', () => {
+        const accessLogger = createLogger({ ...accessLogBaseConfig, level: 'info' });
+        accessLogger.info('Test message');
         const [call] = mockConsole.info.mock.calls;
         expect(call).toBeDefined();
         if (call) {
           const logMessage = call as Array<string>;
-          expect(logMessage[0]).toContain('[NETWORK]');
+          expect(logMessage[0]).toContain('[ACCESS]');
         }
       });
-    });
 
-    describe('enable Method', () => {
-      it('should enable logging with default configuration', () => {
-        networkLog.enable();
-        networkLog.log.info('Test message');
-        expect(mockConsole.info).toHaveBeenCalledTimes(1);
-      });
-
-      it('should enable logging with custom logger', () => {
+      it('should delegate to custom logger when provided', () => {
         const customLogger: Logger = {
           info: mock(() => {}),
           warn: mock(() => {}),
           error: mock(() => {}),
         };
 
-        networkLog.enable(customLogger);
-        networkLog.log.info('Test message');
+        const accessLogger = createLogger({ ...accessLogBaseConfig, level: 'info', logger: customLogger });
+        accessLogger.info('Test message');
 
         expect(customLogger.info).toHaveBeenCalledTimes(1);
+        expect(mockConsole.info).not.toHaveBeenCalled();
+      });
+
+      it('should not log when level is off (default config)', () => {
+        const accessLogger = createLogger(accessLogBaseConfig);
+        accessLogger.info('Should be silent');
         expect(mockConsole.info).not.toHaveBeenCalled();
       });
     });
@@ -327,121 +430,9 @@ describe('YinzerFlow Logging System', () => {
     });
   });
 
-  describe('Performance Logging', () => {
-    beforeEach(() => {
-      // Reset network log to ensure clean state
-      networkLog.log = createLogger({ prefix: 'NETWORK', logLevel: 'off' });
-      // Enable network logging for performance tests
-      networkLog.enable();
-    });
-
-    it('should log performance details for very fast responses', () => {
-      logPerformanceDetails(25);
-      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('⚡');
-        expect(logMessage[2]).toContain('faster than a Stillers touchdown!');
-      }
-    });
-
-    it('should log performance details for fast responses', () => {
-      logPerformanceDetails(75);
-      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('🔥');
-        expect(logMessage[2]).toContain("smooth as butter n'at!");
-      }
-    });
-
-    it('should log performance details for good responses', () => {
-      logPerformanceDetails(150);
-      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('✅');
-        expect(logMessage[2]).toContain('not bad yinz!');
-      }
-    });
-
-    it('should log performance details for slow responses', () => {
-      logPerformanceDetails(300);
-      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('⚠️');
-        expect(logMessage[2]).toContain("slowin' down a bit there");
-      }
-    });
-
-    it('should log performance details for very slow responses', () => {
-      logPerformanceDetails(750);
-      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('🐌');
-        expect(logMessage[2]).toContain("that's draggin' n'at");
-      }
-    });
-
-    it('should log performance details for extremely slow responses', () => {
-      logPerformanceDetails(1500);
-      expect(mockConsole.warn).toHaveBeenCalledTimes(1);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('💥');
-        expect(logMessage[2]).toContain('what a jagoff response time!');
-      }
-    });
-
-    it('should include response time in milliseconds', () => {
-      logPerformanceDetails(123);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[2]).toContain('123ms');
-      }
-    });
-
-    it('should use NETWORK prefix for performance logging', () => {
-      logPerformanceDetails(100);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[0]).toContain('[NETWORK]');
-      }
-    });
-
-    it('should include warning emoji and timestamp', () => {
-      logPerformanceDetails(200);
-      const [call] = mockConsole.warn.mock.calls;
-      expect(call).toBeDefined();
-      if (call) {
-        const logMessage = call as Array<string>;
-        expect(logMessage[0]).toContain('⚠️');
-        expect(logMessage[0]).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}/);
-      }
-    });
-  });
-
   describe('Error Handling', () => {
     it('should handle invalid log levels gracefully', () => {
-      const logger = createLogger({ logLevel: 'invalid' as any });
+      const logger = createLogger({ level: 'invalid' as any });
       // Should default to info level
       logger.info('Should log');
       expect(mockConsole.info).toHaveBeenCalledTimes(1);
@@ -473,6 +464,45 @@ describe('YinzerFlow Logging System', () => {
         },
       };
       expect(() => log.info('Complex object', complexObject)).not.toThrow();
+    });
+  });
+
+  describe('loggerBrand Symbol', () => {
+    it('should have Symbol brand on created loggers', () => {
+      const logger = createLogger();
+      expect(loggerBrand in logger).toBe(true);
+    });
+
+    it('should expose state via Symbol brand', () => {
+      const logger = createLogger({ level: 'debug', prefix: 'TEST' });
+      const state = logger[loggerBrand];
+      expect(state.level).toBe('debug');
+      expect(state.prefix).toBe('TEST');
+    });
+
+    it('should not match plain objects (unforgeable)', () => {
+      const fakeLogger = {
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+        _state: { level: 'info', prefix: 'FAKE', personality: true },
+      };
+      expect(loggerBrand in fakeLogger).toBe(false);
+    });
+
+    it('should have Symbol brand on default log instance', () => {
+      expect(loggerBrand in log).toBe(true);
+      expect(log[loggerBrand].level).toBe('info');
+    });
+
+    it('should support deprecated logLevel parameter', () => {
+      const logger = createLogger({ logLevel: 'error' });
+      expect(logger[loggerBrand].level).toBe('error');
+    });
+
+    it('should prefer level over logLevel when both provided', () => {
+      const logger = createLogger({ level: 'debug', logLevel: 'error' });
+      expect(logger[loggerBrand].level).toBe('debug');
     });
   });
 });
