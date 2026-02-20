@@ -230,8 +230,8 @@ export class YinzerFlow extends SetupImpl {
     // side effects when the same branded logger was shared between YinzerFlow instances.
     // The per-instance this._log handles its own formatting (prefix, personality).
     let loggerSink = loggingConfig.logger;
-    if (loggerSink && loggerBrand in (loggerSink as Record<string | symbol, unknown>)) {
-      const brandedState = (loggerSink as Record<string | symbol, unknown>)[loggerBrand] as { logger?: typeof loggerSink };
+    if (loggerSink && loggerBrand in (loggerSink as unknown as Record<string | symbol, unknown>)) {
+      const brandedState = (loggerSink as unknown as Record<string | symbol, unknown>)[loggerBrand] as { logger?: typeof loggerSink };
       loggerSink = brandedState.logger ?? undefined;
     }
 
