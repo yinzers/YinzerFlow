@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.14] - 2026-02-20
+
+### Bug Fixes
+
+- **Use correct API key environment variable** — Fixed publish script to reference the proper API key environment variable for changelog generation (c4f420c)
+
+### Internal
+
+- **Enhance preflight checks in publish script** — Refactored preflight validation logic to improve robustness of the publish process (09ad711)
+- **Require API key for changelog generation** — Updated publish configuration to enforce API key presence when generating changelogs (04bfd70)
+
 ## [0.6.13] - 2026-02-20
 
 - ``` 🔧 chore: update progress to Phase 2 (7a55239)
