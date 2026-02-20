@@ -31,29 +31,30 @@ import type {
  * // Basic configuration with logging
  * const app = new YinzerFlow({
  *   port: 8080,
- *   logLevel: 'info',
- *   networkLogs: true
+ *   logging: { level: 'info', requests: true }
  * });
  *
  * // Full configuration example
  * const app = new YinzerFlow({
  *   port: 3000,
  *   host: '0.0.0.0',
- *   logLevel: 'debug',
- *   networkLogs: true,
- *   autoGracefulShutdown: true,
+ *   logging: {
+ *     level: 'debug',
+ *     personality: true,
+ *     requests: true,
+ *     logger: {
+ *       info: (message, ...args) => console.log(`[APP] ${message}`, ...args),
+ *       warn: (message, ...args) => console.warn(`[APP] ${message}`, ...args),
+ *       error: (message, ...args) => console.error(`[APP] ${message}`, ...args),
+ *       debug: (message, ...args) => console.debug(`[APP] ${message}`, ...args)
+ *     }
+ *   },
  *   cors: {
  *     enabled: true,
  *     origin: ['https://example.com', 'https://app.example.com'],
  *     methods: ['GET', 'POST', 'PUT', 'DELETE'],
  *     headers: ['Content-Type', 'Authorization'],
  *     credentials: true
- *   },
- *   logger: {
- *     info: (message, ...args) => console.log(`[APP] ${message}`, ...args),
- *     warn: (message, ...args) => console.warn(`[APP] ${message}`, ...args),
- *     error: (message, ...args) => console.error(`[APP] ${message}`, ...args),
- *     debug: (message, ...args) => console.debug(`[APP] ${message}`, ...args)
  *   }
  * });
  * ```
