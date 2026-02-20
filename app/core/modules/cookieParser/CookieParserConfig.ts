@@ -1,6 +1,7 @@
 import type { CookieParserOptions } from '@typedefs/public/CookieParser.js';
 import { log } from '@core/utils/log.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
+import type { Logger } from '@typedefs/public/Logger.js';
 
 export class CookieParserConfig {
   enabled: boolean;
@@ -8,18 +9,18 @@ export class CookieParserConfig {
   signed: Array<string> | undefined;
   defaults: CookieParserOptions['defaults'] | undefined;
 
-  constructor(config?: CookieParserOptions) {
-    this._validateConfig(config);
+  constructor(config?: CookieParserOptions, logger?: Logger) {
+    this._validateConfig(config, logger ?? log);
     this.enabled = config?.enabled ?? false;
     this.secret = config?.secret;
     this.signed = config?.signed;
     this.defaults = config?.defaults;
   }
 
-  private _validateConfig(config?: CookieParserOptions): void {
+  private _validateConfig(config: CookieParserOptions | undefined, logger: Logger): void {
     if (!config) return;
     _validateCookieConfig(config);
-    _warnCookieConfig(config);
+    _warnCookieConfig(config, logger);
   }
 
   get config(): Partial<CookieParserOptions> {
@@ -201,16 +202,16 @@ const _validateExpires = (options: CookieParserOptions['defaults']): void => {
 /**
  * Issue security warnings for risky cookie configurations
  */
-const _warnCookieConfig = (config: CookieParserOptions): void => {
+const _warnCookieConfig = (config: CookieParserOptions, logger: Logger): void => {
   // Warn if cookie parser is disabled
   if (config.enabled === false) {
-    log.warn('[SECURITY WARNING] Cookie parser is disabled. Cookies will not be parsed or validated. Only disable for special use cases.');
+    logger.warn('[SECURITY WARNING] Cookie parser is disabled. Cookies will not be parsed or validated. Only disable for special use cases.');
   }
 
   // Warn if no secret in production
   const isProduction = process.env.NODE_ENV === 'production';
   if (isProduction && !config.secret) {
-    log.warn(
+    logger.warn(
       '[SECURITY WARNING] No secret provided for cookie signing in production. ' +
         'Cookies will not be signed and cannot be validated for tampering. Consider using a secret.',
     );
@@ -218,7 +219,7 @@ const _warnCookieConfig = (config: CookieParserOptions): void => {
 
   // Warn if default secure is false in production
   if (isProduction && config.defaults?.secure === false) {
-    log.warn(
+    logger.warn(
       '[SECURITY WARNING] cookieParser.defaults.secure is false in production. ' +
         'Cookies will be sent over HTTP, which is insecure. Always use secure cookies in production.',
     );
@@ -226,7 +227,7 @@ const _warnCookieConfig = (config: CookieParserOptions): void => {
 
   // Warn if default httpOnly is false in production
   if (isProduction && config.defaults?.httpOnly === false) {
-    log.warn(
+    logger.warn(
       '[SECURITY WARNING] cookieParser.defaults.httpOnly is false in production. ' +
         'Cookies will be accessible to JavaScript, which increases XSS risk. ' +
         'Only disable httpOnly for cookies that need JavaScript access.',
@@ -235,6 +236,6 @@ const _warnCookieConfig = (config: CookieParserOptions): void => {
 
   // Warn about SameSite=none without secure
   if (config.defaults?.sameSite === 'none' && config.defaults.secure !== true) {
-    log.warn('[SECURITY WARNING] SameSite=none requires secure=true. Browsers will reject cookies with SameSite=none without secure flag.');
+    logger.warn('[SECURITY WARNING] SameSite=none requires secure=true. Browsers will reject cookies with SameSite=none without secure flag.');
   }
 };
