@@ -2,11 +2,11 @@
 /**
  * YinzerFlow Release Script
  *
- * Handles the full release pipeline: pre-flight checks (including quality gates),
- * version bumping, AI changelog generation, bundle compilation, git tagging, and npm publish.
+ * Handles the full release pipeline: pre-flight checks (including quality gates and
+ * bundle compilation), version bumping, AI changelog generation, git tagging, and npm publish.
  *
- * Quality checks (lint, tests, spelling, etc.) run BEFORE any mutations, so a failure
- * never requires rollback. Only bundle compilation, git, and npm steps can trigger rollback.
+ * Quality checks AND bundle compilation run BEFORE any mutations (and before AI credits
+ * are spent), so a TS/lint/test failure never wastes money or requires rollback.
  *
  * Usage: bun scripts/publish.ts
  */
@@ -197,7 +197,7 @@ interface PreflightResult {
 const preflight = async (): Promise<PreflightResult> => {
   log.step('Running pre-flight checks');
   let passed = 0;
-  const total = 10;
+  const total = 11;
   let hasApiKey = false;
 
   // 1. Inside git repo
@@ -287,6 +287,35 @@ const preflight = async (): Promise<PreflightResult> => {
     }
   }
   log.success(`[${++passed}/${total}] Quality checks passed`);
+
+  // 8b. Compile bundle (catches TS errors before AI credits are spent)
+  log.dim('Compiling bundle (type-check + build)...');
+  run(['rm', '-rf', 'lib']);
+  mkdirSync('lib');
+  await Bun.build({
+    entrypoints: [...BUILD_CONFIG.entrypoints],
+    outdir: BUILD_CONFIG.outdir,
+    target: BUILD_CONFIG.target,
+    minify: BUILD_CONFIG.minify,
+    sourcemap: BUILD_CONFIG.sourcemap,
+    external: [...BUILD_CONFIG.external],
+    plugins: [
+      dts({
+        output: {
+          noBanner: true,
+          exportReferencedTypes: true,
+        },
+      }),
+    ],
+  });
+  const preBundleSize = Bun.file('lib/index.js').size;
+  if (preBundleSize > BUILD_CONFIG.maxBundleSize) {
+    const sizeKB = Math.round(preBundleSize / 1024);
+    const maxSizeKB = Math.round(BUILD_CONFIG.maxBundleSize / 1024);
+    log.error(`Bundle size ${sizeKB}KB exceeds ${maxSizeKB}KB limit`);
+    process.exit(1);
+  }
+  log.success(`[${++passed}/${total}] Bundle compiles (${Math.round(preBundleSize / 1024)}KB)`);
 
   // Read package.json
   const pkgJson = await Bun.file('package.json').text();
@@ -527,7 +556,7 @@ const showConfirmation = (opts: {
   }
 
   console.log('');
-  console.log(`  ${c.bold}Steps:${c.reset} bump → changelog → compile → commit → tag → publish → push`);
+  console.log(`  ${c.bold}Steps:${c.reset} bump → changelog → rebuild → commit → tag → publish → push`);
   console.log(line);
 };
 
@@ -692,12 +721,10 @@ const main = async (): Promise<void> => {
     // 2. Write changelog
     await writeChangelog(changelog);
 
-    // 3. Build bundle (clean → compile → validate size → copy dist files)
-    log.dim('Cleaning output directory...');
+    // 3. Rebuild bundle (source already verified in preflight — rebuild for clean lib/)
+    log.dim('Rebuilding bundle...');
     run(['rm', '-rf', 'lib']);
     mkdirSync('lib');
-
-    log.dim('Compiling bundle...');
     await Bun.build({
       entrypoints: [...BUILD_CONFIG.entrypoints],
       outdir: BUILD_CONFIG.outdir,
@@ -714,14 +741,7 @@ const main = async (): Promise<void> => {
         }),
       ],
     });
-
-    const bundleSize = Bun.file('lib/index.js').size;
-    const sizeKB = Math.round(bundleSize / 1024);
-    const maxSizeKB = Math.round(BUILD_CONFIG.maxBundleSize / 1024);
-    if (bundleSize > BUILD_CONFIG.maxBundleSize) {
-      throw new Error(`Bundle size ${sizeKB}KB exceeds ${maxSizeKB}KB limit`);
-    }
-    log.success(`Bundle compiled (${sizeKB}KB / ${maxSizeKB}KB limit)`);
+    log.success('Bundle compiled');
 
     log.dim('Copying distribution files...');
     for (const { src, dest, type } of BUILD_CONFIG.distFiles) {
