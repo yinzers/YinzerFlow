@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- WebSocket upgrade handler temporarily increases file size during Phase 3 integration. Will be extracted to dedicated module in Phase 4 (pub/sub implementation). */
 import { createServer } from 'net';
 import type { Socket } from 'net';
 
@@ -18,6 +19,9 @@ import { CorsConfig } from '@core/modules/cors/CorsConfig.ts';
 import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConfiguration.js';
 import { DiagnosticsMonitor } from '@core/modules/diagnostics/DiagnosticsMonitor.ts';
 import { _sanitizeLogField } from '@core/utils/sanitize.ts';
+import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '@core/modules/websocket/WebSocketHandshake.ts';
+import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
+import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
 /**
  * Maximum overhead allowance for HTTP headers on top of body parser limits (64KB).
@@ -163,6 +167,7 @@ export class YinzerFlow extends SetupImpl {
   private readonly _maxBufferSize: number;
   private _accessLog?: ReturnType<typeof createLogger>;
   private _accessLogEnabled = false;
+  private _wsConnections?: Set<WebSocketConnection>;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
@@ -468,59 +473,24 @@ export class YinzerFlow extends SetupImpl {
     // TCP stream reassembly state — mutable, read/written by data handler
     const chunks: Array<Buffer> = [];
     let totalLength = 0;
-    let headersParsed = false;
-    let expectedBodyLength = 0;
-    let headerEndIndex = -1;
-    let requestDispatched = false;
+
+    const state = { headersParsed: false, expectedBodyLength: 0, headerEndIndex: -1, requestDispatched: false };
 
     socket.on('data', (chunk) => {
-      if (!hasReceivedData) {
-        hasReceivedData = true;
-        const delay = Date.now() - connectionStartTime;
-        if (delay > 100) {
-          this._log.debug(`Delayed data from ${clientAddress} (${delay}ms connection delay)`);
-        }
-      }
-
-      if (requestDispatched) return;
-
-      chunks.push(chunk);
-      totalLength += chunk.length;
-
-      if (totalLength > this._maxBufferSize) {
-        this._rejectOversizedRequest({ socket, clientAddress, totalLength, headersParsed });
-        return;
-      }
-
-      // Header phase: find \r\n\r\n boundary and parse Content-Length
-      if (!headersParsed) {
-        const buffer = Buffer.concat(chunks, totalLength);
-        headerEndIndex = buffer.indexOf('\r\n\r\n');
-
-        if (headerEndIndex === -1) {
-          if (!this._looksLikeHttp(chunks, totalLength, buffer)) {
-            requestDispatched = true;
-            this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
-          }
-          return;
-        }
-
-        headersParsed = true;
-        expectedBodyLength = this._parseContentLength(buffer, headerEndIndex);
-        const bodyStart = headerEndIndex + 4;
-
-        if (buffer.length - bodyStart >= expectedBodyLength) {
-          requestDispatched = true;
-          this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
-        }
-        return;
-      }
-
-      // Body phase: check if accumulated length satisfies Content-Length
-      if (totalLength - (headerEndIndex + 4) >= expectedBodyLength) {
-        requestDispatched = true;
-        this._dispatchRequest({ data: Buffer.concat(chunks, totalLength), socket, requestHandler, clientAddress });
-      }
+      this._handleConnectionData({
+        chunk,
+        socket,
+        requestHandler,
+        clientAddress,
+        connectionStartTime,
+        chunks,
+        state,
+        hasReceivedData: () => hasReceivedData,
+        setHasReceivedData: (val: boolean) => { hasReceivedData = val; },
+        totalLength: () => totalLength,
+        setTotalLength: (val: number) => { totalLength = val; },
+        shouldDispatch: () => state.requestDispatched,
+      });
     });
 
     socket.on('error', (error: Error) => {
@@ -541,6 +511,280 @@ export class YinzerFlow extends SetupImpl {
         this._log.debug(`${clientAddress} disconnected without sending data (${connectionDuration}ms) - potential probe`);
       }
     });
+  }
+
+  /**
+   * Handle a single data chunk in the TCP stream reassembly state machine.
+   */
+  private _handleConnectionData({
+    chunk,
+    socket,
+    requestHandler,
+    clientAddress,
+    connectionStartTime,
+    chunks,
+    state,
+    hasReceivedData,
+    setHasReceivedData,
+    totalLength,
+    setTotalLength,
+    shouldDispatch,
+  }: {
+    chunk: Buffer;
+    socket: Socket;
+    requestHandler: RequestHandlerImpl;
+    clientAddress: string;
+    connectionStartTime: number;
+    chunks: Array<Buffer>;
+    state: { headersParsed: boolean; expectedBodyLength: number; headerEndIndex: number; requestDispatched: boolean };
+    hasReceivedData: () => boolean;
+    setHasReceivedData: (val: boolean) => void;
+    totalLength: () => number;
+    setTotalLength: (val: number) => void;
+    shouldDispatch: () => boolean;
+  }): void {
+    if (!hasReceivedData()) {
+      setHasReceivedData(true);
+      const delay = Date.now() - connectionStartTime;
+      if (delay > 100) {
+        this._log.debug(`Delayed data from ${clientAddress} (${delay}ms connection delay)`);
+      }
+    }
+
+    if (shouldDispatch()) return;
+
+    chunks.push(chunk);
+    setTotalLength(totalLength() + chunk.length);
+
+    if (totalLength() > this._maxBufferSize) {
+      this._rejectOversizedRequest({ socket, clientAddress, totalLength: totalLength(), headersParsed: state.headersParsed });
+      return;
+    }
+
+    // Header phase: find \r\n\r\n boundary and parse Content-Length
+    if (!state.headersParsed) {
+      this._handleHeaderPhase({ chunks, totalLength: totalLength(), state, socket, requestHandler, clientAddress });
+      return;
+    }
+
+    // Body phase: check if accumulated length satisfies Content-Length
+    if (totalLength() - (state.headerEndIndex + 4) >= state.expectedBodyLength) {
+      state.requestDispatched = true;
+      this._dispatchRequest({ data: Buffer.concat(chunks, totalLength()), socket, requestHandler, clientAddress });
+    }
+  }
+
+  /**
+   * Handle the header phase of TCP stream reassembly.
+   */
+  private _handleHeaderPhase({
+    chunks,
+    totalLength,
+    state,
+    socket,
+    requestHandler,
+    clientAddress,
+  }: {
+    chunks: Array<Buffer>;
+    totalLength: number;
+    state: { headersParsed: boolean; expectedBodyLength: number; headerEndIndex: number; requestDispatched: boolean };
+    socket: Socket;
+    requestHandler: RequestHandlerImpl;
+    clientAddress: string;
+  }): void {
+    const buffer = Buffer.concat(chunks, totalLength);
+    state.headerEndIndex = buffer.indexOf('\r\n\r\n');
+
+    if (state.headerEndIndex === -1) {
+      if (!this._looksLikeHttp(chunks, totalLength, buffer)) {
+        state.requestDispatched = true;
+        this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
+      }
+      return;
+    }
+
+    state.headersParsed = true;
+
+    // WebSocket upgrade check — before body assembly (zero overhead when no WS routes)
+    if (this._wsRouter._hasRoutes()) {
+      const headersStr = buffer.subarray(0, state.headerEndIndex).toString();
+      if (_isWebSocketUpgrade(headersStr)) {
+        state.requestDispatched = true;
+        this._handleWebSocketUpgrade(buffer, socket, clientAddress);
+        return;
+      }
+    }
+
+    state.expectedBodyLength = this._parseContentLength(buffer, state.headerEndIndex);
+    const bodyStart = state.headerEndIndex + 4;
+
+    if (buffer.length - bodyStart >= state.expectedBodyLength) {
+      state.requestDispatched = true;
+      this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
+    }
+  }
+
+  /**
+   * Handle a WebSocket upgrade request. Validates handshake, matches route,
+   * calls upgrade handler, sends 101, and creates the connection.
+   */
+  private _handleWebSocketUpgrade(buffer: Buffer, socket: Socket, clientAddress: string): void {
+    this._handleWebSocketUpgradeAsync(buffer, socket, clientAddress).catch((error: unknown) =>
+      this._handleRequestError(error, clientAddress, socket),
+    );
+  }
+
+  private async _handleWebSocketUpgradeAsync(buffer: Buffer, socket: Socket, clientAddress: string): Promise<void> {
+    const headerEndIndex = buffer.indexOf('\r\n\r\n');
+    const headersStr = buffer.subarray(0, headerEndIndex).toString();
+
+    const validation = _validateHandshake(headersStr);
+    if (!validation.valid) {
+      this._sendHttpError(socket, 400, validation.reason);
+      return;
+    }
+
+    const match = this._wsRouter._match(validation.path);
+    if (!match) {
+      this._sendHttpError(socket, 404, 'No WebSocket route matches this path');
+      return;
+    }
+
+    const upgradeRequest = {
+      headers: this._parseHeadersMap(headersStr),
+      path: validation.path,
+      query: validation.query,
+      params: match.params,
+      remoteAddress: clientAddress,
+    };
+
+    const data = match.handlers.upgrade ? await match.handlers.upgrade(upgradeRequest) : undefined;
+    if (data === false) {
+      this._sendHttpError(socket, 403, 'WebSocket upgrade rejected');
+      return;
+    }
+
+    // Send 101 handshake response
+    const acceptKey = _generateAcceptKey(validation.key);
+    socket.write(_buildHandshakeResponse(acceptKey));
+
+    // Remove HTTP listeners — WebSocketConnection will add its own
+    socket.removeAllListeners();
+
+    // Merge per-route options with global WS config
+    const wsConfig = this._configuration.websocket;
+    const routeOpts = match.options;
+    const connectionOptions = {
+      maxPayloadLength: routeOpts?.maxPayloadLength ?? wsConfig.maxPayloadLength,
+      idleTimeout: routeOpts?.idleTimeout ?? wsConfig.idleTimeout,
+      backpressure: {
+        strategy: routeOpts?.backpressure?.strategy ?? wsConfig.backpressure.strategy,
+        limit: routeOpts?.backpressure?.limit ?? wsConfig.backpressure.limit,
+      },
+    };
+
+    // Wrap handlers with WS lifecycle hooks
+    const wrappedHandlers = this._wrapWsHandlers(match.handlers);
+
+    const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
+
+    // Track connection (lazy Set allocation)
+    this._wsConnections ??= new Set();
+    this._wsConnections.add(connection);
+
+    // Clean up on close — use the original handlers.close, not wrapped (wrapped already calls it)
+    const originalClose = wrappedHandlers.close;
+    wrappedHandlers.close = (ws, code, reason): void => {
+      this._wsConnections?.delete(connection);
+      originalClose?.(ws, code, reason);
+    };
+
+    this._log.debug(`WebSocket connection established from ${clientAddress} on ${validation.path}`);
+    match.handlers.open?.(connection as never);
+  }
+
+  /**
+   * Wrap WebSocket handlers with wsBeforeMessage/wsAfterMessage hooks.
+   */
+  private _wrapWsHandlers(handlers: WebSocketHandlers): WebSocketHandlers {
+    const hasBeforeHooks = this._hooks._wsBeforeMessage.size > 0;
+    const hasAfterHooks = this._hooks._wsAfterMessage.size > 0;
+
+    if (!hasBeforeHooks && !hasAfterHooks) {
+      return handlers;
+    }
+
+    return {
+      ...handlers,
+      message: (ws, messageData, isBinary): void => {
+        // Fire-and-forget async handler to match void return type signature
+        void (async (): Promise<void> => {
+          for (const hook of this._hooks._wsBeforeMessage) {
+            const result = hook.handler(ws, messageData, isBinary);
+            if (result && typeof result === 'object' && 'catch' in result) {
+              await result;
+            }
+          }
+          handlers.message?.(ws, messageData, isBinary);
+          for (const hook of this._hooks._wsAfterMessage) {
+            const hookResult = hook.handler(ws, messageData, isBinary);
+            if (hookResult && typeof hookResult === 'object' && 'catch' in hookResult) {
+              await hookResult;
+            }
+          }
+        })().catch((error: unknown) => {
+          this._log.error('Error in WebSocket message handler hooks:', error);
+        });
+      },
+    };
+  }
+
+  /**
+   * Parse raw headers string into a Record (lowercased keys).
+   */
+  private _parseHeadersMap(headersStr: string): Record<string, string> {
+    const headers: Record<string, string> = {};
+    const lines = headersStr.split('\r\n');
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      const colonIndex = line.indexOf(':');
+      if (colonIndex < 0) continue;
+      headers[line.substring(0, colonIndex).trim().toLowerCase()] = line.substring(colonIndex + 1).trim();
+    }
+    return headers;
+  }
+
+  /**
+   * Send an HTTP error response on a socket and destroy it.
+   */
+  private _sendHttpError(socket: Socket, statusCode: number, message: string): void {
+    const body = JSON.stringify({ error: message });
+    const statusTextMap: Record<number, string> = {
+      400: 'Bad Request',
+      403: 'Forbidden',
+      404: 'Not Found',
+    };
+    const statusText = statusTextMap[statusCode] ?? 'Error';
+    socket.write(
+      `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
+      `Content-Type: application/json\r\n` +
+      `Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n` +
+      `Connection: close\r\n\r\n${body}`,
+    );
+    socket.destroy();
+  }
+
+  /** Publish a message to all subscribers of a WebSocket channel. Returns recipient count. */
+  publish(_channel: string, _data: Buffer | string): number {
+    // Wired in Phase 4 by WebSocketChannelManager
+    return 0;
+  }
+
+  /** Get the number of subscribers on a WebSocket channel. */
+  subscriberCount(_channel: string): number {
+    // Wired in Phase 4 by WebSocketChannelManager
+    return 0;
   }
 
   async listen(): Promise<void> {
@@ -572,6 +816,14 @@ export class YinzerFlow extends SetupImpl {
     if (this._diagnostics) {
       this._diagnostics.destroy();
       this._diagnostics = undefined;
+    }
+
+    // Close all active WebSocket connections gracefully
+    if (this._wsConnections?.size) {
+      for (const conn of this._wsConnections) {
+        conn.close(1001, 'Server shutting down');
+      }
+      this._wsConnections.clear();
     }
 
     return new Promise((resolve) => {

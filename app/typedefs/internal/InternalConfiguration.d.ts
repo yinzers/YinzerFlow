@@ -357,6 +357,33 @@ export interface InternalServerOptions {
    * @default true
    */
   gracefulShutdownTimeout: TimeString | number;
+
+  /**
+   * WebSocket configuration — controls max payload, idle timeout, connection limits, and backpressure.
+   * Only takes effect when `app.ws()` routes are registered (zero overhead otherwise).
+   */
+  websocket: InternalWebSocketOptions;
+}
+
+/**
+ * Internal WebSocket Configuration
+ */
+export interface InternalWebSocketOptions {
+  /** Maximum incoming message payload in bytes. @default 16777216 (16MB) */
+  maxPayloadLength: number;
+  /** Seconds of inactivity before closing. 0 = no timeout. @default 120 */
+  idleTimeout: number;
+  /** Maximum concurrent WebSocket connections per IP. @default 50 */
+  maxConnectionsPerIp: number;
+  /** Allowed origins for upgrade requests. Empty = allow all. @default [] */
+  allowedOrigins: Array<string>;
+  /** Backpressure handling when clients can't keep up. */
+  backpressure: {
+    /** 'buffer' (queue up to limit, safe default) or 'drop' (discard, for real-time data). @default 'buffer' */
+    strategy: 'buffer' | 'drop';
+    /** Max queued bytes before closing connection (buffer strategy only). @default 1048576 (1MB) */
+    limit: number;
+  };
 }
 
 /**

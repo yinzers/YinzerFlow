@@ -2,6 +2,7 @@ import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookR
 import type { HandlerCallback } from '@typedefs/public/Context.ts';
 import type { InternalGroupApp } from '@core/setup/GroupApp.js';
 import type { HttpMethodHandlers, RouteGroupMethod } from '@core/setup/utils/routeUtils.js';
+import type { WebSocketHandlers, WebSocketMessageHook, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 /**
  * Route group instance that provides HTTP method handlers and nested group support.
@@ -334,4 +335,20 @@ export interface Setup extends HttpMethodHandlers {
    * @see {@link HandlerCallback} for not-found handler function signature
    */
   onNotFound: (handler: HandlerCallback) => void;
+
+  /**
+   * Register a WebSocket route.
+   *
+   * @template T - Per-socket data shape returned from the upgrade handler
+   * @param path - URL path for WebSocket connections (e.g., '/ws', '/chat/:room')
+   * @param handlers - Lifecycle handlers (upgrade, open, message, close, error, drain)
+   * @param options - Per-route options that override global websocket config
+   */
+  ws: <T = unknown>(path: string, handlers: WebSocketHandlers<T>, options?: WebSocketRouteOptions) => void;
+
+  /** Register global hooks that run before each WebSocket message handler. */
+  wsBeforeMessage: (handlers: Array<WebSocketMessageHook>) => void;
+
+  /** Register global hooks that run after each WebSocket message handler. */
+  wsAfterMessage: (handlers: Array<WebSocketMessageHook>) => void;
 }

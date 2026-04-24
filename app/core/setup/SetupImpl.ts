@@ -12,11 +12,14 @@ import { GroupApp } from '@core/setup/GroupApp.ts';
 import { ensureCompleteRouteOptions } from '@core/setup/utils/routeUtils.js';
 import type { RouteGroup } from '@typedefs/public/Setup.js';
 import { log } from '@core/utils/log.ts';
+import { WebSocketRouter } from '@core/modules/websocket/WebSocketRouter.ts';
+import type { WebSocketHandlers, WebSocketMessageHook, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 export class SetupImpl implements InternalSetupImpl {
   readonly _configuration: InternalServerOptions;
   readonly _routeRegistry = new RouteRegistryImpl();
   readonly _hooks = new HookRegistryImpl();
+  readonly _wsRouter = new WebSocketRouter();
   /** Per-instance logger. Defaults to module-level `log`, replaced by `_configureLogging()` in YinzerFlow. */
   _log: typeof log = log;
 
@@ -94,5 +97,18 @@ export class SetupImpl implements InternalSetupImpl {
 
   onNotFound(handler: HandlerCallback<any>): void {
     this._hooks._addOnNotFound(handler);
+  }
+
+  //   ===== WebSocket Registration =====
+  ws<T = unknown>(path: string, handlers: WebSocketHandlers<T>, options?: WebSocketRouteOptions): void {
+    this._wsRouter._register(path, handlers as WebSocketHandlers, options);
+  }
+
+  wsBeforeMessage(handlers: Array<WebSocketMessageHook>): void {
+    this._hooks._addWsBeforeMessageHooks(handlers);
+  }
+
+  wsAfterMessage(handlers: Array<WebSocketMessageHook>): void {
+    this._hooks._addWsAfterMessageHooks(handlers);
   }
 }

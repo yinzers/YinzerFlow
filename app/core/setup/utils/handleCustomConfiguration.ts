@@ -1,5 +1,6 @@
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
-import type { InternalLoggingOptions, InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
+import type { InternalLoggingOptions, InternalServerOptions, InternalWebSocketOptions } from '@typedefs/internal/InternalConfiguration.js';
+import { DEFAULT_WEBSOCKET_CONFIG, _validateWebSocketConfig, _warnWebSocketConfig } from '@core/modules/websocket/WebSocketConfig.ts';
 import { log, loggerBrand } from '@core/utils/log.ts';
 import { logLevels } from '@constants/log.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
@@ -80,6 +81,7 @@ const DEFAULT_CONFIGURATION: InternalServerOptions = {
   logging: DEFAULT_LOGGING_CONFIG,
   bodyParser: DEFAULT_BODY_PARSER_CONFIG,
   ipSecurity: DEFAULT_IP_SECURITY_CONFIG,
+  websocket: DEFAULT_WEBSOCKET_CONFIG,
 };
 
 /**
@@ -348,7 +350,7 @@ const VALID_LOG_LEVELS = new Set(Object.values(logLevels));
  * These are skipped during the shallow merge pass to avoid clobbering the
  * deep-merged result with a raw user-provided value.
  */
-const DEEP_MERGE_KEYS = new Set(['logging', 'bodyParser', 'ipSecurity']);
+const DEEP_MERGE_KEYS = new Set(['logging', 'bodyParser', 'ipSecurity', 'websocket']);
 
 /**
  * Validate a single diagnostic threshold field (TimeString or ByteString).
@@ -425,6 +427,25 @@ const _handleLoggingConfig = (defaultConfig: InternalServerOptions, userConfig?:
 };
 
 /**
+ * Handle WebSocket configuration merging and validation
+ */
+const _handleWebSocketConfig = (defaultConfig: InternalServerOptions, userConfig?: ServerOptions): void => {
+  if (userConfig?.websocket) {
+    const merged: InternalWebSocketOptions = {
+      ...DEFAULT_WEBSOCKET_CONFIG,
+      ...userConfig.websocket,
+      backpressure: {
+        ...DEFAULT_WEBSOCKET_CONFIG.backpressure,
+        ...userConfig.websocket.backpressure,
+      },
+    };
+    defaultConfig.websocket = merged;
+    _validateWebSocketConfig(merged);
+    _warnWebSocketConfig(merged);
+  }
+};
+
+/**
  * Handle custom configuration
  */
 export const handleCustomConfiguration = (configuration?: ServerOptions): InternalServerOptions => {
@@ -445,6 +466,7 @@ export const handleCustomConfiguration = (configuration?: ServerOptions): Intern
   _handleLoggingConfig(result, configuration);
   _handleBodyParserConfig(result, configuration);
   _handleIpSecurityConfig(result, configuration);
+  _handleWebSocketConfig(result, configuration);
   _validatePort(result, configuration);
 
   return result;

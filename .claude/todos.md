@@ -23,14 +23,14 @@ See `.claude/plans/websocket-plan.md` for full plan.
 - [x] 2.3 Handshake unit tests (RFC test vector, edge cases) — 19 tests
 - [x] 2.4 Connection unit tests (lifecycle, fragments, backpressure) — 28 tests
 
-### Phase 3: YinzerFlow Integration + Hook System
-- [ ] 3.1 WebSocketRouter.ts (path matching reusing existing utils)
-- [ ] 3.2 WebSocketConfig.ts (defaults, validation, warnings)
-- [ ] 3.3 Hook registry: add WS hook sets (wsBeforeMessage, wsAfterMessage)
-- [ ] 3.4 SetupImpl: add ws(), wsBeforeMessage(), wsAfterMessage()
-- [ ] 3.5 InternalConfiguration: add InternalWebSocketOptions
-- [ ] 3.6 handleCustomConfiguration: WS defaults + validation
-- [ ] 3.7 YinzerFlow: upgrade detection, beforeRouting on upgrade, WS dispatch, graceful shutdown
+### Phase 3: YinzerFlow Integration + Hook System — COMPLETE ✓
+- [x] 3.1 WebSocketRouter.ts (exact + parameterized path matching)
+- [x] 3.2 WebSocketConfig.ts (defaults, validation, warnings)
+- [x] 3.3 Hook registry: WS hook sets (wsBeforeMessage, wsAfterMessage)
+- [x] 3.4 SetupImpl: ws(), wsBeforeMessage(), wsAfterMessage()
+- [x] 3.5 InternalConfiguration: InternalWebSocketOptions
+- [x] 3.6 handleCustomConfiguration: WS defaults + deep merge + validation
+- [x] 3.7 YinzerFlow: upgrade detection, WS dispatch, connection tracking, graceful shutdown, WS hook wrapping
 
 ### Phase 4: Pub/Sub with Encode-Once Broadcast
 - [ ] 4.1 WebSocketChannelManager.ts (subscribe, unsubscribe, publish, encode-once)
