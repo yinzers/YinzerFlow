@@ -154,12 +154,7 @@ export const _generateAcceptKey = (clientKey: string): string =>
  * Build the HTTP 101 Switching Protocols response string.
  */
 export const _buildHandshakeResponse = (acceptKey: string, protocol?: string): string => {
-  const lines = [
-    'HTTP/1.1 101 Switching Protocols',
-    'Upgrade: websocket',
-    'Connection: Upgrade',
-    `Sec-WebSocket-Accept: ${acceptKey}`,
-  ];
+  const lines = ['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${acceptKey}`];
 
   if (protocol) {
     lines.push(`Sec-WebSocket-Protocol: ${protocol}`);

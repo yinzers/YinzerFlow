@@ -154,8 +154,7 @@ export class WebSocketConnection<T = unknown> {
     this._resetIdleTimeout();
 
     // Append chunk to receive buffer
-    this._receiveBuffer =
-      this._receiveBuffer.length === 0 ? Buffer.from(chunk) : Buffer.concat([this._receiveBuffer, chunk]);
+    this._receiveBuffer = this._receiveBuffer.length === 0 ? Buffer.from(chunk) : Buffer.concat([this._receiveBuffer, chunk]);
 
     // Parse all complete frames in the buffer
     let offset = 0;

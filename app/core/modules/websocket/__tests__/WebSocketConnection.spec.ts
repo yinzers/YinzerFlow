@@ -24,12 +24,7 @@ const createConnection = (
   options = defaultOptions,
 ): { conn: WebSocketConnection<{ testId: string }>; socket: MockSocket } => {
   const socket = new MockSocket();
-  const conn = new WebSocketConnection(
-    socket as any,
-    { testId: 'test-123' },
-    handlers,
-    options,
-  );
+  const conn = new WebSocketConnection(socket as any, { testId: 'test-123' }, handlers, options);
   return { conn, socket };
 };
 
@@ -232,10 +227,7 @@ describe('WebSocketConnection', () => {
   describe('max payload', () => {
     it('should close connection when frame exceeds max payload', () => {
       const closeFn = mock(() => {});
-      const { socket } = createConnection(
-        { close: closeFn },
-        { ...defaultOptions, maxPayloadLength: 100 },
-      );
+      const { socket } = createConnection({ close: closeFn }, { ...defaultOptions, maxPayloadLength: 100 });
 
       const oversized = buildClientFrame(wsOpcode.text, Buffer.alloc(200, 0x41));
       socket.emit('data', oversized);
@@ -260,10 +252,13 @@ describe('WebSocketConnection', () => {
     });
 
     it('should drop messages with drop strategy when backpressured', () => {
-      const { conn, socket } = createConnection({}, {
-        ...defaultOptions,
-        backpressure: { strategy: 'drop', limit: 0 },
-      });
+      const { conn, socket } = createConnection(
+        {},
+        {
+          ...defaultOptions,
+          backpressure: { strategy: 'drop', limit: 0 },
+        },
+      );
 
       socket.simulateBackpressure();
       conn.send('first'); // causes backpressure
@@ -287,10 +282,13 @@ describe('WebSocketConnection', () => {
     });
 
     it('should close connection when buffer limit exceeded', () => {
-      const { conn, socket } = createConnection({}, {
-        ...defaultOptions,
-        backpressure: { strategy: 'buffer', limit: 10 },
-      });
+      const { conn, socket } = createConnection(
+        {},
+        {
+          ...defaultOptions,
+          backpressure: { strategy: 'buffer', limit: 10 },
+        },
+      );
 
       socket.simulateBackpressure();
       conn.send('first message causes backpressure');

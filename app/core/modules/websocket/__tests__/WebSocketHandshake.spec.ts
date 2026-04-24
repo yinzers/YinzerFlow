@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  _buildHandshakeResponse,
-  _generateAcceptKey,
-  _isWebSocketUpgrade,
-  _validateHandshake,
-} from '../WebSocketHandshake.ts';
+import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '../WebSocketHandshake.ts';
 
 const validUpgradeHeaders = [
   'GET /chat?room=lobby HTTP/1.1',
@@ -65,12 +60,7 @@ describe('_validateHandshake', () => {
   });
 
   it('should fail when Sec-WebSocket-Key is missing', () => {
-    const headers = [
-      'GET / HTTP/1.1',
-      'Upgrade: websocket',
-      'Connection: Upgrade',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['GET / HTTP/1.1', 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(false);
@@ -79,13 +69,9 @@ describe('_validateHandshake', () => {
   });
 
   it('should fail when Sec-WebSocket-Key decodes to wrong length', () => {
-    const headers = [
-      'GET / HTTP/1.1',
-      'Upgrade: websocket',
-      'Connection: Upgrade',
-      'Sec-WebSocket-Key: dG9vc2hvcnQ=',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['GET / HTTP/1.1', 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Key: dG9vc2hvcnQ=', 'Sec-WebSocket-Version: 13'].join(
+      '\r\n',
+    );
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(false);
@@ -109,12 +95,7 @@ describe('_validateHandshake', () => {
   });
 
   it('should fail when Sec-WebSocket-Version is missing', () => {
-    const headers = [
-      'GET / HTTP/1.1',
-      'Upgrade: websocket',
-      'Connection: Upgrade',
-      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-    ].join('\r\n');
+    const headers = ['GET / HTTP/1.1', 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=='].join('\r\n');
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(false);
@@ -134,11 +115,7 @@ describe('_validateHandshake', () => {
   });
 
   it('should extract path without query string', () => {
-    const headers = [
-      'GET /simple-path HTTP/1.1',
-      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['GET /simple-path HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(true);
@@ -148,11 +125,9 @@ describe('_validateHandshake', () => {
   });
 
   it('should parse multiple query parameters', () => {
-    const headers = [
-      'GET /ws?user=alice&token=abc123&mode=fast HTTP/1.1',
-      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['GET /ws?user=alice&token=abc123&mode=fast HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join(
+      '\r\n',
+    );
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(true);
@@ -162,11 +137,7 @@ describe('_validateHandshake', () => {
   });
 
   it('should return empty protocols when header is absent', () => {
-    const headers = [
-      'GET / HTTP/1.1',
-      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['GET / HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(true);
@@ -175,11 +146,7 @@ describe('_validateHandshake', () => {
   });
 
   it('should return undefined origin when header is absent', () => {
-    const headers = [
-      'GET / HTTP/1.1',
-      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['GET / HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(true);
@@ -193,11 +160,7 @@ describe('_validateHandshake', () => {
   });
 
   it('should fail on non-GET request', () => {
-    const headers = [
-      'POST / HTTP/1.1',
-      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-      'Sec-WebSocket-Version: 13',
-    ].join('\r\n');
+    const headers = ['POST / HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
     const result = _validateHandshake(headers);
     expect(result.valid).toBe(false);

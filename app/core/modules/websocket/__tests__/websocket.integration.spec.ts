@@ -33,7 +33,12 @@ const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', ori
 /**
  * Connect a raw TCP socket, send upgrade, wait for 101 or error response.
  */
-const connectWs = async (testPort: number, path = '/ws', key = 'dGhlIHNhbXBsZSBub25jZQ==', origin?: string): Promise<{
+const connectWs = async (
+  testPort: number,
+  path = '/ws',
+  key = 'dGhlIHNhbXBsZSBub25jZQ==',
+  origin?: string,
+): Promise<{
   socket: net.Socket;
   response: string;
 }> =>
@@ -101,9 +106,7 @@ describe('WebSocket Integration', () => {
       const { socket, response } = await connectWs(testPort);
       expect(response).toContain('101 Switching Protocols');
 
-      const expectedAccept = createHash('sha1')
-        .update(`dGhlIHNhbXBsZSBub25jZQ==${wsMagicGuid}`)
-        .digest('base64');
+      const expectedAccept = createHash('sha1').update(`dGhlIHNhbXBsZSBub25jZQ==${wsMagicGuid}`).digest('base64');
       expect(response).toContain(`Sec-WebSocket-Accept: ${expectedAccept}`);
 
       // Send a text message

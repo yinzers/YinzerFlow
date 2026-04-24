@@ -80,16 +80,15 @@ export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketPa
   // Not enough data for the full frame yet
   if (available < totalFrameSize) return null;
 
-  const payload = masked
-    ? ((): Buffer => {
-      const maskKeyOffset = offset + headerSize - 4;
-      const maskKey = buffer.subarray(maskKeyOffset, maskKeyOffset + 4);
-      const unmaskedPayload = Buffer.from(
-        buffer.subarray(offset + headerSize, offset + totalFrameSize),
-      );
-      _unmask(unmaskedPayload, maskKey);
-      return unmaskedPayload;
-    })()
+  const payload =
+    masked ?
+      ((): Buffer => {
+        const maskKeyOffset = offset + headerSize - 4;
+        const maskKey = buffer.subarray(maskKeyOffset, maskKeyOffset + 4);
+        const unmaskedPayload = Buffer.from(buffer.subarray(offset + headerSize, offset + totalFrameSize));
+        _unmask(unmaskedPayload, maskKey);
+        return unmaskedPayload;
+      })()
     : Buffer.from(buffer.subarray(offset + headerSize, offset + totalFrameSize));
 
   return {
@@ -157,21 +156,22 @@ export const _encodeFrame = (opcode: number, payload: Buffer, fin = true): Buffe
  * Total payload must be ≤125 bytes (control frame limit per RFC 6455 §5.5).
  */
 export const _encodeCloseFrame = (code: number, reason?: string): Buffer => {
-  const payload = reason
-    ? ((): Buffer => {
-      const reasonBytes = Buffer.from(reason, 'utf8');
-      // Truncate reason to fit within 125-byte control frame payload limit (2 bytes for code)
-      const maxReasonLength = Math.min(reasonBytes.length, 123);
-      const buf = Buffer.allocUnsafe(2 + maxReasonLength);
-      buf.writeUInt16BE(code, 0);
-      reasonBytes.copy(buf, 2, 0, maxReasonLength);
-      return buf;
-    })()
+  const payload =
+    reason ?
+      ((): Buffer => {
+        const reasonBytes = Buffer.from(reason, 'utf8');
+        // Truncate reason to fit within 125-byte control frame payload limit (2 bytes for code)
+        const maxReasonLength = Math.min(reasonBytes.length, 123);
+        const buf = Buffer.allocUnsafe(2 + maxReasonLength);
+        buf.writeUInt16BE(code, 0);
+        reasonBytes.copy(buf, 2, 0, maxReasonLength);
+        return buf;
+      })()
     : ((): Buffer => {
-      const buf = Buffer.allocUnsafe(2);
-      buf.writeUInt16BE(code, 0);
-      return buf;
-    })();
+        const buf = Buffer.allocUnsafe(2);
+        buf.writeUInt16BE(code, 0);
+        return buf;
+      })();
 
   return _encodeFrame(OPCODE_CLOSE, payload);
 };

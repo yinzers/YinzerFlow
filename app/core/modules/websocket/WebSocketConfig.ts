@@ -47,17 +47,18 @@ export const _validateWebSocketConfig = (config: InternalWebSocketConfig): void 
  * Issue security warnings for risky WebSocket configurations.
  */
 export const _warnWebSocketConfig = (config: InternalWebSocketConfig): void => {
-  if (config.maxPayloadLength > 67_108_864) { // 64MB
+  if (config.maxPayloadLength > 67_108_864) {
+    // 64MB
     log.warn(
       `[SECURITY WARNING] websocket.maxPayloadLength is set to ${_formatBytesForDisplay(config.maxPayloadLength)}. ` +
-      'Very large payloads can cause memory exhaustion. Consider if this size is necessary.',
+        'Very large payloads can cause memory exhaustion. Consider if this size is necessary.',
     );
   }
 
   if (config.idleTimeout === 0) {
     log.warn(
       '[SECURITY WARNING] websocket.idleTimeout is 0 (disabled). ' +
-      'Idle connections will never be closed automatically, which can lead to resource exhaustion.',
+        'Idle connections will never be closed automatically, which can lead to resource exhaustion.',
     );
   }
 };
