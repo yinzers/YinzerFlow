@@ -4,85 +4,8 @@
 */
 import { describe, expect, it } from 'bun:test';
 import { _encodeCloseFrame, _encodeFrame, _parseFrame, _unmask } from '../WebSocketFrame.ts';
+import { buildClientFrame, buildUnmaskedFrame } from './ws-test-utils.ts';
 import { wsCloseCode, wsOpcode } from '@constants/websocket.ts';
-
-/**
- * Helper: build a masked client frame from a payload and opcode.
- * Applies the mask key via XOR, same as a real client would.
- */
-const buildMaskedFrame = (opcode: number, payload: Buffer, fin = true): Buffer => {
-  const maskKey = Buffer.from([0x37, 0xfa, 0x21, 0x3d]);
-  const masked = Buffer.from(payload);
-  for (let i = 0; i < masked.length; i++) {
-    masked[i] = masked[i]! ^ maskKey[i & 3]!;
-  }
-
-  let headerSize: number;
-  const payloadLength = payload.length;
-
-  if (payloadLength < 126) {
-    headerSize = 2;
-  } else if (payloadLength < 65536) {
-    headerSize = 4;
-  } else {
-    headerSize = 10;
-  }
-
-  const frame = Buffer.allocUnsafe(headerSize + 4 + payloadLength);
-  frame[0] = (fin ? 0x80 : 0x00) | opcode;
-
-  if (payloadLength < 126) {
-    frame[1] = 0x80 | payloadLength; // MASK bit set
-    maskKey.copy(frame, 2);
-    masked.copy(frame, 6);
-  } else if (payloadLength < 65536) {
-    frame[1] = 0x80 | 126;
-    frame.writeUInt16BE(payloadLength, 2);
-    maskKey.copy(frame, 4);
-    masked.copy(frame, 8);
-  } else {
-    frame[1] = 0x80 | 127;
-    frame.writeUInt32BE(0, 2);
-    frame.writeUInt32BE(payloadLength, 6);
-    maskKey.copy(frame, 10);
-    masked.copy(frame, 14);
-  }
-
-  return frame;
-};
-
-/**
- * Helper: build an unmasked server frame (for testing server→client encoding).
- */
-const buildUnmaskedFrame = (opcode: number, payload: Buffer, fin = true): Buffer => {
-  let headerSize: number;
-  const payloadLength = payload.length;
-
-  if (payloadLength < 126) {
-    headerSize = 2;
-  } else if (payloadLength < 65536) {
-    headerSize = 4;
-  } else {
-    headerSize = 10;
-  }
-
-  const frame = Buffer.allocUnsafe(headerSize + payloadLength);
-  frame[0] = (fin ? 0x80 : 0x00) | opcode;
-
-  if (payloadLength < 126) {
-    frame[1] = payloadLength;
-  } else if (payloadLength < 65536) {
-    frame[1] = 126;
-    frame.writeUInt16BE(payloadLength, 2);
-  } else {
-    frame[1] = 127;
-    frame.writeUInt32BE(0, 2);
-    frame.writeUInt32BE(payloadLength, 6);
-  }
-
-  payload.copy(frame, headerSize);
-  return frame;
-};
 
 // ============================================
 // _unmask
@@ -124,7 +47,7 @@ describe('_unmask', () => {
 describe('_parseFrame', () => {
   it('should parse a small masked text frame (7-bit payload length)', () => {
     const payload = Buffer.from('Hello');
-    const frame = buildMaskedFrame(wsOpcode.text, payload);
+    const frame = buildClientFrame(wsOpcode.text, payload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -142,7 +65,7 @@ describe('_parseFrame', () => {
 
   it('should parse a masked frame with 16-bit extended payload length (126-65535 bytes)', () => {
     const payload = Buffer.alloc(300, 0x42);
-    const frame = buildMaskedFrame(wsOpcode.binary, payload);
+    const frame = buildClientFrame(wsOpcode.binary, payload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -159,7 +82,7 @@ describe('_parseFrame', () => {
 
   it('should parse a masked frame with 64-bit extended payload length (>65535 bytes)', () => {
     const payload = Buffer.alloc(70000, 0xab);
-    const frame = buildMaskedFrame(wsOpcode.binary, payload);
+    const frame = buildClientFrame(wsOpcode.binary, payload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -175,7 +98,7 @@ describe('_parseFrame', () => {
 
   it('should parse a binary frame with arbitrary byte data', () => {
     const payload = Buffer.from([0x00, 0x01, 0xff, 0xfe, 0x80]);
-    const frame = buildMaskedFrame(wsOpcode.binary, payload);
+    const frame = buildClientFrame(wsOpcode.binary, payload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -203,7 +126,7 @@ describe('_parseFrame', () => {
 
   it('should parse a ping frame with payload', () => {
     const payload = Buffer.from('ping-data');
-    const frame = buildMaskedFrame(wsOpcode.ping, payload);
+    const frame = buildClientFrame(wsOpcode.ping, payload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -214,7 +137,7 @@ describe('_parseFrame', () => {
 
   it('should parse a pong frame with payload', () => {
     const payload = Buffer.from('pong-data');
-    const frame = buildMaskedFrame(wsOpcode.pong, payload);
+    const frame = buildClientFrame(wsOpcode.pong, payload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -231,7 +154,7 @@ describe('_parseFrame', () => {
     closePayload.writeUInt16BE(wsCloseCode.normal, 0);
     Buffer.from(reasonText).copy(closePayload, 2);
 
-    const frame = buildMaskedFrame(wsOpcode.close, closePayload);
+    const frame = buildClientFrame(wsOpcode.close, closePayload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -246,7 +169,7 @@ describe('_parseFrame', () => {
     const closePayload = Buffer.allocUnsafe(2);
     closePayload.writeUInt16BE(wsCloseCode.goingAway, 0);
 
-    const frame = buildMaskedFrame(wsOpcode.close, closePayload);
+    const frame = buildClientFrame(wsOpcode.close, closePayload);
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -256,7 +179,7 @@ describe('_parseFrame', () => {
   });
 
   it('should parse a close frame with no payload at all', () => {
-    const frame = buildMaskedFrame(wsOpcode.close, Buffer.alloc(0));
+    const frame = buildClientFrame(wsOpcode.close, Buffer.alloc(0));
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -269,7 +192,7 @@ describe('_parseFrame', () => {
   // ============================================
 
   it('should parse a frame with zero-length payload', () => {
-    const frame = buildMaskedFrame(wsOpcode.text, Buffer.alloc(0));
+    const frame = buildClientFrame(wsOpcode.text, Buffer.alloc(0));
 
     const result = _parseFrame(frame, 0);
     expect(result).not.toBeNull();
@@ -299,7 +222,7 @@ describe('_parseFrame', () => {
 
   it('should return null when header is complete but payload is incomplete', () => {
     const payload = Buffer.from('Hello');
-    const fullFrame = buildMaskedFrame(wsOpcode.text, payload);
+    const fullFrame = buildClientFrame(wsOpcode.text, payload);
     // Truncate the last 2 bytes
     const partial = fullFrame.subarray(0, fullFrame.length - 2);
 
@@ -313,8 +236,8 @@ describe('_parseFrame', () => {
   it('should parse multiple frames from a single buffer using bytesConsumed offset', () => {
     const frame1Payload = Buffer.from('First');
     const frame2Payload = Buffer.from('Second');
-    const frame1 = buildMaskedFrame(wsOpcode.text, frame1Payload);
-    const frame2 = buildMaskedFrame(wsOpcode.text, frame2Payload);
+    const frame1 = buildClientFrame(wsOpcode.text, frame1Payload);
+    const frame2 = buildClientFrame(wsOpcode.text, frame2Payload);
     const combined = Buffer.concat([frame1, frame2]);
 
     const result1 = _parseFrame(combined, 0);
@@ -333,8 +256,8 @@ describe('_parseFrame', () => {
   // ============================================
 
   it('should parse fragmented frames (FIN=0 first, FIN=1 continuation)', () => {
-    const frag1 = buildMaskedFrame(wsOpcode.text, Buffer.from('Hel'), false);
-    const frag2 = buildMaskedFrame(wsOpcode.continuation, Buffer.from('lo'), true);
+    const frag1 = buildClientFrame(wsOpcode.text, Buffer.from('Hel'), false);
+    const frag2 = buildClientFrame(wsOpcode.continuation, Buffer.from('lo'), true);
     const combined = Buffer.concat([frag1, frag2]);
 
     const result1 = _parseFrame(combined, 0);
@@ -356,7 +279,7 @@ describe('_parseFrame', () => {
 
   it('should respect the offset parameter', () => {
     const garbage = Buffer.alloc(10, 0xff);
-    const frame = buildMaskedFrame(wsOpcode.text, Buffer.from('Offset'));
+    const frame = buildClientFrame(wsOpcode.text, Buffer.from('Offset'));
     const combined = Buffer.concat([garbage, frame]);
 
     const result = _parseFrame(combined, 10);
@@ -365,7 +288,7 @@ describe('_parseFrame', () => {
   });
 
   it('should return null when offset is at buffer end', () => {
-    const frame = buildMaskedFrame(wsOpcode.text, Buffer.from('X'));
+    const frame = buildClientFrame(wsOpcode.text, Buffer.from('X'));
     expect(_parseFrame(frame, frame.length)).toBeNull();
   });
 });

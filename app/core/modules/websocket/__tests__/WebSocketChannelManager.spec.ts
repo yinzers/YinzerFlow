@@ -2,30 +2,12 @@
   no-bitwise,
   @typescript-eslint/no-non-null-assertion
 */
-import { EventEmitter } from 'events';
 import { describe, expect, it, mock } from 'bun:test';
 import { WebSocketChannelManager } from '../WebSocketChannelManager.ts';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { _encodeFrame } from '../WebSocketFrame.ts';
+import { MockSocket } from './ws-test-utils.ts';
 import { wsOpcode } from '@constants/websocket.ts';
-
-/**
- * Mock socket for creating test connections.
- */
-class MockSocket extends EventEmitter {
-  destroyed = false;
-  written: Array<Buffer> = [];
-  remoteAddress = '127.0.0.1';
-  write(data: Buffer | string): boolean {
-    if (this.destroyed) return false;
-    this.written.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
-    return true;
-  }
-  destroy(): void {
-    this.destroyed = true;
-    this.emit('close');
-  }
-}
 
 const createTestConnection = (): { conn: WebSocketConnection; socket: MockSocket } => {
   const socket = new MockSocket();

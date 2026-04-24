@@ -6,6 +6,7 @@ import net from 'net';
 import { createHash } from 'crypto';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { _encodeFrame } from '../WebSocketFrame.ts';
+import { buildClientFrame } from './ws-test-utils.ts';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
 import { wsCloseCode, wsMagicGuid, wsOpcode } from '@constants/websocket.ts';
 
@@ -27,40 +28,6 @@ const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', ori
   if (origin) req += `Origin: ${origin}\r\n`;
   req += '\r\n';
   return req;
-};
-
-/**
- * Build a masked client frame for sending over a raw socket.
- */
-const buildClientFrame = (opcode: number, payload: Buffer, fin = true): Buffer => {
-  const maskKey = Buffer.from([0x37, 0xfa, 0x21, 0x3d]);
-  const masked = Buffer.from(payload);
-  for (let i = 0; i < masked.length; i++) {
-    masked[i] = masked[i]! ^ maskKey[i & 3]!;
-  }
-  const payloadLength = payload.length;
-  let headerSize = 2;
-  if (payloadLength >= 126 && payloadLength < 65536) headerSize = 4;
-  else if (payloadLength >= 65536) headerSize = 10;
-  const frame = Buffer.allocUnsafe(headerSize + 4 + payloadLength);
-  frame[0] = (fin ? 0x80 : 0x00) | opcode;
-  if (payloadLength < 126) {
-    frame[1] = 0x80 | payloadLength;
-    maskKey.copy(frame, 2);
-    masked.copy(frame, 6);
-  } else if (payloadLength < 65536) {
-    frame[1] = 0x80 | 126;
-    frame.writeUInt16BE(payloadLength, 2);
-    maskKey.copy(frame, 4);
-    masked.copy(frame, 8);
-  } else {
-    frame[1] = 0x80 | 127;
-    frame.writeUInt32BE(0, 2);
-    frame.writeUInt32BE(payloadLength, 6);
-    maskKey.copy(frame, 10);
-    masked.copy(frame, 14);
-  }
-  return frame;
 };
 
 /**

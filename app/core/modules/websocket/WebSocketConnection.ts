@@ -166,6 +166,13 @@ export class WebSocketConnection<T = unknown> {
       const { frame, bytesConsumed } = result;
       offset += bytesConsumed;
 
+      // RFC 6455 §5.1: server MUST close if client frame is not masked
+      if (!frame.masked) {
+        this.close(wsCloseCode.protocolError, 'Client frames must be masked');
+        this._destroySocket();
+        return;
+      }
+
       // Max payload enforcement — check before processing
       if (frame.payloadLength > this._options.maxPayloadLength) {
         this.close(wsCloseCode.tooLarge, 'Payload too large');
@@ -219,6 +226,17 @@ export class WebSocketConnection<T = unknown> {
 
     // Control frames (opcode >= 0x8) — handle immediately, even mid-fragmentation
     if (opcode >= 0x8) {
+      // RFC 6455 §5.5: control frames MUST NOT be fragmented and payload ≤125 bytes
+      if (!fin) {
+        this.close(wsCloseCode.protocolError, 'Control frames must not be fragmented');
+        this._destroySocket();
+        return;
+      }
+      if (payload.length > 125) {
+        this.close(wsCloseCode.protocolError, 'Control frame payload exceeds 125 bytes');
+        this._destroySocket();
+        return;
+      }
       this._handleControlFrame(opcode, payload);
       return;
     }
