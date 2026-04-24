@@ -490,9 +490,13 @@ export class YinzerFlow extends SetupImpl {
         chunks,
         state,
         hasReceivedData: () => hasReceivedData,
-        setHasReceivedData: (val: boolean) => { hasReceivedData = val; },
+        setHasReceivedData: (val: boolean) => {
+          hasReceivedData = val;
+        },
         totalLength: () => totalLength,
-        setTotalLength: (val: number) => { totalLength = val; },
+        setTotalLength: (val: number) => {
+          totalLength = val;
+        },
         shouldDispatch: () => state.requestDispatched,
       });
     });
@@ -633,9 +637,7 @@ export class YinzerFlow extends SetupImpl {
    * calls upgrade handler, sends 101, and creates the connection.
    */
   private _handleWebSocketUpgrade(buffer: Buffer, socket: Socket, clientAddress: string): void {
-    this._handleWebSocketUpgradeAsync(buffer, socket, clientAddress).catch((error: unknown) =>
-      this._handleRequestError(error, clientAddress, socket),
-    );
+    this._handleWebSocketUpgradeAsync(buffer, socket, clientAddress).catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
   }
 
   private async _handleWebSocketUpgradeAsync(buffer: Buffer, socket: Socket, clientAddress: string): Promise<void> {
@@ -692,7 +694,14 @@ export class YinzerFlow extends SetupImpl {
   }
 
   // eslint-disable-next-line max-params
-  private _setupWsConnection(socket: Socket, data: unknown, handlers: WebSocketHandlers, routeOptions: WebSocketRouteOptions | undefined, clientAddress: string, path: string): void {
+  private _setupWsConnection(
+    socket: Socket,
+    data: unknown,
+    handlers: WebSocketHandlers,
+    routeOptions: WebSocketRouteOptions | undefined,
+    clientAddress: string,
+    path: string,
+  ): void {
     const connectionOptions = this._mergeWsConnectionOptions(routeOptions);
     const wrappedHandlers = this._wrapWsHandlers(handlers);
     const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
@@ -795,9 +804,9 @@ export class YinzerFlow extends SetupImpl {
     const statusText = statusTextMap[statusCode] ?? 'Error';
     socket.write(
       `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
-      `Content-Type: application/json\r\n` +
-      `Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n` +
-      `Connection: close\r\n\r\n${body}`,
+        `Content-Type: application/json\r\n` +
+        `Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n` +
+        `Connection: close\r\n\r\n${body}`,
     );
     socket.destroy();
   }
