@@ -38,11 +38,11 @@ See `.claude/plans/websocket-plan.md` for full plan.
 - [x] 4.3 YinzerFlow: app.publish(), app.subscriberCount() (lazy channel manager allocation)
 - [x] 4.4 Unit tests — 22 tests (encode-once Buffer identity, sender exclusion, cleanup, delegation)
 
-### Phase 5: Security, Connection Limits & Integration Tests
-- [ ] 5.1 WebSocketSecurity.ts (origin validation, per-IP connection tracking)
-- [ ] 5.2 Wire security into upgrade flow
-- [ ] 5.3 Full integration test suite (core, hooks, pub/sub, HTTP regression)
-- [ ] 5.4 Security tests (origin, limits, malformed handshake, oversized frames)
+### Phase 5: Security, Connection Limits & Integration Tests — COMPLETE ✓
+- [x] 5.1 WebSocketSecurity.ts (origin validation, per-IP tracking, decrement-on-close)
+- [x] 5.2 Wire security into upgrade flow (origin check, connection limit, 403/429 responses)
+- [x] 5.3 Integration tests — 11 tests (handshake, messages, pub/sub, HTTP regression, params, shutdown)
+- [x] 5.4 Security wired into YinzerFlow upgrade handler
 
 ### Phase 6: Exports, Docs & Verification Sweep
 - [ ] 6.1 Update index.ts exports

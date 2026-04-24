@@ -22,6 +22,7 @@ import { _sanitizeLogField } from '@core/utils/sanitize.ts';
 import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '@core/modules/websocket/WebSocketHandshake.ts';
 import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
 import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
+import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 /**
@@ -170,6 +171,7 @@ export class YinzerFlow extends SetupImpl {
   private _accessLogEnabled = false;
   private _wsConnections?: Set<WebSocketConnection>;
   private _wsChannelManager?: WebSocketChannelManager;
+  private _wsSecurity?: WebSocketSecurity;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
@@ -646,6 +648,20 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
+    // Security checks (lazy allocation)
+    this._wsSecurity ??= new WebSocketSecurity();
+    const wsConfig = this._configuration.websocket;
+
+    if (!this._wsSecurity.validateOrigin(validation.origin, wsConfig.allowedOrigins)) {
+      this._sendHttpError(socket, 403, 'Origin not allowed');
+      return;
+    }
+
+    if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
+      this._sendHttpError(socket, 429, 'Too many WebSocket connections from this IP');
+      return;
+    }
+
     const match = this._wsRouter._match(validation.path);
     if (!match) {
       this._sendHttpError(socket, 404, 'No WebSocket route matches this path');
@@ -669,32 +685,33 @@ export class YinzerFlow extends SetupImpl {
     // Send 101 handshake response
     const acceptKey = _generateAcceptKey(validation.key);
     socket.write(_buildHandshakeResponse(acceptKey));
-
-    // Remove HTTP listeners — WebSocketConnection will add its own
     socket.removeAllListeners();
 
-    const connectionOptions = this._mergeWsConnectionOptions(match.options);
-    const wrappedHandlers = this._wrapWsHandlers(match.handlers);
+    this._wsSecurity.trackConnect(clientAddress);
+    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, validation.path);
+  }
 
+  // eslint-disable-next-line max-params
+  private _setupWsConnection(socket: Socket, data: unknown, handlers: WebSocketHandlers, routeOptions: WebSocketRouteOptions | undefined, clientAddress: string, path: string): void {
+    const connectionOptions = this._mergeWsConnectionOptions(routeOptions);
+    const wrappedHandlers = this._wrapWsHandlers(handlers);
     const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
 
-    // Inject shared channel manager for pub/sub (lazy allocation)
     this._wsChannelManager ??= new WebSocketChannelManager();
     connection.setChannelManager(this._wsChannelManager);
 
-    // Track connection (lazy Set allocation)
     this._wsConnections ??= new Set();
     this._wsConnections.add(connection);
 
-    // Clean up on close — use the original handlers.close, not wrapped (wrapped already calls it)
     const originalClose = wrappedHandlers.close;
     wrappedHandlers.close = (ws, code, reason): void => {
       this._wsConnections?.delete(connection);
+      this._wsSecurity?.trackDisconnect(clientAddress);
       originalClose?.(ws, code, reason);
     };
 
-    this._log.debug(`WebSocket connection established from ${clientAddress} on ${validation.path}`);
-    match.handlers.open?.(connection as never);
+    this._log.debug(`WebSocket connection established from ${clientAddress} on ${path}`);
+    handlers.open?.(connection as never);
   }
 
   private _mergeWsConnectionOptions(routeOpts?: WebSocketRouteOptions): {
