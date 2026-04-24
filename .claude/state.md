@@ -1,6 +1,6 @@
 # Session State: yinzerflow
 
-**Last Updated**: 2026-02-20
+**Last Updated**: 2026-04-24
 
 ---
 
@@ -18,33 +18,32 @@
 
 ## Current Context (REPLACE each update)
 
-**Goal**: All code fixes + docs rewrite complete. 933 tests pass, lint clean. Ready for commit.
-**Immediate Task**: Awaiting user — commit, or further changes.
+**Goal**: Production-level WebSocket support for YinzerFlow framework — in planning phase.
+**Immediate Task**: Awaiting user decision on architecture direction before creating full plan.
 
 **In Progress**:
-- Nothing actively in progress — all work done
+- WebSocket plan: Step 1 (Context & Why) and Step 2 (Research) complete
+- Key architectural decision pending: raw TCP framing vs minimal dependency for WebSocket frame parsing
 
-**Recently Completed** (last 3-5 items):
-- Fixed ambiguous "minimum log level" → "log level threshold" wording (docs + JSDoc)
-- Default logging level changed from `'info'` → `'warn'`
-- H1: Full rewrite of `docs/core/logging.md` — all options, 3-channel architecture, 4 diagnostic presets
-- Updated `docs/configuration/configuration.md` — replaced stale logger/networkLogs/networkLogger with logging block
-- Audit fix phase: 12 code fixes applied (C1, C2, H2-H6, M3-M5, D2 rename)
+**Key Decision Pending**:
+- YinzerFlow uses `net.createServer()` raw TCP sockets with manual HTTP parsing
+- Bun.serve() WebSocket API is NOT applicable (different server paradigm)
+- Two options presented to user:
+  - **Option A**: Full raw TCP WebSocket implementation (handshake + RFC 6455 framing from scratch)
+  - **Option B**: Raw handshake + proven framing library for the protocol-level byte parsing
+- User's initial instinct: keep it low-level like the rest of the framework
+- Waiting for final direction before writing the plan
 
-**All Changes This Session**:
-- **Code**: C1, C2, H2, H3, H4, H5, H6, M3, M4, M5, D2 (12 code fixes)
-- **Default level**: `'info'` → `'warn'` in handleCustomConfiguration.ts + 2 test assertions
-- **Docs**: Full rewrite of logging.md, updated configuration.md stale references
-- **JSDoc**: Fixed level description in InternalConfiguration.d.ts and log.ts
+**Research Completed**:
+- Full codebase architecture exploration done (YinzerFlow.ts, modules, hooks, types, build)
+- Bun WebSocket API docs fetched via Context7 (not applicable — Bun.serve() only)
+- Key finding: framework does HTTP parsing on raw TCP sockets, WebSocket upgrade fits naturally at that level
 
-**Skipped (with reasoning)**:
-- M1: Timer race already mitigated by `_destroyed` flag, closure/sec negligible
-- M2: Changes timestamps local→UTC — behavioral change, not perf fix
-- D3: TypeScript catches unknown keys, not worth it at 0.x
-- D4: User said keep `getStatusEmoji` internal only
-
-**Deferred**:
-- D1 discussion: Rename `logging.requests` → `logging.accessLog` — pending user input
+**Recently Completed** (prior session):
+- All audit code fixes (C1, C2, H2-H6, M3-M5, D2)
+- Default logging level `'info'` → `'warn'`
+- Full docs rewrite (logging.md, configuration.md)
+- JSDoc fixes for log level descriptions
 
 ---
 
@@ -81,17 +80,18 @@ bun run publish:release
 - [2026-02-20] **C1 fix approach**: Removed accessLog module-level singleton. Access log logger now created per-instance in `_configureLogging()` with `_accessLogEnabled` boolean guard.
 - [2026-02-20] **loggerBrand rename**: `LOGGER_BRAND` → `loggerBrand` for project camelCase convention. Internal-only symbol, no public API impact.
 - [2026-02-20] **Audit disagreements**: M1 (timer race) — already mitigated by _destroyed flag. M2 (timestamp) — changes timezone from local to UTC, not just a perf fix. Both rejected with reasoning.
-- [2026-02-20] **Default log level**: Changed from `'info'` to `'warn'`. Rationale: production servers shouldn't be noisy by default. Users who want verbose output set `level: 'info'` or `'debug'` explicitly. Security warnings and errors still visible at `'warn'`.
-- [2026-02-20] **Log level description**: Changed from "Minimum log level" to "Log level threshold — messages at this severity and above are output" to avoid ambiguity about what "minimum" means.
+- [2026-02-20] **Default log level**: Changed from `'info'` to `'warn'`. Rationale: production servers shouldn't be noisy by default.
+- [2026-02-20] **Log level description**: Changed from "Minimum log level" to "Log level threshold — messages at this severity and above are output".
+- [2026-04-24] **WebSocket architecture direction**: PENDING — user leaning toward raw TCP (consistent with framework). Bun.serve() WebSocket API rejected (wrong server paradigm). Deciding between full raw RFC 6455 implementation vs raw handshake + framing library.
 
 ---
 
 ## Superseded/Archived
 
-- [2026-02-20] **External logger ANSI formatting (Path 2)**: Originally designed to format output for external loggers. Replaced with raw delegation — external loggers handle their own formatting.
-- [2026-02-20] **_sanitizeLogField co-located**: Originally defined locally in both YinzerFlow.ts and DiagnosticsMonitor.ts. Superseded by shared util in sanitize.ts.
-- [2026-02-20] **accessLog module singleton**: Module-level mutable singleton replaced by per-instance access log in C1 fix.
-- [2026-02-20] **Branded logger state mutation**: `_configureLogging()` used to mutate user's branded logger state (personality/prefix). Replaced by output sink extraction in C2 fix.
+- [2026-02-20] **External logger ANSI formatting (Path 2)**: Replaced with raw delegation — external loggers handle their own formatting.
+- [2026-02-20] **_sanitizeLogField co-located**: Superseded by shared util in sanitize.ts.
+- [2026-02-20] **accessLog module singleton**: Replaced by per-instance access log in C1 fix.
+- [2026-02-20] **Branded logger state mutation**: Replaced by output sink extraction in C2 fix.
 
 ---
 
@@ -109,3 +109,4 @@ bun run publish:release
 - `_formatBytesForDisplay` in bytes.ts handles auto-unit formatting (B/KB/MB/GB)
 - Default logging level is now `'warn'` (changed from `'info'`)
 - All logging config is under `logging` key — old top-level `logger`/`networkLogs`/`networkLogger` are gone
+- YinzerFlow uses `net.createServer()` raw TCP sockets — NOT Bun.serve()
