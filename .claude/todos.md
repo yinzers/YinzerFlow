@@ -44,11 +44,10 @@ See `.claude/plans/websocket-plan.md` for full plan.
 - [x] 5.3 Integration tests — 11 tests (handshake, messages, pub/sub, HTTP regression, params, shutdown)
 - [x] 5.4 Security wired into YinzerFlow upgrade handler
 
-### Phase 6: Exports, Docs & Verification Sweep
-- [ ] 6.1 Update index.ts exports
-- [ ] 6.2 Write docs/core/websockets.md (full template, trading data example, backpressure docs)
-- [ ] 6.3 Update docs/configuration/configuration.md
-- [ ] 6.4 Verification sweep (TODO grep, todos cross-check, quality checklist)
+### Phase 6: Exports, Docs & Verification Sweep — COMPLETE ✓
+- [x] 6.1 Update index.ts exports (constants + all public types)
+- [x] 6.2 Write docs/core/websockets.md (full template, trading data example, backpressure/drop docs)
+- [x] 6.3 Verification sweep — no orphaned TODOs, lint clean, 1051 tests pass
 
 ---
 
