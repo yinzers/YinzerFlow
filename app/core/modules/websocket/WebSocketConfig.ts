@@ -1,26 +1,25 @@
 import { log } from '@core/utils/log.ts';
 import { _formatBytesForDisplay } from '@core/utils/bytes.ts';
+import type { InternalWebSocketOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 /**
  * Default WebSocket configuration with sensible production defaults.
  */
-export const DEFAULT_WEBSOCKET_CONFIG = {
+export const DEFAULT_WEBSOCKET_CONFIG: InternalWebSocketOptions = {
   maxPayloadLength: 16_777_216, // 16MB
   idleTimeout: 120, // seconds
   maxConnectionsPerIp: 50,
-  allowedOrigins: [] as Array<string>,
+  allowedOrigins: [],
   backpressure: {
-    strategy: 'buffer' as const,
+    strategy: 'buffer',
     limit: 1_048_576, // 1MB
   },
 };
 
-export type InternalWebSocketConfig = typeof DEFAULT_WEBSOCKET_CONFIG;
-
 /**
  * Validate WebSocket configuration values.
  */
-export const _validateWebSocketConfig = (config: InternalWebSocketConfig): void => {
+export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void => {
   if (config.maxPayloadLength < 1) {
     throw new Error('websocket.maxPayloadLength must be at least 1 byte');
   }
@@ -46,7 +45,7 @@ export const _validateWebSocketConfig = (config: InternalWebSocketConfig): void 
 /**
  * Issue security warnings for risky WebSocket configurations.
  */
-export const _warnWebSocketConfig = (config: InternalWebSocketConfig): void => {
+export const _warnWebSocketConfig = (config: InternalWebSocketOptions): void => {
   if (config.maxPayloadLength > 67_108_864) {
     // 64MB
     log.warn(

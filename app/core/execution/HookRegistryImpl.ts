@@ -64,12 +64,12 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   }
 
   _addWsBeforeMessageHooks(handlers: Array<WebSocketMessageHook>): void {
-    this._validateHandlersArray(handlers as Array<HandlerCallback>, 'wsBeforeMessage');
+    this._validateHandlersArray(handlers as unknown as Array<HandlerCallback>, 'wsBeforeMessage');
     for (const handler of handlers) this._wsBeforeMessage.add({ handler });
   }
 
   _addWsAfterMessageHooks(handlers: Array<WebSocketMessageHook>): void {
-    this._validateHandlersArray(handlers as Array<HandlerCallback>, 'wsAfterMessage');
+    this._validateHandlersArray(handlers as unknown as Array<HandlerCallback>, 'wsAfterMessage');
     for (const handler of handlers) this._wsAfterMessage.add({ handler });
   }
 

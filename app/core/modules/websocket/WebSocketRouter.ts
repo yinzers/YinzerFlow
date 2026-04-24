@@ -4,14 +4,14 @@ import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/
 interface WsRoute {
   path: string;
   handlers: WebSocketHandlers;
-  options?: WebSocketRouteOptions;
+  options: WebSocketRouteOptions | undefined;
   pattern?: RegExp;
   paramNames?: Array<string>;
 }
 
 interface WsRouteMatch {
   handlers: WebSocketHandlers;
-  options?: WebSocketRouteOptions;
+  options: WebSocketRouteOptions | undefined;
   params: Record<string, string>;
 }
 
