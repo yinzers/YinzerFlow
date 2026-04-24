@@ -17,11 +17,11 @@ See `.claude/plans/websocket-plan.md` for full plan.
 - [x] 1.5 Implement `app/core/modules/websocket/WebSocketFrame.ts` (parser + encoder, in-place unmask, allocUnsafe)
 - [x] 1.6 Write `app/core/modules/websocket/__tests__/WebSocketFrame.test.ts` (38 tests, 140 assertions)
 
-### Phase 2: Handshake & Connection Class
-- [ ] 2.1 WebSocketHandshake.ts (validation, accept key, response builder)
-- [ ] 2.2 WebSocketConnection.ts (state machine, fragmentation, backpressure, sendRaw)
-- [ ] 2.3 Handshake unit tests (RFC test vector, edge cases)
-- [ ] 2.4 Connection unit tests (lifecycle, fragments, backpressure)
+### Phase 2: Handshake & Connection Class — COMPLETE ✓
+- [x] 2.1 WebSocketHandshake.ts (validation, accept key, response builder)
+- [x] 2.2 WebSocketConnection.ts (state machine, fragmentation, backpressure, sendRaw)
+- [x] 2.3 Handshake unit tests (RFC test vector, edge cases) — 19 tests
+- [x] 2.4 Connection unit tests (lifecycle, fragments, backpressure) — 28 tests
 
 ### Phase 3: YinzerFlow Integration + Hook System
 - [ ] 3.1 WebSocketRouter.ts (path matching reusing existing utils)

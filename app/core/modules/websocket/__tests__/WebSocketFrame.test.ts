@@ -516,7 +516,7 @@ describe('_encodeCloseFrame', () => {
   });
 
   it('should encode different close codes correctly', () => {
-    for (const [name, code] of Object.entries(wsCloseCode)) {
+    for (const [, code] of Object.entries(wsCloseCode)) {
       const frame = _encodeCloseFrame(code);
       const parsed = _parseFrame(frame, 0);
       expect(parsed).not.toBeNull();
