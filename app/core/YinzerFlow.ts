@@ -21,7 +21,8 @@ import { DiagnosticsMonitor } from '@core/modules/diagnostics/DiagnosticsMonitor
 import { _sanitizeLogField } from '@core/utils/sanitize.ts';
 import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '@core/modules/websocket/WebSocketHandshake.ts';
 import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
-import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
+import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
+import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 /**
  * Maximum overhead allowance for HTTP headers on top of body parser limits (64KB).
@@ -168,6 +169,7 @@ export class YinzerFlow extends SetupImpl {
   private _accessLog?: ReturnType<typeof createLogger>;
   private _accessLogEnabled = false;
   private _wsConnections?: Set<WebSocketConnection>;
+  private _wsChannelManager?: WebSocketChannelManager;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
@@ -671,22 +673,14 @@ export class YinzerFlow extends SetupImpl {
     // Remove HTTP listeners — WebSocketConnection will add its own
     socket.removeAllListeners();
 
-    // Merge per-route options with global WS config
-    const wsConfig = this._configuration.websocket;
-    const routeOpts = match.options;
-    const connectionOptions = {
-      maxPayloadLength: routeOpts?.maxPayloadLength ?? wsConfig.maxPayloadLength,
-      idleTimeout: routeOpts?.idleTimeout ?? wsConfig.idleTimeout,
-      backpressure: {
-        strategy: routeOpts?.backpressure?.strategy ?? wsConfig.backpressure.strategy,
-        limit: routeOpts?.backpressure?.limit ?? wsConfig.backpressure.limit,
-      },
-    };
-
-    // Wrap handlers with WS lifecycle hooks
+    const connectionOptions = this._mergeWsConnectionOptions(match.options);
     const wrappedHandlers = this._wrapWsHandlers(match.handlers);
 
     const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
+
+    // Inject shared channel manager for pub/sub (lazy allocation)
+    this._wsChannelManager ??= new WebSocketChannelManager();
+    connection.setChannelManager(this._wsChannelManager);
 
     // Track connection (lazy Set allocation)
     this._wsConnections ??= new Set();
@@ -701,6 +695,22 @@ export class YinzerFlow extends SetupImpl {
 
     this._log.debug(`WebSocket connection established from ${clientAddress} on ${validation.path}`);
     match.handlers.open?.(connection as never);
+  }
+
+  private _mergeWsConnectionOptions(routeOpts?: WebSocketRouteOptions): {
+    maxPayloadLength: number;
+    idleTimeout: number;
+    backpressure: { strategy: 'buffer' | 'drop'; limit: number };
+  } {
+    const wsConfig = this._configuration.websocket;
+    return {
+      maxPayloadLength: routeOpts?.maxPayloadLength ?? wsConfig.maxPayloadLength,
+      idleTimeout: routeOpts?.idleTimeout ?? wsConfig.idleTimeout,
+      backpressure: {
+        strategy: routeOpts?.backpressure?.strategy ?? wsConfig.backpressure.strategy,
+        limit: routeOpts?.backpressure?.limit ?? wsConfig.backpressure.limit,
+      },
+    };
   }
 
   /**
@@ -776,15 +786,13 @@ export class YinzerFlow extends SetupImpl {
   }
 
   /** Publish a message to all subscribers of a WebSocket channel. Returns recipient count. */
-  publish(_channel: string, _data: Buffer | string): number {
-    // Wired in Phase 4 by WebSocketChannelManager
-    return 0;
+  publish(channel: string, data: Buffer | string): number {
+    return this._wsChannelManager?.publish(channel, data) ?? 0;
   }
 
   /** Get the number of subscribers on a WebSocket channel. */
-  subscriberCount(_channel: string): number {
-    // Wired in Phase 4 by WebSocketChannelManager
-    return 0;
+  subscriberCount(channel: string): number {
+    return this._wsChannelManager?.subscriberCount(channel) ?? 0;
   }
 
   async listen(): Promise<void> {

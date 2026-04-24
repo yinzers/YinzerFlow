@@ -32,11 +32,11 @@ See `.claude/plans/websocket-plan.md` for full plan.
 - [x] 3.6 handleCustomConfiguration: WS defaults + deep merge + validation
 - [x] 3.7 YinzerFlow: upgrade detection, WS dispatch, connection tracking, graceful shutdown, WS hook wrapping
 
-### Phase 4: Pub/Sub with Encode-Once Broadcast
-- [ ] 4.1 WebSocketChannelManager.ts (subscribe, unsubscribe, publish, encode-once)
-- [ ] 4.2 Wire pub/sub into WebSocketConnection (subscribe/unsubscribe/publish methods)
-- [ ] 4.3 YinzerFlow: app.publish(), app.subscriberCount()
-- [ ] 4.4 Unit + integration tests for pub/sub
+### Phase 4: Pub/Sub with Encode-Once Broadcast — COMPLETE ✓
+- [x] 4.1 WebSocketChannelManager.ts (bidirectional maps, encode-once, sender exclusion, empty channel GC)
+- [x] 4.2 Wire pub/sub into WebSocketConnection (delegate to manager, auto-unsubscribe on close)
+- [x] 4.3 YinzerFlow: app.publish(), app.subscriberCount() (lazy channel manager allocation)
+- [x] 4.4 Unit tests — 22 tests (encode-once Buffer identity, sender exclusion, cleanup, delegation)
 
 ### Phase 5: Security, Connection Limits & Integration Tests
 - [ ] 5.1 WebSocketSecurity.ts (origin validation, per-IP connection tracking)

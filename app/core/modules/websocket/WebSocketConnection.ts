@@ -1,5 +1,6 @@
 import type { Socket } from 'net';
 import { _encodeCloseFrame, _encodeFrame, _parseFrame } from './WebSocketFrame.ts';
+import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
 import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketBackpressureOptions, WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
@@ -43,6 +44,9 @@ export class WebSocketConnection<T = unknown> {
   // Idle timeout
   private _idleTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // Channel manager (set externally after construction)
+  private _channelManager?: WebSocketChannelManager;
+
   // eslint-disable-next-line max-params
   constructor(socket: Socket, data: T, handlers: WebSocketHandlers<T>, options: ConnectionOptions) {
     this._socket = socket;
@@ -77,6 +81,10 @@ export class WebSocketConnection<T = unknown> {
 
   get bufferedAmount(): number {
     return this._bufferedAmount;
+  }
+
+  setChannelManager(manager: WebSocketChannelManager): void {
+    this._channelManager = manager;
   }
 
   send(data: Buffer | string): void {
@@ -120,18 +128,20 @@ export class WebSocketConnection<T = unknown> {
     this._socket.write(frame);
   }
 
-  // Pub/sub methods are stubs — wired in Phase 4 by WebSocketChannelManager
-  subscribe(_channel: string): void {
-    /* wired in Phase 4 */
+  subscribe(channel: string): void {
+    this._channelManager?.subscribe(this as WebSocketConnection, channel);
   }
-  unsubscribe(_channel: string): void {
-    /* wired in Phase 4 */
+
+  unsubscribe(channel: string): void {
+    this._channelManager?.unsubscribe(this as WebSocketConnection, channel);
   }
-  publish(_channel: string, _data: Buffer | string): number {
-    return 0; /* wired in Phase 4 */
+
+  publish(channel: string, data: Buffer | string): number {
+    return this._channelManager?.publish(channel, data, this as WebSocketConnection) ?? 0;
   }
-  isSubscribed(_channel: string): boolean {
-    return false; /* wired in Phase 4 */
+
+  isSubscribed(channel: string): boolean {
+    return this._channelManager?.isSubscribed(this as WebSocketConnection, channel) ?? false;
   }
 
   // ============================================
@@ -174,6 +184,7 @@ export class WebSocketConnection<T = unknown> {
 
   private _onSocketClose(): void {
     this._clearIdleTimeout();
+    this._channelManager?.unsubscribeAll(this as WebSocketConnection);
     if (this._readyState === wsReadyState.closed) return;
 
     const prevState = this._readyState;
