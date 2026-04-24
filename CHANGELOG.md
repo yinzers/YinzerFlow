@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.8.0] - 2026-04-24
+
+### Features
+
+- **WebSocket RFC 6455 frame protocol implementation** — Added complete frame protocol support with constants and type definitions for RFC 6455 compliance (4237a80)
+- **WebSocket handshake validation and connection class** — Implemented handshake validation logic and connection management class for WebSocket clients (6b4ca03)
+- **WebSocket framework integration with hooks and configuration** — Integrated WebSocket support into YinzerFlow with lifecycle hooks and configurable options (d344156)
+- **WebSocket channel pub/sub with encode-once broadcast** — Added publish/subscribe messaging system for WebSocket channels with efficient broadcast encoding (97de59a)
+- **WebSocket security controls and integration tests** — Implemented security controls and comprehensive integration test suite (3e6a2f5)
+- **WebSocket exports, documentation and verification** — Added public API exports, documentation, and verification sweep across the WebSocket implementation (3bbfb6a)
+
+### Bug Fixes
+
+- **Fix strict TypeScript build errors with exactOptionalPropertyTypes** — Resolved strict TypeScript compilation errors related to optional property types in WebSocket implementation (0e43ea7)
+- **Security hardening and naming convention improvements** — Applied security hardening measures, refactored test helpers to follow DRY principles, and improved naming conventions for consistency (bbe71b8)
+
+### Internal
+
+- **Format WebSocket exports for readability** — Improved code formatting and organization of WebSocket exports (ebfe6d3)
+- **Improve YinzerFlow code formatting** — Enhanced overall code formatting and consistency across the framework (1bcd868)
+- **Format WebSocket code consistently** — Applied consistent code formatting standards to WebSocket implementation (3e76ffc)
+
 ## [0.7.0] - 2026-02-20
 
 ### Bug Fixes
