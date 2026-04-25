@@ -2,7 +2,7 @@
   no-bitwise,
   @typescript-eslint/no-non-null-assertion
 */
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { WebSocketChannelManager } from '../WebSocketChannelManager.ts';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { _encodeFrame } from '../WebSocketFrame.ts';
@@ -11,11 +11,11 @@ import { wsOpcode } from '@constants/websocket.ts';
 
 const createTestConnection = (): { conn: WebSocketConnection; socket: MockSocket } => {
   const socket = new MockSocket();
-  const conn = new WebSocketConnection(
-    socket as any,
+  const conn = new WebSocketConnection<unknown>(
+    socket as never,
+    undefined,
     {},
-    {},
-    { maxPayloadLength: 16_777_216, idleTimeout: 0, backpressure: { strategy: 'buffer', limit: 1_048_576 }, heartbeatInterval: 0, messageRateLimit: { enabled: false, maxMessages: 100, window: 10 }, compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11, clientMaxWindowBits: 15 } },
+    { maxPayloadLength: 16_777_216, idleTimeout: 0, backpressure: { strategy: 'buffer' as const, limit: 1_048_576 }, heartbeatInterval: 0, messageRateLimit: { enabled: false, maxMessages: 100, window: 10 }, compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11, clientMaxWindowBits: 15 } },
   );
   return { conn, socket };
 };
@@ -149,7 +149,7 @@ describe('WebSocketChannelManager', () => {
       manager.publish('quotes', 'identical-data');
 
       // Both subscribers should receive the exact same Buffer object (not copies)
-      expect(sock1.written[0]).toBe(sock2.written[0]);
+      expect(sock1.written[0]).toBe(sock2.written[0]!);
     });
 
     it('should exclude sender from broadcast', () => {

@@ -92,7 +92,7 @@ describe('WebSocket Integration', () => {
 
   describe('core connection lifecycle', () => {
     it('should complete WebSocket handshake and exchange messages', async () => {
-      const messageFn = mock(() => {});
+      const messageFn = mock((_data: Buffer | string) => {});
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
       app.ws('/ws', {
@@ -125,7 +125,7 @@ describe('WebSocket Integration', () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
       app.ws('/ws', {
-        message(ws, data, isBinary) {
+        message(ws, _data, isBinary) {
           ws.send(isBinary ? Buffer.from('binary-ok') : Buffer.from('text'));
         },
       });
@@ -227,7 +227,7 @@ describe('WebSocket Integration', () => {
 
       const response = await fetch(`http://127.0.0.1:${testPort}/api/test`);
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = (await response.json()) as { ok: boolean };
       expect(body.ok).toBe(true);
     });
   });
@@ -238,7 +238,9 @@ describe('WebSocket Integration', () => {
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
       app.ws<{ room: string }>('/chat/:room', {
         upgrade(req) {
-          return { room: req.params.room };
+          const {room} = req.params;
+          if (!room) return false;
+          return { room };
         },
         message(ws) {
           ws.send(ws.data.room);

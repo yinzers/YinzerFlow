@@ -438,6 +438,18 @@ const _handleWebSocketConfig = (defaultConfig: InternalServerOptions, userConfig
         ...DEFAULT_WEBSOCKET_CONFIG.backpressure,
         ...userConfig.websocket.backpressure,
       },
+      heartbeat: {
+        ...DEFAULT_WEBSOCKET_CONFIG.heartbeat,
+        ...userConfig.websocket.heartbeat,
+      },
+      messageRateLimit: {
+        ...DEFAULT_WEBSOCKET_CONFIG.messageRateLimit,
+        ...userConfig.websocket.messageRateLimit,
+      },
+      compression: {
+        ...DEFAULT_WEBSOCKET_CONFIG.compression,
+        ...userConfig.websocket.compression,
+      },
     };
     defaultConfig.websocket = merged;
     _validateWebSocketConfig(merged);

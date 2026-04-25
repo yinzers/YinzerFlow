@@ -2,7 +2,7 @@
   no-bitwise,
   @typescript-eslint/no-non-null-assertion
 */
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
 import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';

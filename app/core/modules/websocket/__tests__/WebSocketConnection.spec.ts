@@ -9,16 +9,10 @@ import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
 import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
-const defaultOptions: {
-  maxPayloadLength: number;
-  idleTimeout: number;
-  backpressure: { strategy: 'buffer' | 'drop'; limit: number };
-  heartbeatInterval: number;
-  messageRateLimit: { enabled: boolean; maxMessages: number; window: number };
-} = {
+const defaultOptions = {
   maxPayloadLength: 16_777_216,
   idleTimeout: 0,
-  backpressure: { strategy: 'buffer', limit: 1_048_576 },
+  backpressure: { strategy: 'buffer' as 'buffer' | 'drop', limit: 1_048_576 },
   heartbeatInterval: 0,
   messageRateLimit: { enabled: false, maxMessages: 100, window: 10 },
   compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11, clientMaxWindowBits: 15 },
@@ -29,7 +23,7 @@ const createConnection = (
   options = defaultOptions,
 ): { conn: WebSocketConnection<{ testId: string }>; socket: MockSocket } => {
   const socket = new MockSocket();
-  const conn = new WebSocketConnection(socket as any, { testId: 'test-123' }, handlers, options);
+  const conn = new WebSocketConnection(socket as never, { testId: 'test-123' }, handlers, options);
   return { conn, socket };
 };
 

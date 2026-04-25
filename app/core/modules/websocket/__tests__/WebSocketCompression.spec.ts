@@ -14,7 +14,7 @@ import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { WebSocketChannelManager } from '../WebSocketChannelManager.ts';
 import { DEFAULT_WEBSOCKET_CONFIG, _validateWebSocketConfig } from '../WebSocketConfig.ts';
 import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
-import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
+import { wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
 const defaultCompressionOpts = { enabled: true, level: 1, threshold: 0, serverMaxWindowBits: 11, clientMaxWindowBits: 15 };
@@ -281,7 +281,7 @@ describe('WebSocket Compression', () => {
 
       const { conn: compConn, socket: compSocket } = createConnection(defaultCompressionOpts);
       compConn.setChannelManager(manager);
-      manager.subscribe(compConn, 'test');
+      manager.subscribe(compConn as WebSocketConnection, 'test');
 
       manager.publish('test', 'A'.repeat(200));
 
@@ -296,7 +296,7 @@ describe('WebSocket Compression', () => {
 
       const { conn: plainConn, socket: plainSocket } = createConnection(disabledCompressionOpts);
       plainConn.setChannelManager(manager);
-      manager.subscribe(plainConn, 'test');
+      manager.subscribe(plainConn as WebSocketConnection, 'test');
 
       manager.publish('test', 'A'.repeat(200));
 
@@ -313,8 +313,8 @@ describe('WebSocket Compression', () => {
       const { conn: conn2, socket: socket2 } = createConnection(defaultCompressionOpts);
       conn1.setChannelManager(manager);
       conn2.setChannelManager(manager);
-      manager.subscribe(conn1, 'test');
-      manager.subscribe(conn2, 'test');
+      manager.subscribe(conn1 as WebSocketConnection, 'test');
+      manager.subscribe(conn2 as WebSocketConnection, 'test');
 
       manager.publish('test', 'A'.repeat(200));
 
@@ -330,7 +330,7 @@ describe('WebSocket Compression', () => {
 
       const { conn, socket } = createConnection(defaultCompressionOpts);
       conn.setChannelManager(manager);
-      manager.subscribe(conn, 'test');
+      manager.subscribe(conn as WebSocketConnection, 'test');
 
       manager.publish('test', 'short');
 
