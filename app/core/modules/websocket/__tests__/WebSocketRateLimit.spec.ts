@@ -4,8 +4,9 @@
 */
 import { describe, expect, it } from 'bun:test';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
-import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
+import { DEFAULT_WEBSOCKET_CONFIG, _validateWebSocketConfig } from '../WebSocketConfig.ts';
 import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
+import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
 const createConnection = (
@@ -165,8 +166,6 @@ describe('WebSocket Message Rate Limiting', () => {
 
   describe('config validation', () => {
     it('should accept valid rate limit configuration', () => {
-      const { _validateWebSocketConfig } = require('../WebSocketConfig.ts');
-      const { DEFAULT_WEBSOCKET_CONFIG } = require('../WebSocketConfig.ts');
       expect(() => {
         _validateWebSocketConfig({
           ...DEFAULT_WEBSOCKET_CONFIG,
@@ -176,8 +175,6 @@ describe('WebSocket Message Rate Limiting', () => {
     });
 
     it('should reject maxMessages < 1', () => {
-      const { _validateWebSocketConfig } = require('../WebSocketConfig.ts');
-      const { DEFAULT_WEBSOCKET_CONFIG } = require('../WebSocketConfig.ts');
       expect(() => {
         _validateWebSocketConfig({
           ...DEFAULT_WEBSOCKET_CONFIG,
@@ -187,8 +184,6 @@ describe('WebSocket Message Rate Limiting', () => {
     });
 
     it('should reject non-integer maxMessages', () => {
-      const { _validateWebSocketConfig } = require('../WebSocketConfig.ts');
-      const { DEFAULT_WEBSOCKET_CONFIG } = require('../WebSocketConfig.ts');
       expect(() => {
         _validateWebSocketConfig({
           ...DEFAULT_WEBSOCKET_CONFIG,
@@ -198,8 +193,6 @@ describe('WebSocket Message Rate Limiting', () => {
     });
 
     it('should reject window < 1', () => {
-      const { _validateWebSocketConfig } = require('../WebSocketConfig.ts');
-      const { DEFAULT_WEBSOCKET_CONFIG } = require('../WebSocketConfig.ts');
       expect(() => {
         _validateWebSocketConfig({
           ...DEFAULT_WEBSOCKET_CONFIG,
@@ -209,8 +202,6 @@ describe('WebSocket Message Rate Limiting', () => {
     });
 
     it('should skip validation when disabled', () => {
-      const { _validateWebSocketConfig } = require('../WebSocketConfig.ts');
-      const { DEFAULT_WEBSOCKET_CONFIG } = require('../WebSocketConfig.ts');
       expect(() => {
         _validateWebSocketConfig({
           ...DEFAULT_WEBSOCKET_CONFIG,

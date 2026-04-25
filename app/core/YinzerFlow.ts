@@ -173,7 +173,7 @@ export class YinzerFlow extends SetupImpl {
   private _wsConnections?: Set<WebSocketConnection>;
   private _wsChannelManager?: WebSocketChannelManager;
   private _wsSecurity?: WebSocketSecurity;
-  private _wsHeartbeatTimer?: ReturnType<typeof setInterval>;
+  private _wsHeartbeatTimer?: ReturnType<typeof setInterval> | undefined;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
