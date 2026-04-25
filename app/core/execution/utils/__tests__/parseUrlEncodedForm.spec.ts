@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { parseUrlEncodedForm } from '../parseUrlEncodedForm.ts';
-import type { UrlEncodedConfiguration } from '@typedefs/public/Configuration.js';
+import type { InternalUrlEncodedOptions as UrlEncodedConfiguration } from '@typedefs/internal/InternalConfiguration.d.ts';
 
 /**
  * Create test URL-encoded configuration with sensible defaults

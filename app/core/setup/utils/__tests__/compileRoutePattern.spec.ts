@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import type { IRoute } from '@typedefs/core/setup/RouteRegistry.js';
-import { compileRoutePattern } from '../compileRoutePatter.ts';
+import { compileRoutePattern as _compileRoutePattern } from '../compileRoutePatter.ts';
+import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import { httpMethod } from '@constants/http.ts';
+
+const compileRoutePattern = (route: { method: string; path: string; handler: () => unknown }) =>
+  _compileRoutePattern(route as unknown as InternalRouteRegistry);
 
 describe('compileRoutePattern', () => {
   describe('Basic route compilation', () => {
     it('should compile simple parameterized route', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:id',
         handler: () => {},
@@ -24,7 +27,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should compile route with multiple parameters', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.post,
         path: '/users/:userId/posts/:postId',
         handler: () => {},
@@ -43,7 +46,7 @@ describe('compileRoutePattern', () => {
         afterHooks: [() => {}],
       };
 
-      const route: IRoute = {
+      const route = {
         method: httpMethod.put,
         path: '/api/:version/users/:id',
         handler: () => 'test handler',
@@ -61,7 +64,7 @@ describe('compileRoutePattern', () => {
 
   describe('Regex pattern generation', () => {
     it('should create patterns that match correctly', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:id',
         handler: () => {},
@@ -84,7 +87,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should create patterns for complex routes', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/api/v1/users/:userId/posts/:postId/comments/:commentId',
         handler: () => {},
@@ -111,7 +114,7 @@ describe('compileRoutePattern', () => {
       ];
 
       routes.forEach(({ path, expected }) => {
-        const route: IRoute = { method: httpMethod.get, path, handler: () => {} };
+        const route = { method: httpMethod.get, path, handler: () => {} };
         const compiled = compileRoutePattern(route);
         expect(compiled.pattern.source).toBe(expected.replace(/\//g, '\\/'));
       });
@@ -128,14 +131,14 @@ describe('compileRoutePattern', () => {
       ];
 
       testCases.forEach(({ path, expected }) => {
-        const route: IRoute = { method: httpMethod.get, path, handler: () => {} };
+        const route = { method: httpMethod.get, path, handler: () => {} };
         const compiled = compileRoutePattern(route);
         expect(compiled.paramNames).toEqual(expected);
       });
     });
 
     it('should handle complex parameter names', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:user_id/posts/:post_id123/comments/:commentId',
         handler: () => {},
@@ -146,7 +149,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should handle mixed static and parameter segments', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/api/v1/:orgId/repos/:repoName/issues/:issueNumber/comments',
         handler: () => {},
@@ -161,7 +164,7 @@ describe('compileRoutePattern', () => {
 
   describe('Regex matching and parameter extraction', () => {
     it('should enable parameter extraction from matches', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:userId/posts/:postId',
         handler: () => {},
@@ -192,7 +195,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should handle special characters in parameter values', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:id',
         handler: () => {},
@@ -215,7 +218,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should not match paths with slashes in parameter values', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:id',
         handler: () => {},
@@ -231,7 +234,7 @@ describe('compileRoutePattern', () => {
 
   describe('Edge cases', () => {
     it('should handle routes with only parameters', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/:param',
         handler: () => {},
@@ -243,7 +246,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should handle routes with consecutive parameters', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/:first/:second/:third',
         handler: () => {},
@@ -257,7 +260,7 @@ describe('compileRoutePattern', () => {
     });
 
     it('should maintain isParameterized flag', () => {
-      const route: IRoute = {
+      const route = {
         method: httpMethod.get,
         path: '/users/:id',
         handler: () => {},

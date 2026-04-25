@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { describe, expect, it } from 'bun:test';
 import { httpMethod } from '@constants/http.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
@@ -39,10 +40,10 @@ describe('GroupApp', () => {
       const app = new GroupApp(setup, '/api', { beforeHooks: [hook1] });
       app.get('/users', () => ({}), { beforeHooks: [hook2] });
 
-      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/users');
-      expect(route?.options.beforeHooks).toContain(hook1);
-      expect(route?.options.beforeHooks).toContain(hook2);
-      expect(route?.options.beforeHooks.indexOf(hook1)).toBeLessThan(route?.options.beforeHooks.indexOf(hook2));
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/users')!;
+      expect(route.options.beforeHooks).toContain(hook1);
+      expect(route.options.beforeHooks).toContain(hook2);
+      expect(route.options.beforeHooks!.indexOf(hook1)).toBeLessThan(route.options.beforeHooks!.indexOf(hook2));
     });
 
     it('should merge afterHooks in reverse order', () => {
@@ -53,10 +54,10 @@ describe('GroupApp', () => {
       const app = new GroupApp(setup, '/api', { afterHooks: [hook1] });
       app.get('/users', () => ({}), { afterHooks: [hook2] });
 
-      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/users');
-      expect(route?.options.afterHooks).toContain(hook1);
-      expect(route?.options.afterHooks).toContain(hook2);
-      expect(route?.options.afterHooks.indexOf(hook2)).toBeLessThan(route?.options.afterHooks.indexOf(hook1));
+      const route = setup._routeRegistry._findRoute(httpMethod.get, '/api/users')!;
+      expect(route.options.afterHooks).toContain(hook1);
+      expect(route.options.afterHooks).toContain(hook2);
+      expect(route.options.afterHooks!.indexOf(hook2)).toBeLessThan(route.options.afterHooks!.indexOf(hook1));
     });
   });
 
@@ -88,7 +89,7 @@ describe('GroupApp', () => {
 
       expect(getRoute).toBeDefined();
       expect(headRoute).toBeDefined();
-      expect(getRoute?.handler).toBe(headRoute?.handler);
+      expect(getRoute!.handler).toBe(headRoute!.handler);
     });
   });
 

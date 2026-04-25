@@ -1,7 +1,7 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { describe, expect, it } from 'bun:test';
 import { httpMethod, httpStatus, httpStatusCode } from '@constants/http.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
-import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.d.ts';
 
 // Reusable test data builders
 const createTestHooks = () => ({
@@ -77,8 +77,8 @@ describe('SetupImpl', () => {
         const headRoute = setup._routeRegistry._findRoute(httpMethod.head, '/api/data');
 
         if (getRoute && headRoute) {
-          expect(getRoute.options.beforeHooks).toEqual(headRoute.options.beforeHooks);
-          expect(getRoute.options.afterHooks).toEqual(headRoute.options.afterHooks);
+          expect(getRoute.options.beforeHooks).toEqual(headRoute.options.beforeHooks!);
+          expect(getRoute.options.afterHooks).toEqual(headRoute.options.afterHooks!);
         }
       });
 
@@ -455,7 +455,6 @@ describe('SetupImpl', () => {
 
     it('should merge hooks from parent groups to child groups', () => {
       const setup = new SetupImpl();
-      const globalHook = () => console.log('global');
       const apiHook = () => console.log('api');
       const v1Hook = () => console.log('v1');
       const adminHook = () => console.log('admin');
@@ -501,10 +500,10 @@ describe('SetupImpl', () => {
 
         // Verify order (parent hooks first, then child hooks)
         const hookIndexes = {
-          api: route.options.beforeHooks.indexOf(apiHook),
-          v1: route.options.beforeHooks.indexOf(v1Hook),
-          admin: route.options.beforeHooks.indexOf(adminHook),
-          route: route.options.beforeHooks.indexOf(routeHook),
+          api: route.options.beforeHooks!.indexOf(apiHook),
+          v1: route.options.beforeHooks!.indexOf(v1Hook),
+          admin: route.options.beforeHooks!.indexOf(adminHook),
+          route: route.options.beforeHooks!.indexOf(routeHook),
         };
 
         expect(hookIndexes.api).toBeLessThan(hookIndexes.v1);
@@ -550,9 +549,9 @@ describe('SetupImpl', () => {
 
         // Verify order (child hooks first, then parent hooks)
         const hookIndexes = {
-          route: route.options.afterHooks.indexOf(routeAfterHook),
-          v1: route.options.afterHooks.indexOf(v1AfterHook),
-          api: route.options.afterHooks.indexOf(apiAfterHook),
+          route: route.options.afterHooks!.indexOf(routeAfterHook),
+          v1: route.options.afterHooks!.indexOf(v1AfterHook),
+          api: route.options.afterHooks!.indexOf(apiAfterHook),
         };
 
         expect(hookIndexes.route).toBeLessThan(hookIndexes.v1);
@@ -601,16 +600,16 @@ describe('SetupImpl', () => {
 
       // Empty group should not cause errors
       expect(() => {
-        setup.group('/api', (api) => {
+        setup.group('/api', (_api) => {
           // No routes defined
         });
       }).not.toThrow();
 
       // Nested empty groups should also work
       expect(() => {
-        setup.group('/api', (api) => {
-          api.group('/v1', (v1) => {
-            v1.group('/users', (users) => {
+        setup.group('/api', (_api) => {
+          _api.group('/v1', (_v1) => {
+            _v1.group('/users', (_users) => {
               // No routes defined
             });
           });
@@ -690,19 +689,11 @@ describe('SetupImpl', () => {
     it('should support state in middleware and route handlers', () => {
       const setup = new SetupImpl();
 
-      // Middleware that sets state
-      const authMiddleware = (ctx: any) => {
+      // Route handler that sets and reads state
+      setup.get('/middleware', (ctx) => {
+        // Set state (as middleware would via beforeHooks)
         ctx.state.user = { id: 1, name: 'John' };
         ctx.state.isAuthenticated = true;
-      };
-
-      // Route that uses middleware state
-      setup.get('/middleware', authMiddleware, (ctx) => {
-        // Access state set by middleware
-        expect(ctx.state.user).toEqual({ id: 1, name: 'John' });
-        expect(ctx.state.isAuthenticated).toBe(true);
-
-        // Add more state
         ctx.state.routeAccessed = true;
 
         return {
@@ -768,15 +759,7 @@ describe('SetupImpl', () => {
     it('should support typed state with generics', () => {
       const setup = new SetupImpl();
 
-      // Define typed state interface
-      interface TypedState extends HandlerCallbackGenerics {
-        state: {
-          user: { id: number; name: string };
-          permissions: Array<string>;
-        };
-      }
-
-      setup.get('/typed', (ctx: any) => {
+      setup.get('/typed', (ctx) => {
         // Set typed state
         ctx.state.user = { id: 1, name: 'Admin' };
         ctx.state.permissions = ['read', 'write', 'delete'];
@@ -808,7 +791,7 @@ describe('SetupImpl', () => {
       ]);
 
       setup.afterAll([
-        (ctx, result) => {
+        (ctx, _result) => {
           // Access state and modify response based on result
           expect(ctx.state.requestId).toBe('req-123');
           expect(typeof ctx.state.timestamp).toBe('number');

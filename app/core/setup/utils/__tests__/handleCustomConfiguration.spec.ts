@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { handleCustomConfiguration } from '@core/setup/utils/handleCustomConfiguration.ts';
-import { createLogger, loggerBrand } from '@core/utils/log.ts';
+import { createLogger } from '@core/utils/log.ts';
 
 describe('handleCustomConfiguration', () => {
   describe('Basic Configuration', () => {

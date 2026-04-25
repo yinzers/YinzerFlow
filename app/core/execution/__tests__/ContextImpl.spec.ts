@@ -25,7 +25,7 @@ describe('ContextImpl', () => {
       },
     ];
 
-    testCases.forEach(({ name, rawRequest, description }) => {
+    testCases.forEach(({ name: _name, rawRequest, description }) => {
       it(description, () => {
         const context = new ContextImpl(rawRequest, setup);
 

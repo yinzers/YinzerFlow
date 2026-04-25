@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import net from 'net';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
@@ -172,7 +173,7 @@ describe('YinzerFlow', () => {
         new YinzerFlow();
         new YinzerFlow();
         new YinzerFlow();
-        /* eslint-enable */
+        /* eslint-enable no-new */
 
         // Should not add duplicate handlers
         expect(process.listenerCount('SIGTERM')).toBe(originalSigtermCount);
@@ -1027,7 +1028,7 @@ describe('YinzerFlow', () => {
 
       // Extract actual body (everything after the blank line separator)
       const [, bodyStr] = response.split('\r\n\r\n');
-      expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
+      expect(contentLength).toBe(Buffer.byteLength(bodyStr!, 'utf8'));
     });
 
     it('should compute Content-Length as byte count for multi-byte characters', async () => {
@@ -1042,10 +1043,10 @@ describe('YinzerFlow', () => {
       const contentLength = Number(clMatch?.groups?.digits);
 
       const [, bodyStr] = response.split('\r\n\r\n');
-      const byteLength = Buffer.byteLength(bodyStr, 'utf8');
+      const byteLength = Buffer.byteLength(bodyStr!, 'utf8');
 
       // Byte length must differ from char length for multi-byte content
-      expect(byteLength).toBeGreaterThan(bodyStr.length);
+      expect(byteLength).toBeGreaterThan(bodyStr!.length);
       expect(contentLength).toBe(byteLength);
     });
 
@@ -1064,7 +1065,7 @@ describe('YinzerFlow', () => {
       expect(clMatch?.groups).toBeDefined();
       const contentLength = Number(clMatch?.groups?.digits);
       const [, bodyStr] = response.split('\r\n\r\n');
-      expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
+      expect(contentLength).toBe(Buffer.byteLength(bodyStr!, 'utf8'));
     });
 
     it('should include Date and Content-Length in not-found responses', async () => {
@@ -1079,7 +1080,7 @@ describe('YinzerFlow', () => {
       expect(clMatch?.groups).toBeDefined();
       const contentLength = Number(clMatch?.groups?.digits);
       const [, bodyStr] = response.split('\r\n\r\n');
-      expect(contentLength).toBe(Buffer.byteLength(bodyStr, 'utf8'));
+      expect(contentLength).toBe(Buffer.byteLength(bodyStr!, 'utf8'));
     });
   });
 

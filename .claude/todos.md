@@ -1,53 +1,35 @@
 # Todos: yinzerflow
 
 ## Current Goal
-WebSocket Milestone 2 — Hardening (heartbeat, rate limiting, compression)
+WebSocket Milestone 2 COMPLETE + TS cleanup done. Awaiting user direction.
 
 ---
 
-## Active: WebSocket Milestone 2
+## Completed: WebSocket Milestone 2 ✓
 
-See `.claude/plans/websocket-milestone2-plan.md` for full plan.
-
-### Phase 1: Heartbeat/Keepalive — COMPLETE ✓
-- [x] 1.1 Add `heartbeat` to `InternalWebSocketOptions` (enabled, interval)
-- [x] 1.2 Add `heartbeatInterval` to `WebSocketRouteOptions` (per-route override)
-- [x] 1.3 Config defaults (enabled: true, interval: 30) + validation + warning
-- [x] 1.4 `_isAlive` + `_heartbeatEnabled` on WebSocketConnection, pong/data set alive
-- [x] 1.5 `_ensureHeartbeatSweep()` in YinzerFlow — lazy init, unref, shutdown cleanup
-- [x] 1.6 Config merge includes `heartbeatInterval`
-- [x] 1.7 Tests — 12 tests (liveness tracking, sweep sim, ping method, heartbeatEnabled)
-
-### Phase 2: Message Rate Limiting — NEXT
-- [ ] 2.1 Add `messageRateLimit` to `InternalWebSocketOptions` (enabled, maxMessages, window)
-- [ ] 2.2 Add `messageRateLimit` to `WebSocketRouteOptions` (per-route override)
-- [ ] 2.3 Config defaults (disabled, 100 msgs, 10s) + validation
-- [ ] 2.4 Token bucket in WebSocketConnection (`_rateLimitTokens`, `_rateLimitLastRefill`)
-- [ ] 2.5 Rate limit check in `_deliverMessage` — close with 1008 on exceed
-- [ ] 2.6 Config merge includes messageRateLimit
-- [ ] 2.7 Tests — within limit, exceed closes, token refill, burst, disabled, per-route
-
-### Phase 3: Compression (permessage-deflate) — pending
-- [ ] 3.1 Frame parser RSV1 support + RSV2/RSV3 validation
-- [ ] 3.2 WebSocketCompression.ts (compress/decompress, extension negotiation)
-- [ ] 3.3 Handshake extension negotiation
-- [ ] 3.4 Config (enabled, level, threshold, windowBits)
-- [ ] 3.5 Connection integration (compress send, decompress receive)
-- [ ] 3.6 Broadcast integration (compress-once)
-- [ ] 3.7 Upgrade flow wiring
-- [ ] 3.8 Tests
-
-### Phase 4: Docs, Exports & Verification Sweep — pending
-- [ ] 4.1 Update docs/core/websockets.md
-- [ ] 4.2 Export new constants if any
-- [ ] 4.3 Verification sweep
+All 4 phases + TS strict fix committed to main. 59 new WS tests (1110 total), lint clean, 0 WS TS errors.
 
 ---
 
 ## Deferred
 
 - [ ] **D1 (discussion): Rename `logging.requests` → `logging.accessLog`** — deferred pending user input
-- [ ] **Milestone 3 (future)**: Context takeover compression, per-route compression config
+- [ ] **Milestone 3 (future)**: Context takeover compression, per-route compression config, heartbeat per-route interval
+
+---
+
+## Priority 2: Pre-existing TS Errors (37 total, non-WS files)
+
+- [ ] `app/__tests__/test-utils/create-server.spec.ts` — missing `ServerConfiguration` export
+- [ ] `app/core/__tests__/YinzerFlow.spec.ts` — `string | undefined` arg types, `body` unknown
+- [ ] `app/core/execution/__tests__/ContextImpl.spec.ts` — unused `name` variable
+- [ ] `app/core/execution/utils/__tests__/parseBody.spec.ts` — missing type exports
+- [ ] `app/core/execution/utils/__tests__/parseJson.spec.ts` — missing type export
+- [ ] `app/core/execution/utils/__tests__/parseUrlEncodedForm.spec.ts` — missing type export
+- [ ] `app/core/setup/__tests__/GroupApp.spec.ts` — TS errors
+- [ ] `app/core/setup/__tests__/SetupImpl.spec.ts` — TS errors
+- [ ] `app/core/setup/utils/__tests__/compileRoutePattern.spec.ts` — TS errors
+- [ ] `app/core/setup/utils/__tests__/handleCustomConfiguration.spec.ts` — unused import
 
 ---
 

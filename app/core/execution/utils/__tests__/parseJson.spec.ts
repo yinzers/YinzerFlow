@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { parseApplicationJson } from '../parseJson.ts';
-import type { JsonParserConfiguration } from '@typedefs/public/Configuration.js';
+import type { InternalJsonParserOptions as JsonParserConfiguration } from '@typedefs/internal/InternalConfiguration.d.ts';
 
 /**
  * Create a test configuration with sensible defaults
