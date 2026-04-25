@@ -731,10 +731,12 @@ export class YinzerFlow extends SetupImpl {
     idleTimeout: number;
     backpressure: { strategy: 'buffer' | 'drop'; limit: number };
     heartbeatInterval: number;
+    messageRateLimit: { enabled: boolean; maxMessages: number; window: number };
   } {
     const wsConfig = this._configuration.websocket;
     const globalHeartbeat = wsConfig.heartbeat.enabled ? wsConfig.heartbeat.interval : 0;
     const heartbeatInterval = routeOpts?.heartbeatInterval ?? globalHeartbeat;
+    const rl = wsConfig.messageRateLimit;
     return {
       maxPayloadLength: routeOpts?.maxPayloadLength ?? wsConfig.maxPayloadLength,
       idleTimeout: routeOpts?.idleTimeout ?? wsConfig.idleTimeout,
@@ -743,6 +745,11 @@ export class YinzerFlow extends SetupImpl {
         limit: routeOpts?.backpressure?.limit ?? wsConfig.backpressure.limit,
       },
       heartbeatInterval,
+      messageRateLimit: {
+        enabled: rl.enabled,
+        maxMessages: routeOpts?.messageRateLimit?.maxMessages ?? rl.maxMessages,
+        window: routeOpts?.messageRateLimit?.window ?? rl.window,
+      },
     };
   }
 

@@ -15,7 +15,7 @@ const createTestConnection = (): { conn: WebSocketConnection; socket: MockSocket
     socket as any,
     {},
     {},
-    { maxPayloadLength: 16_777_216, idleTimeout: 0, backpressure: { strategy: 'buffer', limit: 1_048_576 } },
+    { maxPayloadLength: 16_777_216, idleTimeout: 0, backpressure: { strategy: 'buffer', limit: 1_048_576 }, heartbeatInterval: 0, messageRateLimit: { enabled: false, maxMessages: 100, window: 10 } },
   );
   return { conn, socket };
 };

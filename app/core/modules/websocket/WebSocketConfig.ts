@@ -18,6 +18,11 @@ export const DEFAULT_WEBSOCKET_CONFIG: InternalWebSocketOptions = {
     enabled: true,
     interval: 30, // seconds
   },
+  messageRateLimit: {
+    enabled: false,
+    maxMessages: 100,
+    window: 10, // seconds
+  },
 };
 
 /**
@@ -47,6 +52,15 @@ export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void
 
   if (config.heartbeat.enabled && config.heartbeat.interval < 1) {
     throw new Error('websocket.heartbeat.interval must be at least 1 second');
+  }
+
+  if (config.messageRateLimit.enabled) {
+    if (!Number.isInteger(config.messageRateLimit.maxMessages) || config.messageRateLimit.maxMessages < 1) {
+      throw new Error('websocket.messageRateLimit.maxMessages must be an integer >= 1');
+    }
+    if (!Number.isInteger(config.messageRateLimit.window) || config.messageRateLimit.window < 1) {
+      throw new Error('websocket.messageRateLimit.window must be an integer >= 1 (seconds)');
+    }
   }
 };
 

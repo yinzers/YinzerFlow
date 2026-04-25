@@ -2,10 +2,10 @@
   no-bitwise,
   @typescript-eslint/no-non-null-assertion
 */
-import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
-import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
+import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
 const createConnection = (
@@ -18,6 +18,7 @@ const createConnection = (
     idleTimeout: 0,
     backpressure: { strategy: 'buffer', limit: 1_048_576 },
     heartbeatInterval,
+    messageRateLimit: { enabled: false, maxMessages: 100, window: 10 },
   });
   return { conn, socket };
 };
@@ -78,9 +79,8 @@ describe('WebSocket Heartbeat', () => {
 
       conn._isAlive = false;
 
-      if (!conn._isAlive) {
-        conn.close(wsCloseCode.normal, 'Heartbeat timeout');
-      }
+      // Sweep would check _isAlive and close — simulate that action
+      conn.close(wsCloseCode.normal, 'Heartbeat timeout');
 
       expect(conn.readyState).toBe(wsReadyState.closing);
       // Close frame was written to socket

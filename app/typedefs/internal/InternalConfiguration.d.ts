@@ -391,6 +391,15 @@ export interface InternalWebSocketOptions {
     /** Seconds between ping sweeps. Also the dead-connection detection window. @default 30 */
     interval: number;
   };
+  /** Per-connection incoming message rate limiting (token bucket). */
+  messageRateLimit: {
+    /** Enable message rate limiting. @default false */
+    enabled: boolean;
+    /** Maximum messages allowed per window. @default 100 */
+    maxMessages: number;
+    /** Window duration in seconds. @default 10 */
+    window: number;
+  };
 }
 
 /**

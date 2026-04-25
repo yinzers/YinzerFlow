@@ -14,11 +14,13 @@ const defaultOptions: {
   idleTimeout: number;
   backpressure: { strategy: 'buffer' | 'drop'; limit: number };
   heartbeatInterval: number;
+  messageRateLimit: { enabled: boolean; maxMessages: number; window: number };
 } = {
   maxPayloadLength: 16_777_216,
   idleTimeout: 0,
   backpressure: { strategy: 'buffer', limit: 1_048_576 },
   heartbeatInterval: 0,
+  messageRateLimit: { enabled: false, maxMessages: 100, window: 10 },
 };
 
 const createConnection = (

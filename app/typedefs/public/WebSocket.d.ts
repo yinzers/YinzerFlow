@@ -138,6 +138,13 @@ export interface WebSocketRouteOptions {
   backpressure?: WebSocketBackpressureOptions;
   /** Override heartbeat interval for this route (seconds). `0` disables heartbeat for this route. */
   heartbeatInterval?: number;
+  /** Per-connection message rate limiting override for this route. */
+  messageRateLimit?: {
+    /** Max messages per window. */
+    maxMessages?: number;
+    /** Window duration in seconds. */
+    window?: number;
+  };
 }
 
 /**

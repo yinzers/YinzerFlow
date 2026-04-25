@@ -7,11 +7,18 @@ import type { WebSocketBackpressureOptions, WebSocketHandlers } from '@typedefs/
 /**
  * Options passed to the WebSocketConnection constructor.
  */
+interface RateLimitOptions {
+  enabled: boolean;
+  maxMessages: number;
+  window: number;
+}
+
 interface ConnectionOptions {
   maxPayloadLength: number;
   idleTimeout: number;
   backpressure: Required<WebSocketBackpressureOptions>;
   heartbeatInterval: number;
+  messageRateLimit: RateLimitOptions;
 }
 
 /**
@@ -49,6 +56,10 @@ export class WebSocketConnection<T = unknown> {
   _isAlive = true;
   readonly _heartbeatEnabled: boolean;
 
+  // Token bucket rate limiting
+  private _rateLimitTokens: number;
+  private _rateLimitLastRefill: number;
+
   // Channel manager (set externally after construction)
   private _channelManager?: WebSocketChannelManager;
 
@@ -60,6 +71,8 @@ export class WebSocketConnection<T = unknown> {
     this._options = options;
     this._remoteAddress = socket.remoteAddress ?? 'unknown';
     this._heartbeatEnabled = options.heartbeatInterval > 0;
+    this._rateLimitTokens = options.messageRateLimit.enabled ? options.messageRateLimit.maxMessages : 0;
+    this._rateLimitLastRefill = options.messageRateLimit.enabled ? Date.now() : 0;
 
     socket.on('data', (chunk: Buffer) => this._onSocketData(chunk));
     socket.on('close', () => this._onSocketClose());
@@ -308,9 +321,29 @@ export class WebSocketConnection<T = unknown> {
   private _deliverMessage(opcode: number, payload: Buffer): void {
     if (this._readyState === wsReadyState.closed) return;
 
+    if (this._options.messageRateLimit.enabled && !this._consumeRateLimitToken()) {
+      this.close(wsCloseCode.policyViolation, 'Message rate limit exceeded');
+      this._destroySocket();
+      return;
+    }
+
     const isBinary = opcode === wsOpcode.binary;
     const data = isBinary ? payload : payload.toString('utf8');
     this._handlers.message?.(this._asPublic(), data, isBinary);
+  }
+
+  private _consumeRateLimitToken(): boolean {
+    const rl = this._options.messageRateLimit;
+    const now = Date.now();
+    const elapsed = (now - this._rateLimitLastRefill) / 1000;
+    const refillRate = rl.maxMessages / rl.window;
+    this._rateLimitTokens = Math.min(this._rateLimitTokens + (elapsed * refillRate), rl.maxMessages);
+    this._rateLimitLastRefill = now;
+
+    if (this._rateLimitTokens < 1) return false;
+
+    this._rateLimitTokens -= 1;
+    return true;
   }
 
   // ============================================
