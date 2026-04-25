@@ -5,6 +5,9 @@ YinzerFlow includes production-level WebSocket support built on raw RFC 6455 —
 - **Channel-based pub/sub** with encode-once broadcast (frame encoded once, raw bytes to all subscribers)
 - **Per-socket typed data** — generics flow through all handlers
 - **Backpressure handling** — `'buffer'` (safe default) or `'drop'` (for real-time data like trading quotes)
+- **Heartbeat/keepalive** — server-initiated ping/pong detects dead connections automatically
+- **Message rate limiting** — per-connection token bucket throttling
+- **Compression** — permessage-deflate (RFC 7692) with broadcast-safe no-context-takeover
 - **Hook integration** — `wsBeforeMessage` / `wsAfterMessage` for cross-cutting concerns
 - **Security** — origin validation, per-IP connection limits
 - **Zero overhead** when no `app.ws()` routes registered
@@ -90,6 +93,100 @@ const app = new YinzerFlow({
 ### websocket.backpressure.limit — @default <span style="color: #2ecc71">`1048576`</span> (1MB)
 
 Maximum bytes to queue before closing the connection (only applies to `'buffer'` strategy).
+
+### websocket.heartbeat.enabled — @default <span style="color: #2ecc71">`true`</span>
+
+Enable server-initiated ping/pong heartbeat. Detects half-open TCP connections (where the client's network died without a clean close) that idle timeout alone cannot catch.
+
+Uses an efficient two-state sweep — one `setInterval` for all connections, regardless of count.
+
+<span style="color: #e74c3c">**⚠️ Warning:**</span> Disabling heartbeat means dead connections accumulate silently, consuming memory and receiving broadcast data that goes nowhere.
+
+### websocket.heartbeat.interval — @default <span style="color: #2ecc71">`30`</span> (seconds)
+
+Seconds between ping sweeps. Also the dead-connection detection window — a connection that doesn't respond within one interval is closed.
+
+```typescript
+const app = new YinzerFlow({
+  websocket: {
+    heartbeat: {
+      enabled: true,
+      interval: 15, // faster detection, more pings on the wire
+    },
+  },
+});
+```
+
+### websocket.messageRateLimit.enabled — @default <span style="color: #2ecc71">`false`</span>
+
+Enable per-connection incoming message rate limiting. Uses a token bucket algorithm — O(1) per message, handles bursts naturally. When exceeded, the connection is closed with RFC 6455 code 1008 (Policy Violation).
+
+Only complete messages count (after fragment reassembly). Control frames (ping, pong, close) are never rate-limited.
+
+### websocket.messageRateLimit.maxMessages — @default <span style="color: #2ecc71">`100`</span>
+
+Maximum messages allowed per window. Must be an integer >= 1.
+
+### websocket.messageRateLimit.window — @default <span style="color: #2ecc71">`10`</span> (seconds)
+
+Window duration in seconds. Must be an integer >= 1.
+
+```typescript
+const app = new YinzerFlow({
+  websocket: {
+    messageRateLimit: {
+      enabled: true,
+      maxMessages: 50,
+      window: 5, // 50 messages per 5 seconds
+    },
+  },
+});
+```
+
+### websocket.compression.enabled — @default <span style="color: #2ecc71">`false`</span>
+
+Enable permessage-deflate compression (RFC 7692). Negotiated per-connection during the handshake — clients that don't offer the extension connect normally without compression.
+
+Uses **no-context-takeover** mode to preserve the encode-once broadcast pattern. Compressed frames are connection-independent, so the same compressed `Buffer` is sent to all compressed subscribers.
+
+### websocket.compression.level — @default <span style="color: #2ecc71">`1`</span>
+
+zlib compression level (1-9). Lower = faster, higher = better ratio. Level 1 is recommended for real-time data where latency matters more than bandwidth.
+
+### websocket.compression.threshold — @default <span style="color: #2ecc71">`128`</span> (bytes)
+
+Skip compression for payloads smaller than this. Compression overhead can make tiny messages larger.
+
+### websocket.compression.serverMaxWindowBits — @default <span style="color: #2ecc71">`11`</span>
+
+Server LZ77 window size (2^bits bytes). Range: 9-15.
+
+| Window Bits | Window Size | Memory | Compression |
+|:-----------:|:-----------:|:------:|:-----------:|
+| 9 | 512 bytes | ~12 KB | ~50% |
+| 11 | 2 KB | ~15 KB | ~70% |
+| 13 | 8 KB | ~20 KB | ~74% |
+| 15 | 32 KB | ~44 KB | ~77% |
+
+<span style="color: #3498db">**💡 Tip:**</span> Window bits 11 (2KB) is the sweet spot — 70% compression at ~15KB memory. The jump from 11 to 15 is marginal (+7%) but costs 3× the memory.
+
+### websocket.compression.clientMaxWindowBits — @default <span style="color: #2ecc71">`15`</span>
+
+Client LZ77 window size. Only included in the negotiation response if the client offered the parameter.
+
+```typescript
+// Production: compression enabled for JSON-heavy trading data
+const app = new YinzerFlow({
+  websocket: {
+    compression: {
+      enabled: true,
+      level: 1,
+      threshold: 128,
+      serverMaxWindowBits: 11,
+    },
+  },
+});
+```
 
 ## 🔧 Route Registration
 
@@ -312,9 +409,12 @@ await app.listen();
 
 ## 🚀 Performance Notes
 
-- **Encode-once broadcast**: Publishing to N subscribers encodes the frame once. 1000 subscribers = 1 encode + 1000 writes, not 1000 encodes.
+- **Encode-once broadcast**: Publishing to N subscribers encodes the frame once. 1000 subscribers = 1 encode + 1000 writes, not 1000 encodes. When compression is enabled, at most 2 frames are encoded (one compressed, one uncompressed) for mixed subscriber sets.
 - **In-place XOR unmasking**: Client frames are unmasked by mutating the buffer directly — zero allocation.
 - **`Buffer.allocUnsafe`** for outgoing frames — skips zero-fill since the entire buffer is written before use.
+- **Heartbeat sweep**: One `setInterval` for all connections. O(N) per tick to iterate, O(1) timers total regardless of connection count. Timer is `.unref()`'d so it won't prevent graceful shutdown.
+- **Token bucket rate limiting**: O(1) per message — no arrays, no sliding windows. Zero overhead when disabled (no `Date.now()` calls).
+- **Compression**: `deflateRawSync`/`inflateRawSync` with zlib-ng SIMD acceleration in Bun. No-context-takeover means no persistent zlib state per connection — stateless compress/decompress on each message.
 - **Zero overhead** when no `app.ws()` routes: no upgrade detection, no Sets allocated, no security instances created.
 - **Idle timeout** resets on every received frame — high-frequency data streams won't trigger timeout.
 
@@ -339,5 +439,9 @@ await app.listen();
 | 403 on upgrade | Origin not in `allowedOrigins` | Add origin or set `allowedOrigins: []` |
 | 429 on upgrade | Too many connections from IP | Increase `maxConnectionsPerIp` |
 | Connection drops silently | Idle timeout | Increase `idleTimeout` or send periodic pings |
+| Connection closed with "Heartbeat timeout" | Client didn't respond to ping | Check client network; increase `heartbeat.interval` |
+| Connection closed with 1008 | Message rate limit exceeded | Increase `maxMessages`/`window` or throttle client |
 | Messages not received | Client backpressured with `'drop'` | Switch to `'buffer'` or increase client throughput |
 | `ws.data` is `undefined` | No `upgrade` handler | Add `upgrade(req) { return { ... } }` |
+| Compression not activating | Client didn't offer permessage-deflate | Check client supports it; verify `compression.enabled: true` |
+| Small messages getting larger | Compression overhead on tiny payloads | Increase `compression.threshold` (default 128 bytes) |
