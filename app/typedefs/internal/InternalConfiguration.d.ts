@@ -384,6 +384,13 @@ export interface InternalWebSocketOptions {
     /** Max queued bytes before closing connection (buffer strategy only). @default 1048576 (1MB) */
     limit: number;
   };
+  /** Server-initiated ping/pong heartbeat for dead connection detection. */
+  heartbeat: {
+    /** Enable heartbeat pings. @default true */
+    enabled: boolean;
+    /** Seconds between ping sweeps. Also the dead-connection detection window. @default 30 */
+    interval: number;
+  };
 }
 
 /**

@@ -23,6 +23,7 @@ import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _vali
 import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
 import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
 import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
+import { wsCloseCode } from '@constants/websocket.ts';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 /**
@@ -172,6 +173,7 @@ export class YinzerFlow extends SetupImpl {
   private _wsConnections?: Set<WebSocketConnection>;
   private _wsChannelManager?: WebSocketChannelManager;
   private _wsSecurity?: WebSocketSecurity;
+  private _wsHeartbeatTimer?: ReturnType<typeof setInterval>;
 
   constructor(configuration?: ServerOptions) {
     super(configuration);
@@ -711,6 +713,7 @@ export class YinzerFlow extends SetupImpl {
 
     this._wsConnections ??= new Set();
     this._wsConnections.add(connection);
+    this._ensureHeartbeatSweep();
 
     const originalClose = wrappedHandlers.close;
     wrappedHandlers.close = (ws, code, reason): void => {
@@ -727,8 +730,11 @@ export class YinzerFlow extends SetupImpl {
     maxPayloadLength: number;
     idleTimeout: number;
     backpressure: { strategy: 'buffer' | 'drop'; limit: number };
+    heartbeatInterval: number;
   } {
     const wsConfig = this._configuration.websocket;
+    const globalHeartbeat = wsConfig.heartbeat.enabled ? wsConfig.heartbeat.interval : 0;
+    const heartbeatInterval = routeOpts?.heartbeatInterval ?? globalHeartbeat;
     return {
       maxPayloadLength: routeOpts?.maxPayloadLength ?? wsConfig.maxPayloadLength,
       idleTimeout: routeOpts?.idleTimeout ?? wsConfig.idleTimeout,
@@ -736,7 +742,38 @@ export class YinzerFlow extends SetupImpl {
         strategy: routeOpts?.backpressure?.strategy ?? wsConfig.backpressure.strategy,
         limit: routeOpts?.backpressure?.limit ?? wsConfig.backpressure.limit,
       },
+      heartbeatInterval,
     };
+  }
+
+  /**
+   * Start the heartbeat sweep timer if not already running.
+   * Uses the global heartbeat interval — per-route overrides are checked per-connection.
+   */
+  private _ensureHeartbeatSweep(): void {
+    if (this._wsHeartbeatTimer) return;
+
+    const wsConfig = this._configuration.websocket;
+    if (!wsConfig.heartbeat.enabled) return;
+
+    this._wsHeartbeatTimer = setInterval(() => {
+      if (!this._wsConnections?.size) return;
+
+      for (const connection of this._wsConnections) {
+        if (!connection._heartbeatEnabled) continue;
+
+        if (!connection._isAlive) {
+          connection.close(wsCloseCode.normal, 'Heartbeat timeout');
+          continue;
+        }
+
+        connection._isAlive = false;
+        connection.ping();
+      }
+    }, wsConfig.heartbeat.interval * 1000);
+
+    // Don't let the sweep timer keep the process alive during shutdown
+    this._wsHeartbeatTimer.unref();
   }
 
   /**
@@ -850,6 +887,12 @@ export class YinzerFlow extends SetupImpl {
     if (this._diagnostics) {
       this._diagnostics.destroy();
       this._diagnostics = undefined;
+    }
+
+    // Stop heartbeat sweep before closing connections
+    if (this._wsHeartbeatTimer) {
+      clearInterval(this._wsHeartbeatTimer);
+      this._wsHeartbeatTimer = undefined;
     }
 
     // Close all active WebSocket connections gracefully

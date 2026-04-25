@@ -14,6 +14,10 @@ export const DEFAULT_WEBSOCKET_CONFIG: InternalWebSocketOptions = {
     strategy: 'buffer',
     limit: 1_048_576, // 1MB
   },
+  heartbeat: {
+    enabled: true,
+    interval: 30, // seconds
+  },
 };
 
 /**
@@ -40,6 +44,10 @@ export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void
   if (config.backpressure.strategy !== 'buffer' && config.backpressure.strategy !== 'drop') {
     throw new Error(`websocket.backpressure.strategy must be 'buffer' or 'drop'. Got: "${config.backpressure.strategy as unknown as string}"`);
   }
+
+  if (config.heartbeat.enabled && config.heartbeat.interval < 1) {
+    throw new Error('websocket.heartbeat.interval must be at least 1 second');
+  }
 };
 
 /**
@@ -58,6 +66,13 @@ export const _warnWebSocketConfig = (config: InternalWebSocketOptions): void => 
     log.warn(
       '[SECURITY WARNING] websocket.idleTimeout is 0 (disabled). ' +
         'Idle connections will never be closed automatically, which can lead to resource exhaustion.',
+    );
+  }
+
+  if (!config.heartbeat.enabled) {
+    log.warn(
+      '[SECURITY WARNING] websocket.heartbeat is disabled. ' +
+        'Half-open connections (client network died without clean close) will not be detected automatically.',
     );
   }
 };

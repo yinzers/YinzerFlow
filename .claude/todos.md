@@ -1,60 +1,53 @@
 # Todos: yinzerflow
 
 ## Current Goal
-Production-level WebSocket support with pub/sub — Milestone 1 approved, executing Phase 1.
+WebSocket Milestone 2 — Hardening (heartbeat, rate limiting, compression)
 
 ---
 
-## Active: WebSocket Support (Milestone 1)
+## Active: WebSocket Milestone 2
 
-See `.claude/plans/websocket-plan.md` for full plan.
+See `.claude/plans/websocket-milestone2-plan.md` for full plan.
 
-### Phase 1: Constants, Types & Frame Protocol — COMPLETE ✓
-- [x] 1.1 Create `app/constants/websocket.ts` (opcodes, close codes, GUID, readyState, backpressure strategy)
-- [x] 1.2 Create `app/typedefs/constants/websocket.d.ts` (CreateEnum types)
-- [x] 1.3 Create `app/typedefs/internal/modules/websocket/index.d.ts` (frame, parse result types)
-- [x] 1.4 Create `app/typedefs/public/WebSocket.d.ts` (WebSocket, WebSocketHandlers, WebSocketRouteOptions, etc.)
-- [x] 1.5 Implement `app/core/modules/websocket/WebSocketFrame.ts` (parser + encoder, in-place unmask, allocUnsafe)
-- [x] 1.6 Write `app/core/modules/websocket/__tests__/WebSocketFrame.test.ts` (38 tests, 140 assertions)
+### Phase 1: Heartbeat/Keepalive — COMPLETE ✓
+- [x] 1.1 Add `heartbeat` to `InternalWebSocketOptions` (enabled, interval)
+- [x] 1.2 Add `heartbeatInterval` to `WebSocketRouteOptions` (per-route override)
+- [x] 1.3 Config defaults (enabled: true, interval: 30) + validation + warning
+- [x] 1.4 `_isAlive` + `_heartbeatEnabled` on WebSocketConnection, pong/data set alive
+- [x] 1.5 `_ensureHeartbeatSweep()` in YinzerFlow — lazy init, unref, shutdown cleanup
+- [x] 1.6 Config merge includes `heartbeatInterval`
+- [x] 1.7 Tests — 12 tests (liveness tracking, sweep sim, ping method, heartbeatEnabled)
 
-### Phase 2: Handshake & Connection Class — COMPLETE ✓
-- [x] 2.1 WebSocketHandshake.ts (validation, accept key, response builder)
-- [x] 2.2 WebSocketConnection.ts (state machine, fragmentation, backpressure, sendRaw)
-- [x] 2.3 Handshake unit tests (RFC test vector, edge cases) — 19 tests
-- [x] 2.4 Connection unit tests (lifecycle, fragments, backpressure) — 28 tests
+### Phase 2: Message Rate Limiting — NEXT
+- [ ] 2.1 Add `messageRateLimit` to `InternalWebSocketOptions` (enabled, maxMessages, window)
+- [ ] 2.2 Add `messageRateLimit` to `WebSocketRouteOptions` (per-route override)
+- [ ] 2.3 Config defaults (disabled, 100 msgs, 10s) + validation
+- [ ] 2.4 Token bucket in WebSocketConnection (`_rateLimitTokens`, `_rateLimitLastRefill`)
+- [ ] 2.5 Rate limit check in `_deliverMessage` — close with 1008 on exceed
+- [ ] 2.6 Config merge includes messageRateLimit
+- [ ] 2.7 Tests — within limit, exceed closes, token refill, burst, disabled, per-route
 
-### Phase 3: YinzerFlow Integration + Hook System — COMPLETE ✓
-- [x] 3.1 WebSocketRouter.ts (exact + parameterized path matching)
-- [x] 3.2 WebSocketConfig.ts (defaults, validation, warnings)
-- [x] 3.3 Hook registry: WS hook sets (wsBeforeMessage, wsAfterMessage)
-- [x] 3.4 SetupImpl: ws(), wsBeforeMessage(), wsAfterMessage()
-- [x] 3.5 InternalConfiguration: InternalWebSocketOptions
-- [x] 3.6 handleCustomConfiguration: WS defaults + deep merge + validation
-- [x] 3.7 YinzerFlow: upgrade detection, WS dispatch, connection tracking, graceful shutdown, WS hook wrapping
+### Phase 3: Compression (permessage-deflate) — pending
+- [ ] 3.1 Frame parser RSV1 support + RSV2/RSV3 validation
+- [ ] 3.2 WebSocketCompression.ts (compress/decompress, extension negotiation)
+- [ ] 3.3 Handshake extension negotiation
+- [ ] 3.4 Config (enabled, level, threshold, windowBits)
+- [ ] 3.5 Connection integration (compress send, decompress receive)
+- [ ] 3.6 Broadcast integration (compress-once)
+- [ ] 3.7 Upgrade flow wiring
+- [ ] 3.8 Tests
 
-### Phase 4: Pub/Sub with Encode-Once Broadcast — COMPLETE ✓
-- [x] 4.1 WebSocketChannelManager.ts (bidirectional maps, encode-once, sender exclusion, empty channel GC)
-- [x] 4.2 Wire pub/sub into WebSocketConnection (delegate to manager, auto-unsubscribe on close)
-- [x] 4.3 YinzerFlow: app.publish(), app.subscriberCount() (lazy channel manager allocation)
-- [x] 4.4 Unit tests — 22 tests (encode-once Buffer identity, sender exclusion, cleanup, delegation)
-
-### Phase 5: Security, Connection Limits & Integration Tests — COMPLETE ✓
-- [x] 5.1 WebSocketSecurity.ts (origin validation, per-IP tracking, decrement-on-close)
-- [x] 5.2 Wire security into upgrade flow (origin check, connection limit, 403/429 responses)
-- [x] 5.3 Integration tests — 11 tests (handshake, messages, pub/sub, HTTP regression, params, shutdown)
-- [x] 5.4 Security wired into YinzerFlow upgrade handler
-
-### Phase 6: Exports, Docs & Verification Sweep — COMPLETE ✓
-- [x] 6.1 Update index.ts exports (constants + all public types)
-- [x] 6.2 Write docs/core/websockets.md (full template, trading data example, backpressure/drop docs)
-- [x] 6.3 Verification sweep — no orphaned TODOs, lint clean, 1051 tests pass
+### Phase 4: Docs, Exports & Verification Sweep — pending
+- [ ] 4.1 Update docs/core/websockets.md
+- [ ] 4.2 Export new constants if any
+- [ ] 4.3 Verification sweep
 
 ---
 
 ## Deferred
 
 - [ ] **D1 (discussion): Rename `logging.requests` → `logging.accessLog`** — deferred pending user input
-- [ ] **Milestone 2**: Compression (permessage-deflate), heartbeat/keepalive, message rate limiting
+- [ ] **Milestone 3 (future)**: Context takeover compression, per-route compression config
 
 ---
 

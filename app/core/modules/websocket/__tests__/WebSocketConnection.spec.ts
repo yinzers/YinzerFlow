@@ -13,10 +13,12 @@ const defaultOptions: {
   maxPayloadLength: number;
   idleTimeout: number;
   backpressure: { strategy: 'buffer' | 'drop'; limit: number };
+  heartbeatInterval: number;
 } = {
   maxPayloadLength: 16_777_216,
   idleTimeout: 0,
   backpressure: { strategy: 'buffer', limit: 1_048_576 },
+  heartbeatInterval: 0,
 };
 
 const createConnection = (

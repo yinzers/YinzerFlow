@@ -11,6 +11,7 @@ interface ConnectionOptions {
   maxPayloadLength: number;
   idleTimeout: number;
   backpressure: Required<WebSocketBackpressureOptions>;
+  heartbeatInterval: number;
 }
 
 /**
@@ -44,6 +45,10 @@ export class WebSocketConnection<T = unknown> {
   // Idle timeout
   private _idleTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // Heartbeat — accessed by YinzerFlow sweep timer (framework-internal, not user-facing)
+  _isAlive = true;
+  readonly _heartbeatEnabled: boolean;
+
   // Channel manager (set externally after construction)
   private _channelManager?: WebSocketChannelManager;
 
@@ -54,6 +59,7 @@ export class WebSocketConnection<T = unknown> {
     this._handlers = handlers;
     this._options = options;
     this._remoteAddress = socket.remoteAddress ?? 'unknown';
+    this._heartbeatEnabled = options.heartbeatInterval > 0;
 
     socket.on('data', (chunk: Buffer) => this._onSocketData(chunk));
     socket.on('close', () => this._onSocketClose());
@@ -151,6 +157,7 @@ export class WebSocketConnection<T = unknown> {
   private _onSocketData(chunk: Buffer): void {
     if (this._readyState === wsReadyState.closed) return;
 
+    this._isAlive = true;
     this._resetIdleTimeout();
 
     // Append chunk to receive buffer
@@ -274,7 +281,7 @@ export class WebSocketConnection<T = unknown> {
     }
 
     if (opcode === wsOpcode.pong) {
-      // No action needed — pong is just a keepalive acknowledgment
+      this._isAlive = true;
       return;
     }
 

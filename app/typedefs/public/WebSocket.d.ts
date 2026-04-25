@@ -136,6 +136,8 @@ export interface WebSocketRouteOptions {
   idleTimeout?: number;
   /** Backpressure handling for this route. */
   backpressure?: WebSocketBackpressureOptions;
+  /** Override heartbeat interval for this route (seconds). `0` disables heartbeat for this route. */
+  heartbeatInterval?: number;
 }
 
 /**
