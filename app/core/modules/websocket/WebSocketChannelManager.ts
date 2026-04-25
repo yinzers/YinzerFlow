@@ -1,4 +1,5 @@
 import { _encodeFrame } from './WebSocketFrame.ts';
+import { _compressPayload } from './WebSocketCompression.ts';
 import type { WebSocketConnection } from './WebSocketConnection.ts';
 import { wsOpcode } from '@constants/websocket.ts';
 
@@ -17,6 +18,15 @@ import { wsOpcode } from '@constants/websocket.ts';
 export class WebSocketChannelManager {
   private readonly _channels = new Map<string, Set<WebSocketConnection>>();
   private readonly _subscriptions = new Map<WebSocketConnection, Set<string>>();
+  private _compressionLevel = 1;
+  private _compressionWindowBits = 11;
+  private _compressionThreshold = 128;
+
+  setCompressionConfig(level: number, windowBits: number, threshold: number): void {
+    this._compressionLevel = level;
+    this._compressionWindowBits = windowBits;
+    this._compressionThreshold = threshold;
+  }
 
   subscribe(connection: WebSocketConnection, channel: string): void {
     // Channel → connections map
@@ -80,16 +90,24 @@ export class WebSocketChannelManager {
     const subscribers = this._channels.get(channel);
     if (!subscribers || subscribers.size === 0) return 0;
 
-    // Encode once — all subscribers get the same pre-encoded frame bytes
     const isString = typeof data === 'string';
     const payload = isString ? Buffer.from(data, 'utf8') : data;
     const opcode = isString ? wsOpcode.text : wsOpcode.binary;
-    const encodedFrame = _encodeFrame(opcode, payload);
+
+    // Encode-once: uncompressed frame always ready, compressed frame lazy
+    const uncompressedFrame = _encodeFrame(opcode, payload);
+    let compressedFrame: Buffer | undefined = undefined;
 
     let recipientCount = 0;
     for (const connection of subscribers) {
       if (connection === sender) continue;
-      connection.sendRaw(encodedFrame);
+
+      if (connection._compressionEnabled && payload.length >= this._compressionThreshold) {
+        compressedFrame ??= _encodeFrame(opcode, _compressPayload(payload, this._compressionLevel, this._compressionWindowBits), true, true);
+        connection.sendRaw(compressedFrame);
+      } else {
+        connection.sendRaw(uncompressedFrame);
+      }
       recipientCount++;
     }
 

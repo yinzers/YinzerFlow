@@ -21,6 +21,7 @@ const defaultOptions: {
   backpressure: { strategy: 'buffer', limit: 1_048_576 },
   heartbeatInterval: 0,
   messageRateLimit: { enabled: false, maxMessages: 100, window: 10 },
+  compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11, clientMaxWindowBits: 15 },
 };
 
 const createConnection = (

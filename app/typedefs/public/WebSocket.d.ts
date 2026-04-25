@@ -145,6 +145,8 @@ export interface WebSocketRouteOptions {
     /** Window duration in seconds. */
     window?: number;
   };
+  /** Override compression threshold for this route (bytes). Set to 0 to compress all messages. */
+  compressionThreshold?: number;
 }
 
 /**

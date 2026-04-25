@@ -23,11 +23,19 @@ export const DEFAULT_WEBSOCKET_CONFIG: InternalWebSocketOptions = {
     maxMessages: 100,
     window: 10, // seconds
   },
+  compression: {
+    enabled: false,
+    level: 1,
+    threshold: 128,
+    serverMaxWindowBits: 11,
+    clientMaxWindowBits: 15,
+  },
 };
 
 /**
  * Validate WebSocket configuration values.
  */
+// eslint-disable-next-line complexity -- validation function with many independent checks
 export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void => {
   if (config.maxPayloadLength < 1) {
     throw new Error('websocket.maxPayloadLength must be at least 1 byte');
@@ -60,6 +68,21 @@ export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void
     }
     if (!Number.isInteger(config.messageRateLimit.window) || config.messageRateLimit.window < 1) {
       throw new Error('websocket.messageRateLimit.window must be an integer >= 1 (seconds)');
+    }
+  }
+
+  if (config.compression.enabled) {
+    if (config.compression.level < 1 || config.compression.level > 9) {
+      throw new Error('websocket.compression.level must be between 1 and 9');
+    }
+    if (config.compression.threshold < 0) {
+      throw new Error('websocket.compression.threshold must be >= 0');
+    }
+    if (config.compression.serverMaxWindowBits < 9 || config.compression.serverMaxWindowBits > 15) {
+      throw new Error('websocket.compression.serverMaxWindowBits must be between 9 and 15');
+    }
+    if (config.compression.clientMaxWindowBits < 9 || config.compression.clientMaxWindowBits > 15) {
+      throw new Error('websocket.compression.clientMaxWindowBits must be between 9 and 15');
     }
   }
 };

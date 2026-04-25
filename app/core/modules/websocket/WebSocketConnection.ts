@@ -1,5 +1,6 @@
 import type { Socket } from 'net';
 import { _encodeCloseFrame, _encodeFrame, _parseFrame } from './WebSocketFrame.ts';
+import { _compressPayload, _decompressPayload } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
 import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketBackpressureOptions, WebSocketHandlers } from '@typedefs/public/WebSocket.js';
@@ -13,12 +14,21 @@ interface RateLimitOptions {
   window: number;
 }
 
+interface CompressionOptions {
+  enabled: boolean;
+  level: number;
+  threshold: number;
+  serverMaxWindowBits: number;
+  clientMaxWindowBits: number;
+}
+
 interface ConnectionOptions {
   maxPayloadLength: number;
   idleTimeout: number;
   backpressure: Required<WebSocketBackpressureOptions>;
   heartbeatInterval: number;
   messageRateLimit: RateLimitOptions;
+  compression: CompressionOptions;
 }
 
 /**
@@ -44,6 +54,7 @@ export class WebSocketConnection<T = unknown> {
   // WebSocket message fragment reassembly
   private _fragmentBuffers: Array<Buffer> = [];
   private _fragmentOpcode = 0;
+  private _fragmentCompressed = false;
 
   // Backpressure state
   private _backpressured = false;
@@ -55,6 +66,7 @@ export class WebSocketConnection<T = unknown> {
   // Heartbeat — accessed by YinzerFlow sweep timer (framework-internal, not user-facing)
   _isAlive = true;
   readonly _heartbeatEnabled: boolean;
+  readonly _compressionEnabled: boolean;
 
   // Token bucket rate limiting
   private _rateLimitTokens: number;
@@ -71,6 +83,7 @@ export class WebSocketConnection<T = unknown> {
     this._options = options;
     this._remoteAddress = socket.remoteAddress ?? 'unknown';
     this._heartbeatEnabled = options.heartbeatInterval > 0;
+    this._compressionEnabled = options.compression.enabled;
     this._rateLimitTokens = options.messageRateLimit.enabled ? options.messageRateLimit.maxMessages : 0;
     this._rateLimitLastRefill = options.messageRateLimit.enabled ? Date.now() : 0;
 
@@ -112,9 +125,14 @@ export class WebSocketConnection<T = unknown> {
     const isString = typeof data === 'string';
     const payload = isString ? Buffer.from(data, 'utf8') : data;
     const opcode = isString ? wsOpcode.text : wsOpcode.binary;
-    const frame = _encodeFrame(opcode, payload);
 
-    this._writeFrame(frame);
+    const compress = this._options.compression.enabled && payload.length >= this._options.compression.threshold;
+    if (compress) {
+      const compressed = _compressPayload(payload, this._options.compression.level, this._options.compression.serverMaxWindowBits);
+      this._writeFrame(_encodeFrame(opcode, compressed, true, true));
+    } else {
+      this._writeFrame(_encodeFrame(opcode, payload));
+    }
   }
 
   sendRaw(encodedFrame: Buffer): void {
@@ -240,11 +258,17 @@ export class WebSocketConnection<T = unknown> {
   // Frame handling
   // ============================================
 
-  private _handleFrame(frame: { fin: boolean; opcode: number; payload: Buffer }): void {
-    const { fin, opcode, payload } = frame;
+  // eslint-disable-next-line max-statements
+  private _handleFrame(frame: { fin: boolean; rsv1: boolean; opcode: number; payload: Buffer }): void {
+    const { fin, rsv1, opcode, payload } = frame;
 
     // Control frames (opcode >= 0x8) — handle immediately, even mid-fragmentation
     if (opcode >= 0x8) {
+      if (rsv1) {
+        this.close(wsCloseCode.protocolError, 'RSV1 must not be set on control frames');
+        this._destroySocket();
+        return;
+      }
       // RFC 6455 §5.5: control frames MUST NOT be fragmented and payload ≤125 bytes
       if (!fin) {
         this.close(wsCloseCode.protocolError, 'Control frames must not be fragmented');
@@ -260,25 +284,39 @@ export class WebSocketConnection<T = unknown> {
       return;
     }
 
+    // RSV1 on data frame without compression negotiated = protocol error
+    if (rsv1 && !this._options.compression.enabled) {
+      this.close(wsCloseCode.protocolError, 'RSV1 set but no compression negotiated');
+      this._destroySocket();
+      return;
+    }
+
     // Data frames — handle fragmentation
     if (opcode === wsOpcode.continuation) {
-      // Continuation frame
+      if (rsv1) {
+        this.close(wsCloseCode.protocolError, 'RSV1 must not be set on continuation frames');
+        this._destroySocket();
+        return;
+      }
       this._fragmentBuffers.push(payload);
 
       if (fin) {
-        // Final fragment — reassemble and deliver
+        // Final fragment — reassemble and deliver (decompress if first fragment had RSV1)
         const completePayload = Buffer.concat(this._fragmentBuffers);
         const originalOpcode = this._fragmentOpcode;
+        const compressed = this._fragmentCompressed;
         this._fragmentBuffers = [];
         this._fragmentOpcode = 0;
-        this._deliverMessage(originalOpcode, completePayload);
+        this._fragmentCompressed = false;
+        this._deliverMessage(originalOpcode, completePayload, compressed);
       }
     } else if (fin) {
       // Complete single-frame message
-      this._deliverMessage(opcode, payload);
+      this._deliverMessage(opcode, payload, rsv1);
     } else {
-      // Start of fragmented message
+      // Start of fragmented message — RSV1 only valid here (first fragment)
       this._fragmentOpcode = opcode;
+      this._fragmentCompressed = rsv1;
       this._fragmentBuffers = [payload];
     }
   }
@@ -318,7 +356,7 @@ export class WebSocketConnection<T = unknown> {
     }
   }
 
-  private _deliverMessage(opcode: number, payload: Buffer): void {
+  private _deliverMessage(opcode: number, payload: Buffer, compressed = false): void {
     if (this._readyState === wsReadyState.closed) return;
 
     if (this._options.messageRateLimit.enabled && !this._consumeRateLimitToken()) {
@@ -327,8 +365,19 @@ export class WebSocketConnection<T = unknown> {
       return;
     }
 
+    let finalPayload = payload;
+    if (compressed) {
+      try {
+        finalPayload = _decompressPayload(payload, this._options.compression.clientMaxWindowBits);
+      } catch {
+        this.close(wsCloseCode.invalidPayload, 'Decompression failed');
+        this._destroySocket();
+        return;
+      }
+    }
+
     const isBinary = opcode === wsOpcode.binary;
-    const data = isBinary ? payload : payload.toString('utf8');
+    const data = isBinary ? finalPayload : finalPayload.toString('utf8');
     this._handlers.message?.(this._asPublic(), data, isBinary);
   }
 

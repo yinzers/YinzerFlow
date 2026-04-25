@@ -20,6 +20,7 @@ const createConnection = (
     backpressure: { strategy: 'buffer', limit: 1_048_576 },
     heartbeatInterval: 0,
     messageRateLimit: rateLimitConfig,
+    compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11, clientMaxWindowBits: 15 },
   });
   return { conn, socket };
 };

@@ -153,11 +153,15 @@ export const _generateAcceptKey = (clientKey: string): string =>
 /**
  * Build the HTTP 101 Switching Protocols response string.
  */
-export const _buildHandshakeResponse = (acceptKey: string, protocol?: string): string => {
+export const _buildHandshakeResponse = (acceptKey: string, protocol?: string, extensions?: string): string => {
   const lines = ['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${acceptKey}`];
 
   if (protocol) {
     lines.push(`Sec-WebSocket-Protocol: ${protocol}`);
+  }
+
+  if (extensions) {
+    lines.push(`Sec-WebSocket-Extensions: ${extensions}`);
   }
 
   return lines.join('\r\n').concat('\r\n\r\n');

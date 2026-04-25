@@ -20,6 +20,7 @@ import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConf
 import { DiagnosticsMonitor } from '@core/modules/diagnostics/DiagnosticsMonitor.ts';
 import { _sanitizeLogField } from '@core/utils/sanitize.ts';
 import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '@core/modules/websocket/WebSocketHandshake.ts';
+import { _buildCompressionResponse, _parseCompressionOffer } from '@core/modules/websocket/WebSocketCompression.ts';
 import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
 import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
 import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
@@ -642,6 +643,7 @@ export class YinzerFlow extends SetupImpl {
     this._handleWebSocketUpgradeAsync(buffer, socket, clientAddress).catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
   }
 
+  // eslint-disable-next-line max-statements
   private async _handleWebSocketUpgradeAsync(buffer: Buffer, socket: Socket, clientAddress: string): Promise<void> {
     const headerEndIndex = buffer.indexOf('\r\n\r\n');
     const headersStr = buffer.subarray(0, headerEndIndex).toString();
@@ -686,13 +688,30 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
+    // Negotiate compression if server has it enabled and client offers it
+    let compressionNegotiated = false;
+    let extensionResponse: string | undefined = undefined;
+    if (wsConfig.compression.enabled) {
+      const extHeader = upgradeRequest.headers['sec-websocket-extensions'];
+      if (extHeader) {
+        const offer = _parseCompressionOffer(extHeader);
+        if (offer) {
+          extensionResponse = _buildCompressionResponse(offer, {
+            serverMaxWindowBits: wsConfig.compression.serverMaxWindowBits,
+            clientMaxWindowBits: wsConfig.compression.clientMaxWindowBits,
+          });
+          compressionNegotiated = true;
+        }
+      }
+    }
+
     // Send 101 handshake response
     const acceptKey = _generateAcceptKey(validation.key);
-    socket.write(_buildHandshakeResponse(acceptKey));
+    socket.write(_buildHandshakeResponse(acceptKey, undefined, extensionResponse));
     socket.removeAllListeners();
 
     this._wsSecurity.trackConnect(clientAddress);
-    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, validation.path);
+    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, validation.path, compressionNegotiated);
   }
 
   // eslint-disable-next-line max-params
@@ -703,12 +722,17 @@ export class YinzerFlow extends SetupImpl {
     routeOptions: WebSocketRouteOptions | undefined,
     clientAddress: string,
     path: string,
+    compressionNegotiated = false,
   ): void {
-    const connectionOptions = this._mergeWsConnectionOptions(routeOptions);
+    const connectionOptions = this._mergeWsConnectionOptions(routeOptions, compressionNegotiated);
     const wrappedHandlers = this._wrapWsHandlers(handlers);
     const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
 
     this._wsChannelManager ??= new WebSocketChannelManager();
+    if (this._configuration.websocket.compression.enabled) {
+      const comp = this._configuration.websocket.compression;
+      this._wsChannelManager.setCompressionConfig(comp.level, comp.serverMaxWindowBits, comp.threshold);
+    }
     connection.setChannelManager(this._wsChannelManager);
 
     this._wsConnections ??= new Set();
@@ -726,17 +750,20 @@ export class YinzerFlow extends SetupImpl {
     handlers.open?.(connection as never);
   }
 
-  private _mergeWsConnectionOptions(routeOpts?: WebSocketRouteOptions): {
+  // eslint-disable-next-line complexity
+  private _mergeWsConnectionOptions(routeOpts?: WebSocketRouteOptions, compressionNegotiated = false): {
     maxPayloadLength: number;
     idleTimeout: number;
     backpressure: { strategy: 'buffer' | 'drop'; limit: number };
     heartbeatInterval: number;
     messageRateLimit: { enabled: boolean; maxMessages: number; window: number };
+    compression: { enabled: boolean; level: number; threshold: number; serverMaxWindowBits: number; clientMaxWindowBits: number };
   } {
     const wsConfig = this._configuration.websocket;
     const globalHeartbeat = wsConfig.heartbeat.enabled ? wsConfig.heartbeat.interval : 0;
     const heartbeatInterval = routeOpts?.heartbeatInterval ?? globalHeartbeat;
     const rl = wsConfig.messageRateLimit;
+    const comp = wsConfig.compression;
     return {
       maxPayloadLength: routeOpts?.maxPayloadLength ?? wsConfig.maxPayloadLength,
       idleTimeout: routeOpts?.idleTimeout ?? wsConfig.idleTimeout,
@@ -749,6 +776,13 @@ export class YinzerFlow extends SetupImpl {
         enabled: rl.enabled,
         maxMessages: routeOpts?.messageRateLimit?.maxMessages ?? rl.maxMessages,
         window: routeOpts?.messageRateLimit?.window ?? rl.window,
+      },
+      compression: {
+        enabled: compressionNegotiated,
+        level: comp.level,
+        threshold: routeOpts?.compressionThreshold ?? comp.threshold,
+        serverMaxWindowBits: comp.serverMaxWindowBits,
+        clientMaxWindowBits: comp.clientMaxWindowBits,
       },
     };
   }

@@ -47,6 +47,10 @@ export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketPa
   const byte1 = buffer[offset + 1]!;
 
   const fin = (byte0 & 0x80) !== 0;
+  const rsv1 = (byte0 & 0x40) !== 0;
+  if ((byte0 & 0x30) !== 0) {
+    throw new Error('RSV2 and RSV3 must be zero');
+  }
   const opcode = byte0 & 0x0f;
   const masked = (byte1 & 0x80) !== 0;
   let payloadLength = byte1 & 0x7f;
@@ -94,6 +98,7 @@ export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketPa
   return {
     frame: {
       fin,
+      rsv1,
       opcode,
       masked,
       payloadLength,
@@ -107,7 +112,8 @@ export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketPa
  * Encode an outgoing WebSocket frame (server→client, never masked).
  * Uses `Buffer.allocUnsafe` for performance — the entire buffer is written before use.
  */
-export const _encodeFrame = (opcode: number, payload: Buffer, fin = true): Buffer => {
+// eslint-disable-next-line max-params
+export const _encodeFrame = (opcode: number, payload: Buffer, fin = true, rsv1 = false): Buffer => {
   const payloadLength = payload.length;
   let headerSize = 2;
   let extendedLengthWriter: ((buf: Buffer) => void) | undefined = undefined;
@@ -127,8 +133,8 @@ export const _encodeFrame = (opcode: number, payload: Buffer, fin = true): Buffe
 
   const frame = Buffer.allocUnsafe(headerSize + payloadLength);
 
-  // Byte 0: FIN + opcode
-  frame[0] = (fin ? 0x80 : 0x00) | opcode;
+  // Byte 0: FIN + RSV1 + opcode
+  frame[0] = (fin ? 0x80 : 0x00) | (rsv1 ? 0x40 : 0x00) | opcode;
 
   // Byte 1: MASK=0 + payload length indicator
   if (payloadLength < 126) {

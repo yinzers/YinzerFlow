@@ -16,6 +16,8 @@
 export interface InternalWebSocketFrame {
   /** Final fragment flag — true if this is the last (or only) frame of a message */
   fin: boolean;
+  /** RSV1 bit — set on first frame of a permessage-deflate compressed message */
+  rsv1: boolean;
   /** Raw opcode from the wire (validated by the connection class, not the frame parser) */
   opcode: number;
   /** Whether the payload was masked (client→server frames MUST be masked) */

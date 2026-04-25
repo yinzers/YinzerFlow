@@ -400,6 +400,19 @@ export interface InternalWebSocketOptions {
     /** Window duration in seconds. @default 10 */
     window: number;
   };
+  /** permessage-deflate compression (RFC 7692). Uses no-context-takeover for broadcast compatibility. */
+  compression: {
+    /** Enable permessage-deflate negotiation. @default false */
+    enabled: boolean;
+    /** zlib compression level (1=fast, 9=best ratio). @default 1 */
+    level: number;
+    /** Skip compression for payloads smaller than this (bytes). @default 128 */
+    threshold: number;
+    /** Server LZ77 window bits (9-15). Lower = less memory, slightly worse ratio. @default 11 */
+    serverMaxWindowBits: number;
+    /** Client LZ77 window bits (9-15). @default 15 */
+    clientMaxWindowBits: number;
+  };
 }
 
 /**
