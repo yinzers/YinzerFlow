@@ -98,7 +98,10 @@ export class RequestHandlerImpl {
    */
   async _handleUpgrade(context: InternalContextImpl, canonicalPath: string, findWsRoute: () => InternalStageRoute | undefined): Promise<boolean> {
     const stages = await this._runGlobalBeforeStages({ context, canonicalPath, findRoute: findWsRoute, refuseOnStatus: true });
-    if (stages.answered) return false;
+    if (stages.answered) {
+      this._refuseWithErrorStatus(context);
+      return false;
+    }
     if (!stages.route) {
       await this._respondNotFound(context, canonicalPath);
       return false;
@@ -139,6 +142,17 @@ export class RequestHandlerImpl {
     }
 
     return { answered: false, route };
+  }
+
+  /**
+   * A hook that answered an upgrade refused it, but returning `null`, `false` or `0` (or setting a 2xx) leaves a 2xx
+   * status, and a refused upgrade answered "200 OK" reads as neither success nor refusal. Any 2xx becomes 403.
+   */
+  _refuseWithErrorStatus(context: InternalContextImpl): void {
+    const status = context._response._statusCode;
+    if (status < 200 || status > 299) return;
+    context.response.setStatusCode(httpStatusCode.forbidden);
+    context._response._parseResponseIntoString();
   }
 
   /** On an upgrade, a hook that set a non-200 status without returning a body refused it: build that response. */

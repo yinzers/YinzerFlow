@@ -380,6 +380,25 @@ describe('WebSocket Integration', () => {
       second.socket.destroy();
     }, 10_000);
 
+    // Bug (0.10.0 review): a hook returning null, false or 0 answers like any returned value, but with the status still
+    // 200, so the upgrade was refused with "200 OK": a client reads that as neither success nor refusal.
+    // Tier: Medium (refusal status contract; each row is a falsy value a hook might return).
+    it.each([
+      ['null', null],
+      ['false', false],
+      ['0', 0],
+    ])('should refuse with 403 when a hook answers with %s and no status', async (_label, returned) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.beforeAll([() => returned]);
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort);
+      expect(response).toStartWith('HTTP/1.1 403');
+      socket.destroy();
+    });
+
     it('should answer 429 from the global rate limiter on an upgrade flood', async () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, rateLimit: { max: 2, window: '1m' } });
