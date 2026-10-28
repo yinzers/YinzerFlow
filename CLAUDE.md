@@ -79,6 +79,21 @@ As a framework, we must protect users from common vulnerabilities:
 - Header validation and size limits
 - Prototype pollution protection
 
+## 🚀 Releasing
+
+Run from the repo root on a clean, pushed `main`. Nothing needs installing on the host except Docker:
+
+```
+docker compose run --rm bun scripts/publish.ts
+```
+
+The `bun` compose service (`docker/release.Dockerfile`) has bun, Node/npm, git and ssh. It asks for the bump type and a final confirmation, then bumps, builds, tags, publishes to npm and pushes `main` with tags over your SSH key.
+
+- **npm login (once)**: if `npm whoami` fails the script runs `npm login` itself and prints a URL; open it in a browser on the host. The token lands in the named volume `yinzerflow-release-npm-config`, so later runs skip it. Log out with `docker volume rm yinzerflow-release-npm-config`.
+- **`CLAUDE_API_KEY`**: required, used for the AI changelog. Export it in the shell you run the command from (`~/.bashrc`); compose passes it through.
+- **Host files**: `~/.ssh` and `~/.gitconfig` are mounted read-only and must exist (compose errors rather than creating them). `~/.gitconfig` supplies the commit identity.
+- **Dependencies**: if `node_modules` is missing the container runs `bun install --frozen-lockfile` first.
+
 ## 📚 Full Documentation
 
 For complete details on any topic, refer to:

@@ -24,6 +24,57 @@ services:
       - ./:/app
       - /home/patrick/.npmrc:/home/node/.npmrc
 
+  # Release runner: docker compose run --rm bun scripts/publish.ts
+  # The entrypoint is bun, so the arguments are bun's. See CLAUDE.md "Releasing".
+  bun:
+    build:
+      context: ./docker
+      dockerfile: release.Dockerfile
+    image: yinzerflow-release:bun1.2.17-node22
+    user: '1000:1000'
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    environment:
+      HOME: /home/bun
+      # Name only, no value: passed through from the host shell (or .env) when set.
+      CLAUDE_API_KEY:
+      # npm login state persists on the named volume below, not in a host file.
+      NPM_CONFIG_USERCONFIG: /npm-config/.npmrc
+      # Trust /app without writing the host's git config.
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /app
+      # A linked worktree's .git file points at a host path that does not exist here. The
+      # worktree env file (--env-file .env.worktree) sets GIT_DIR to the /gitdir mount below.
+      # On the main checkout the default reduces to the plain /app/.git.
+      GIT_DIR: ${GIT_DIR:-/app/.git}
+      GIT_WORK_TREE: /app
+    volumes:
+      - ./:/app
+      # Git common dir: the main checkout's .git, or the one a linked worktree belongs to.
+      - ${WORKTREE_GIT_COMMON_DIR_HOST:-./.git}:/gitdir
+      # create_host_path: false makes a missing path an error instead of Docker silently
+      # creating a directory in its place on the host.
+      - type: bind
+        source: ${HOME}/.ssh
+        target: /home/bun/.ssh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOME}/.gitconfig
+        target: /home/bun/.gitconfig
+        read_only: true
+        bind:
+          create_host_path: false
+      - npm-config:/npm-config
+
 networks:
   yinzerflow-network:
     driver: bridge
+
+volumes:
+  # Fixed name so every checkout and worktree shares one npm login.
+  npm-config:
+    name: yinzerflow-release-npm-config
