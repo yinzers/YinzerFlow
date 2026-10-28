@@ -1,6 +1,7 @@
 {
   "name": "yinzerflow",
   "version": "0.8.0",
+  "packageManager": "bun@1.2.17",
   "author": "Patrick Rizzardi <patrick@redact.digital> (https://redact.digital)",
   "repository": {
     "type": "git",
