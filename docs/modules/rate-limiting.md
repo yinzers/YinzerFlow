@@ -30,6 +30,8 @@ Enable or disable rate limiting globally or per-route.
 
 <span style="color: #e74c3c">**⚠️ Warning:**</span> Disabling rate limiting removes DoS protection from your API.
 
+<span style="color: #f39c12">**⚠️ Behavior change in 0.9.0:**</span> Before 0.9.0 the global limiter was only installed when you passed `rateLimit: { enabled: true }`, so an app with no `rateLimit` options had no rate limiting despite the documented default. From 0.9.0 an app that passes no `rateLimit` options gets the default limiter (100 requests per 15 minutes per IP). If you relied on the old behavior, for example behind a gateway that already limits, set `rateLimit: { enabled: false }`.
+
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
 
@@ -699,6 +701,21 @@ YinzerFlow implements several security measures to prevent abuse while maintaini
 <span style="color: #2ecc71">**✅ Result:**</span> These security measures ensure YinzerFlow's rate limiting provides robust protection against DoS attacks and API abuse while maintaining excellent performance in both single-instance and distributed deployments.
 
 ## 🔧 Troubleshooting
+
+### 429 responses after upgrading to 0.9.0
+
+**Symptom:** An app that never configured `rateLimit` starts answering <span style="color: #e74c3c">429 Too Many Requests</span> after upgrading to 0.9.0, typically in load tests or behind a proxy that makes every client share one IP.
+
+**Cause:** Rate limiting is now actually on by default (see the `enabled` setting). Earlier versions skipped the limiter unless `enabled: true` was passed.
+
+<span style="color: #2ecc71">**✅ Fix:**</span> Raise the limit, key clients correctly behind a proxy (see [IP Security](./ip-security.md)), or disable it where an upstream layer already limits.
+
+```typescript
+const app = new YinzerFlow({
+  port: 3000,
+  rateLimit: { max: 1000, window: '15m' }, // or { enabled: false } behind an API gateway
+});
+```
 
 ### Rate limit exceeded immediately on first request
 

@@ -190,9 +190,10 @@ export class YinzerFlow extends SetupImpl {
 
     this._configureLogging();
 
-    // Setup global rate limiting, if there is none provided, it will be enabled by default. We need to set the confgratin before the conditional since it is defaulted on and users might not pass it in the configuration.
+    // Global rate limiting is enabled by default: gate on the RESOLVED config, never the raw user input,
+    // or an app that passes no rateLimit options (the documented default) silently gets no limiter.
     const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit, this._log);
-    if (configuration?.rateLimit?.enabled) {
+    if (rateLimitConfig.enabled) {
       this._globalRateLimiter = new RateLimiter(rateLimitConfig);
       const onRateLimitHit = this._diagnostics ? (ip: string, path: string): void => this._diagnostics?.onRateLimitHit(ip, path) : undefined;
       const hook = _createGlobalRateLimitHook(this._globalRateLimiter, onRateLimitHit);

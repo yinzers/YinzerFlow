@@ -9,6 +9,7 @@ import type { RateLimitOptions, StoreConfig } from '@typedefs/public/RateLimit.j
 import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.js';
 
 export class RateLimitConfig implements RateLimitOptions {
+  enabled: boolean;
   algorithm: RateLimitAlgorithm;
   store: StoreConfig;
   window: number; // milliseconds
@@ -22,15 +23,18 @@ export class RateLimitConfig implements RateLimitOptions {
   constructor(config?: RateLimitOptions, logger?: Logger) {
     this._validateConfig(config, logger ?? log);
 
-    this.algorithm = config?.algorithm ?? rateLimitAlgorithm.slidingWindowCounter;
-    this.store = config?.store ?? { type: 'memory' };
-    this.window = _convertTimeToMs(config?.window ?? '15m');
-    this.max = config?.max ?? 100;
-    this.standardHeaders = config?.standardHeaders ?? true;
-    this.skipSuccessfulRequests = config?.skipSuccessfulRequests ?? false;
-    this.skipFailedRequests = config?.skipFailedRequests ?? false;
-    this.keyGenerator = config?.keyGenerator ?? defaultKeyGenerator;
-    this.handler = (config?.handler ?? defaultHandler) as <T extends HandlerCallbackGenerics>(ctx: Context<T>) => HandlerCallback<T>;
+    const options = config ?? {};
+
+    this.enabled = options.enabled ?? true;
+    this.algorithm = options.algorithm ?? rateLimitAlgorithm.slidingWindowCounter;
+    this.store = options.store ?? { type: 'memory' };
+    this.window = _convertTimeToMs(options.window ?? '15m');
+    this.max = options.max ?? 100;
+    this.standardHeaders = options.standardHeaders ?? true;
+    this.skipSuccessfulRequests = options.skipSuccessfulRequests ?? false;
+    this.skipFailedRequests = options.skipFailedRequests ?? false;
+    this.keyGenerator = options.keyGenerator ?? defaultKeyGenerator;
+    this.handler = (options.handler ?? defaultHandler) as <T extends HandlerCallbackGenerics>(ctx: Context<T>) => HandlerCallback<T>;
   }
 
   private _validateConfig(config: RateLimitOptions | undefined, logger: Logger): void {
@@ -41,6 +45,7 @@ export class RateLimitConfig implements RateLimitOptions {
 
   get config(): RateLimitOptions {
     return {
+      enabled: this.enabled,
       algorithm: this.algorithm,
       window: this.window,
       max: this.max,

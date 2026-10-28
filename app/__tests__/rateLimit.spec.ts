@@ -256,6 +256,36 @@ describe('Rate Limiting Feature', () => {
   });
 });
 
+// Bug: the limiter was only installed when `rateLimit.enabled: true` was passed explicitly, so the documented default left apps unprotected. Tier: Medium (feature default).
+describe('Rate Limiting with no rateLimit option (documented default)', () => {
+  let defaultApp: YinzerFlow;
+  let defaultPort: number;
+
+  beforeEach(async () => {
+    ({ app: defaultApp, testPort: defaultPort } = createTestApp());
+    await defaultApp.listen();
+  });
+
+  afterEach(async () => {
+    if (defaultApp.status().isListening) {
+      await defaultApp.close();
+    }
+  });
+
+  it('should answer 429 after the default 100 requests per window', async () => {
+    const defaultMax = 100;
+    // Sequential on purpose: the default store's get-then-set is not atomic, and parallel requests would race it
+    for (let i = 0; i < defaultMax; i++) {
+      const response = await getRequest({ testPort: defaultPort });
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await getRequest({ testPort: defaultPort });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('RateLimit-Limit')).toBe(String(defaultMax));
+  });
+});
+
 describe('Rate Limit Configuration Validation', () => {
   it('should throw error for invalid max value', () => {
     expect(() => {
