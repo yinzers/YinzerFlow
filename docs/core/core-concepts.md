@@ -325,6 +325,8 @@ Hooks execute in a specific order for predictable behavior:
 
 Requests whose path is malformed (dot segments, encoded slashes, invalid encoding) are answered with 400 before step 1.
 
+<span style="color: #e74c3c">**⚠️ beforeRouting is not rate limited:**</span> step 1 runs before the built-in limiter (step 3). A `beforeRouting` hook that answers early, such as a 401 for a bad token, is never counted, so brute-force attempts rejected there are never throttled, and any database lookup it makes runs for every request. Keep `beforeRouting` to cheap work that doesn't answer on its own. For brute-force-sensitive auth (login, password reset, OTP), add a route-level `rateLimitHook` to that route, which counts every attempt before the handler runs.
+
 ```typescript
 // Example showing execution order
 app.beforeAll([() => console.log('1. Global beforeAll')]);

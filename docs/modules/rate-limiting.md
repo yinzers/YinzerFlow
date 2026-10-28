@@ -198,6 +198,7 @@ Options: `(context: Context) => string`
   - 🌐 API key: `ctx.request.headers['x-api-key']`
   - 🎨 Combination: `${tier}:${userId}`
 - ⏱️ Runs after `beforeRouting` hooks and route matching: it can read `ctx.request.params` and state set in `beforeRouting`, not state set in `beforeAll`
+- 🚨 `beforeRouting` hooks themselves are not rate limited: keep them cheap and don't answer from them (see the Security Note on Custom Key Generators)
 
 </aside>
 
@@ -599,6 +600,8 @@ await app.listen();
 
 **Description:** API with tiered access where premium users get higher limits than free users.
 
+<span style="color: #e74c3c">**⚠️ Not rate limited:**</span> everything in a `beforeRouting` hook runs *before* the global limiter. A hook that answers early, for example returning a 401 for a bad token, is never counted, so a brute-force attempt that fails there is never throttled, and any database lookup it does (like `getUserTier` below) runs unthrottled for every request. Keep `beforeRouting` to cheap work that never answers on its own (decode a token, read a header). For brute-force-sensitive auth (login, password reset, OTP), put a `rateLimitHook` on that route: it runs before the handler and counts failed attempts too.
+
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
 
@@ -727,6 +730,7 @@ app.post('/api/auth/login/otp', otpHandler, { beforeHooks: [loginLimit] }); // s
 
 - **Problem**: IP-based limiting doesn't work well for authenticated APIs where users might share IPs (corporate networks, VPNs).
 - **YinzerFlow Solution**: Custom key generators enable rate limiting by user ID, API key, or any other identifier.
+- **Caution**: the state a key generator reads is set in `beforeRouting`, which runs before the limiter and is never throttled itself. A `beforeRouting` hook that rejects a request (a 401 for a bad token) does so without counting it, so a credential-stuffing run that fails there is never limited, and expensive work in that hook (signature checks against a key server, database lookups) runs for every request at full rate. Do only cheap work in `beforeRouting`, never answer from it, and protect login, password reset and OTP routes with a route-level `rateLimitHook`, which counts failed attempts before the handler runs.
 
 ### 🛡️ Retry-After Header
 
