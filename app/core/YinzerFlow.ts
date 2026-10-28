@@ -170,6 +170,8 @@ export class YinzerFlow extends SetupImpl {
   private _isListening = false;
   private _server?: ReturnType<typeof createServer>;
   private readonly _globalRateLimiter?: RateLimiter | undefined;
+  /** The global rate limiter's stage hook, assigned once below; see InternalSetupImpl._globalRateLimitHook. */
+  declare readonly _globalRateLimitHook: HandlerCallback | undefined;
   private _diagnostics?: DiagnosticsMonitor | undefined;
   private readonly _maxBufferSize: number;
   private _accessLog?: ReturnType<typeof createLogger>;

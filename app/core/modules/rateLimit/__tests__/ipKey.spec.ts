@@ -19,6 +19,7 @@ describe('rateLimitIpKey', () => {
     ['masking disabled', '2001:0DB8::0001', false, '2001:db8::1'],
     ['invalid text passes through', '2001:db8:::1', 56, '2001:db8:::1'],
     ['too many groups passes through', '1:2:3:4:5:6:7:8:9', 56, '1:2:3:4:5:6:7:8:9'],
+    ['dotted quad not in final position passes through', '1.2.3.4::', 56, '1.2.3.4::'],
   ];
 
   it.each(cases)('%s: %s -> %p', (_description, input, ipv6Subnet, expected) => {

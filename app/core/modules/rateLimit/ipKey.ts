@@ -48,8 +48,10 @@ const _parseIpv6 = (ipAddress: string): Array<number> | null => {
   const halves = text.split('::');
   if (halves.length > 2) return null;
 
-  const head = _parseGroups(halves[0] ?? '');
-  const tail = halves.length === 2 ? _parseGroups(halves[1] ?? '') : [];
+  // A dotted-quad tail is only valid as the very last group of the whole address
+  const hasCompression = halves.length === 2;
+  const head = _parseGroups(halves[0] ?? '', !hasCompression);
+  const tail = hasCompression ? _parseGroups(halves[1] ?? '', true) : [];
   if (!head || !tail) return null;
 
   if (halves.length === 1) return head.length === _hextetCount ? head : null;
@@ -58,15 +60,18 @@ const _parseIpv6 = (ipAddress: string): Array<number> | null => {
   return [...head, ...new Array<number>(missing).fill(0), ...tail];
 };
 
-/** Parse colon-separated groups; a final dotted-quad group becomes two hextets. Null on any invalid group. */
-const _parseGroups = (part: string): Array<number> | null => {
+/**
+ * Parse colon-separated groups. When `allowIpv4Tail` is set, a final dotted-quad group becomes two hextets;
+ * anywhere else a dotted quad is invalid. Null on any invalid group.
+ */
+const _parseGroups = (part: string, allowIpv4Tail: boolean): Array<number> | null => {
   if (part === '') return [];
   const groups = part.split(':');
   const hextets: Array<number> = [];
 
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i] ?? '';
-    if (i === groups.length - 1 && group.includes('.')) {
+    if (allowIpv4Tail && i === groups.length - 1 && group.includes('.')) {
       const ipv4 = _parseDottedQuad(group);
       if (!ipv4) return null;
       hextets.push(...ipv4);

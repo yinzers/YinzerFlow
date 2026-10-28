@@ -15,7 +15,7 @@ export interface InternalSetupImpl extends Setup {
    * hooks and route matching (so keyGenerator sees params and beforeRouting state), before the 404 and
    * beforeAll. Deliberately not a hook-registry entry, so user hooks can't reorder or remove it.
    */
-  _globalRateLimitHook: HandlerCallback | undefined;
+  readonly _globalRateLimitHook: HandlerCallback | undefined;
   /** Per-instance logger. Set by `_configureLogging()` in YinzerFlow. */
   _log: {
     info: (...args: Array<unknown>) => void;
