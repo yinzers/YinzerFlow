@@ -4,13 +4,15 @@ import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js'
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.js';
+import { httpStatusCode } from '@constants/http.ts';
+import { canonicalizeRequestPath } from '@core/execution/utils/canonicalizeRequestPath.ts';
 
 /**
  * Handles the complete lifecycle of an HTTP request
  *
  * Flow:
  * 1. Receive parsed context (request + response builders)
- * 2. Match route and execute handlers
+ * 2. Derive the canonical path (or reject the request with 400), then match route and execute handlers
  * 3. Build final response in context
  * 4. Context.rawResponse is ready for sending
  */
@@ -26,13 +28,21 @@ export class RequestHandlerImpl {
    */
   async handle(context: InternalContextImpl): Promise<void> {
     try {
-      // 1. Run beforeRouting hooks (includes CORS if enabled) - stop if any hook returns a value
-      if (await this._handleBeforeRoutingHooks(context)) {
+      // 0. Derive the one path that routing AND hook matching both use, so they can never disagree.
+      // Traversal, encoded slashes and malformed encoding are rejected here, before any hook runs.
+      const canonicalPath = canonicalizeRequestPath(context.request.path);
+      if (canonicalPath === null) {
+        this._rejectMalformedPath(context);
         return void 0;
       }
 
-      // 2. Match route based on context.request.method + context.request.path
-      const matchedRoute = await this._matchRoute(context);
+      // 1. Run beforeRouting hooks (includes CORS if enabled) - stop if any hook returns a value
+      if (await this._handleBeforeRoutingHooks(context, canonicalPath)) {
+        return void 0;
+      }
+
+      // 2. Match route based on context.request.method + the canonical path
+      const matchedRoute = await this._matchRoute(context, canonicalPath);
       if (!matchedRoute) return void 0;
 
       // Set route params in the request context
@@ -42,7 +52,7 @@ export class RequestHandlerImpl {
       const { beforeHooks = [], afterHooks = [] } = options;
 
       // 3. Run beforeAll hooks - stop if any hook returns a value
-      if (await this._handleBeforeAllHooks(context)) {
+      if (await this._handleBeforeAllHooks(context, canonicalPath)) {
         return void 0;
       }
 
@@ -65,7 +75,7 @@ export class RequestHandlerImpl {
       // 8. Run afterAll hooks
       const afterAllHooks = this.setup._hooks._afterAll;
       for (const hook of afterAllHooks) {
-        if (!this._shouldRunHook(hook.options, context.request.path)) {
+        if (!this._shouldRunHook(hook.options, canonicalPath)) {
           continue;
         }
         await hook.handler(context);
@@ -119,11 +129,24 @@ export class RequestHandlerImpl {
     }
   }
 
-  async _handleBeforeRoutingHooks(context: InternalContextImpl): Promise<boolean> {
+  /**
+   * Answer a request whose path cannot be canonicalized with 400, through the normal response path
+   * so default headers and the access log behave exactly as for any other response.
+   */
+  _rejectMalformedPath(context: InternalContextImpl): void {
+    context.response.setStatusCode(httpStatusCode.badRequest);
+    context._response._setBody({
+      success: false,
+      message: '400 Bad Request: request path contains a dot segment, an encoded slash or backslash, a NUL, or invalid percent-encoding',
+    });
+    context._response._parseResponseIntoString();
+  }
+
+  async _handleBeforeRoutingHooks(context: InternalContextImpl, canonicalPath: string): Promise<boolean> {
     const beforeRoutingHooks = this.setup._hooks._beforeRouting;
     for (const hook of beforeRoutingHooks) {
       // Check if hook should run based on route options
-      if (!this._shouldRunHook(hook.options, context.request.path)) {
+      if (!this._shouldRunHook(hook.options, canonicalPath)) {
         continue;
       }
 
@@ -133,8 +156,8 @@ export class RequestHandlerImpl {
     return false;
   }
 
-  async _matchRoute(context: InternalContextImpl): Promise<InternalRouteRegistry | null> {
-    const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, context.request.path);
+  async _matchRoute(context: InternalContextImpl, canonicalPath: string): Promise<InternalRouteRegistry | null> {
+    const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, canonicalPath);
 
     if (!matchedRoute) {
       const notFoundResponse = await this.setup._hooks._onNotFound(context);
@@ -146,11 +169,11 @@ export class RequestHandlerImpl {
     return matchedRoute;
   }
 
-  async _handleBeforeAllHooks(context: InternalContextImpl): Promise<boolean> {
+  async _handleBeforeAllHooks(context: InternalContextImpl, canonicalPath: string): Promise<boolean> {
     const beforeAllHooks = this.setup._hooks._beforeAll;
     for (const hook of beforeAllHooks) {
       // Check if hook should run based on route options
-      if (!this._shouldRunHook(hook.options, context.request.path)) {
+      if (!this._shouldRunHook(hook.options, canonicalPath)) {
         continue;
       }
 
@@ -177,7 +200,8 @@ export class RequestHandlerImpl {
   }
 
   /**
-   * Determines if a hook should run based on its options and the current request path
+   * Determines if a hook should run based on its options and the request's canonical path.
+   * Hook patterns are canonicalized at registration (HookRegistryImpl), so both sides share one form.
    */
   _shouldRunHook(options: InternalGlobalHookOptions | undefined, requestPath: string): boolean {
     if (!options) {

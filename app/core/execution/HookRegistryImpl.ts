@@ -1,6 +1,7 @@
 import { colors } from '@constants/colors.ts';
 import { httpStatusCode } from '@constants/http.ts';
 import { log } from '@core/utils/log.ts';
+import { normalizePath } from '@core/setup/utils/normalizeStringPatterns.ts';
 import type { InternalGlobalHookOptions, InternalHookRegistryImpl } from '@typedefs/internal/InternalHookRegistryImpl.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { WebSocketMessageHook } from '@typedefs/public/WebSocket.js';
@@ -50,17 +51,20 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
 
   _addBeforeRoutingHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
     this._validateHandlersArray(handlers, 'beforeRouting');
-    for (const handler of handlers) this._beforeRouting.add({ handler, options: options ?? { routesToExclude: [], routesToInclude: [] } });
+    const resolvedOptions = this._normalizeHookOptions(options);
+    for (const handler of handlers) this._beforeRouting.add({ handler, options: resolvedOptions });
   }
 
   _addBeforeHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
     this._validateHandlersArray(handlers, 'beforeAll');
-    for (const handler of handlers) this._beforeAll.add({ handler, options: options ?? { routesToExclude: [], routesToInclude: [] } });
+    const resolvedOptions = this._normalizeHookOptions(options);
+    for (const handler of handlers) this._beforeAll.add({ handler, options: resolvedOptions });
   }
 
   _addAfterHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
     this._validateHandlersArray(handlers, 'afterAll');
-    for (const handler of handlers) this._afterAll.add({ handler, options: options ?? { routesToExclude: [], routesToInclude: [] } });
+    const resolvedOptions = this._normalizeHookOptions(options);
+    for (const handler of handlers) this._afterAll.add({ handler, options: resolvedOptions });
   }
 
   _addWsBeforeMessageHooks(handlers: Array<WebSocketMessageHook>): void {
@@ -71,6 +75,32 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   _addWsAfterMessageHooks(handlers: Array<WebSocketMessageHook>): void {
     this._validateHandlersArray(handlers as unknown as Array<HandlerCallback>, 'wsAfterMessage');
     for (const handler of handlers) this._wsAfterMessage.add({ handler });
+  }
+
+  /**
+   * Put hook patterns in the same canonical form as request paths, so `/admin/`, `//admin` and
+   * `/admin` in `routesToInclude` all mean the route `/admin`. Request paths are canonicalized per
+   * request (`canonicalizeRequestPath`); without this, a non-canonical pattern would match nothing
+   * and an include-listed hook (an auth check, say) would silently stop running.
+   */
+  private _normalizeHookOptions(options?: InternalGlobalHookOptions): InternalGlobalHookOptions {
+    return {
+      routesToExclude: this._normalizeHookPatterns(options?.routesToExclude ?? []),
+      routesToInclude: this._normalizeHookPatterns(options?.routesToInclude ?? []),
+    };
+  }
+
+  private _normalizeHookPatterns(patterns: Array<string>): Array<string> {
+    const normalized: Array<string> = [];
+    for (const pattern of patterns) {
+      if (pattern.endsWith('/*')) {
+        const prefix = normalizePath(pattern.slice(0, -2));
+        normalized.push(prefix === '/' ? '/*' : `${prefix}/*`);
+      } else {
+        normalized.push(normalizePath(pattern));
+      }
+    }
+    return normalized;
   }
 
   private _validateHandlersArray(handlers: unknown, methodName: string): asserts handlers is Array<HandlerCallback> {

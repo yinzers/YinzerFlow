@@ -74,21 +74,23 @@ export class RouteRegistryImpl implements InternalRouteRegistryImpl {
   /**
    * Find a route and extract parameters from the request path
    *
+   * `path` must already be canonical (see `canonicalizeRequestPath`). The router deliberately does
+   * not normalize it again: hook matching reads the same canonical value, and a second decode here
+   * (`%2525` → `%25` → `%`) would let routing and hooks see two different paths.
+   *
    * RUNTIME PERFORMANCE: This is called for every HTTP request, so it must be fast!
    * 1. Try exact match first (O(1) - fastest case)
    * 2. Fall back to parameterized routes (O(n) with pre-compiled regex)
    */
   _findRoute(method: InternalHttpMethod, path: string): InternalRouteRegistry | undefined {
-    const normalizedPath = normalizePath(path);
-
     // FAST PATH: Try exact match first (most common case)
-    const exactRoute = this._exactRoutes.get(method)?.get(normalizedPath);
+    const exactRoute = this._exactRoutes.get(method)?.get(path);
     if (exactRoute) {
       return exactRoute;
     }
 
     // PARAMETERIZED PATH: Check routes with parameters
-    const parameterizedRoute = this._findParameterizedRoute(method, normalizedPath);
+    const parameterizedRoute = this._findParameterizedRoute(method, path);
     if (parameterizedRoute) {
       return parameterizedRoute;
     }

@@ -3,6 +3,7 @@ import { createServer } from 'net';
 import type { Socket } from 'net';
 
 import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
+import { canonicalizeRequestPath } from '@core/execution/utils/canonicalizeRequestPath.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { createLogger, loggerBrand } from '@core/utils/log.ts';
@@ -668,7 +669,14 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
-    const match = this._wsRouter._match(validation.path);
+    // Same canonical form, and the same rejections, as HTTP routing
+    const canonicalPath = canonicalizeRequestPath(validation.path);
+    if (canonicalPath === null) {
+      this._sendHttpError(socket, 400, 'Malformed request path');
+      return;
+    }
+
+    const match = this._wsRouter._match(canonicalPath);
     if (!match) {
       this._sendHttpError(socket, 404, 'No WebSocket route matches this path');
       return;

@@ -48,11 +48,10 @@ export class WebSocketRouter {
     }
   }
 
+  /** `path` must already be canonical (see `canonicalizeRequestPath`), the same form HTTP routing uses. */
   _match(path: string): WsRouteMatch | undefined {
-    const normalizedPath = normalizePath(path);
-
     // O(1) exact match first
-    const exact = this._exactRoutes.get(normalizedPath);
+    const exact = this._exactRoutes.get(path);
     if (exact) {
       return { handlers: exact.handlers, options: exact.options, params: {} };
     }
@@ -60,7 +59,7 @@ export class WebSocketRouter {
     // O(n) parameterized match
     for (const route of this._parameterizedRoutes) {
       if (!route.pattern) continue;
-      const match = route.pattern.exec(normalizedPath);
+      const match = route.pattern.exec(path);
       if (match) {
         const params: Record<string, string> = {};
         for (let i = 0; i < (route.paramNames?.length ?? 0); i++) {

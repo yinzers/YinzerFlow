@@ -106,7 +106,14 @@ export interface Request<T extends HandlerCallbackGenerics = HandlerCallbackGene
   method: InternalHttpMethod;
 
   /**
-   * The request path/URL without query parameters.
+   * The request-target exactly as sent on the request line, including any query string
+   * (`/users/123?include=profile`); read parameters from `request.query`.
+   *
+   * Routing and hook `routesToInclude` / `routesToExclude` matching do not use this raw value: they use
+   * the canonical path (query stripped, decoded once, repeated and trailing slashes collapsed). Requests
+   * whose path contains `.` / `..` segments, encoded slashes (`%2f`, `%5c`), a backslash, a NUL or invalid
+   * percent-encoding are rejected with 400 before any hook or handler runs. Don't make access decisions
+   * by comparing this raw string; use routes and hook options for that.
    *
    * @example
    * ```typescript

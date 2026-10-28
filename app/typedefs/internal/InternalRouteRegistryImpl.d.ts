@@ -114,7 +114,7 @@ export interface InternalRouteRegistryImpl {
    * until a match is found.
    *
    * @param method - The HTTP method to search for
-   * @param path - The request path to match
+   * @param path - The canonical request path (from `canonicalizeRequestPath`); not normalized again here
    * @returns The matching route or undefined if no match found
    *
    * @example

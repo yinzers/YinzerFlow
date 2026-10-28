@@ -451,6 +451,75 @@ describe('YinzerFlow', () => {
         expect(response).toContain('x-execution-order: ["beforeRoute","route","afterRoute"]');
       });
     });
+
+    // Bug: hooks matched the raw path (query, slashes, encoding) while the router matched a lenient
+    // form, so an include-listed auth hook was skipped and `/public/*` exclusion let traversal reach `/secret`. Tier: High (authz bypass).
+    describe('Hook matching on the canonical path', () => {
+      const adminHookRuns = '"route":"admin","adminHook":true';
+      const pathCases: Array<[path: string, status: number, expectedBody: string]> = [
+        ['/admin', 200, adminHookRuns],
+        ['/admin?x=1', 200, adminHookRuns],
+        ['/admin/', 200, adminHookRuns],
+        ['/admin?', 200, adminHookRuns],
+        ['//admin', 200, adminHookRuns],
+        ['/public/file', 200, '"route":"public-file","authHook":false'],
+        ['/public/..%2fsecret', 400, '400 Bad Request'],
+        ['/public/%2e%2e%2fsecret', 400, '400 Bad Request'],
+        ['/public/../secret', 400, '400 Bad Request'],
+        ['/public/%2e%2e/secret', 400, '400 Bad Request'],
+        ['/admin%2f', 400, '400 Bad Request'],
+        ['/admin%zz', 400, '400 Bad Request'],
+      ];
+
+      it.each(pathCases)('GET %s answers %d with the hook decision the router agrees with', async (path, status, expectedBody) => {
+        app.beforeAll(
+          [
+            (ctx) => {
+              ctx.state.adminHook = true;
+            },
+          ],
+          { routesToInclude: ['/admin'], routesToExclude: [] },
+        );
+        app.beforeAll(
+          [
+            (ctx) => {
+              ctx.state.authHook = true;
+            },
+          ],
+          { routesToInclude: [], routesToExclude: ['/public/*'] },
+        );
+        app.get('/admin', (ctx) => ({ route: 'admin', adminHook: ctx.state.adminHook === true }));
+        app.get('/public/file', (ctx) => ({ route: 'public-file', authHook: ctx.state.authHook === true }));
+        app.get('/secret', () => ({ route: 'secret-reached' }));
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('GET', path));
+
+        expect(response.startsWith(`HTTP/1.1 ${status} `)).toBe(true);
+        expect(response).toContain(expectedBody);
+        expect(response).not.toContain('secret-reached');
+      });
+
+      // Bug: a non-canonical hook pattern ('//admin/') would never equal a canonical request path, silently skipping the hook. Tier: High (authz bypass).
+      it('normalizes hook patterns at registration so a non-canonical pattern still matches', async () => {
+        app.beforeAll(
+          [
+            (ctx) => {
+              ctx.state.adminHook = true;
+            },
+          ],
+          { routesToInclude: ['//admin/'], routesToExclude: [] },
+        );
+        app.get('/admin', (ctx) => ({ adminHook: ctx.state.adminHook === true }));
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/admin'));
+
+        expect(response).toContain('"adminHook":true');
+      });
+    });
   });
 
   describe('Error Handling', () => {

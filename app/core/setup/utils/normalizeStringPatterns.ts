@@ -1,9 +1,15 @@
 import { log } from '@core/utils/log.ts';
 
 /**
- * Normalize the path to ensure consistent format
+ * Normalize a developer-written route or hook pattern at registration time
  *
- * Handles common HTTP path variations for consistent route matching:
+ * Applies to patterns the application registers (routes, WebSocket routes, `routesToInclude` /
+ * `routesToExclude`), never to incoming request paths: those go through `canonicalizeRequestPath`,
+ * which rejects dot segments and encoded slashes instead of resolving them. Both produce the same
+ * shape (leading slash, no repeated or trailing slash, decoded once), so a registered pattern and a
+ * canonical request path compare directly.
+ *
+ * Handles common path variations in registered patterns:
  * - Always starts with '/'
  * - No double slashes
  * - Consistent trailing slash handling

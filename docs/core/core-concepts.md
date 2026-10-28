@@ -372,6 +372,26 @@ app.beforeAll([
 });
 ```
 
+#### How paths are matched
+
+Hook patterns are matched against the request's **canonical path**, the same path the router uses to pick a handler, so a hook and its route can never disagree about which path a request is for:
+
+- Query string and fragment are removed: `/admin?x=1` and `/admin?` match `/admin`
+- The path is percent-decoded once: `/users%20profile` matches `/users profile`
+- Repeated and trailing slashes are collapsed: `//admin` and `/admin/` match `/admin`
+- `/api/*` matches `/api` and anything below it on a segment boundary (`/api/users`, not `/apiary`)
+
+Your patterns get the same treatment when you register them, so `'/admin/'` and `'/admin'` mean the same route.
+
+Requests that can't be reduced to one unambiguous path are rejected with <span style="color: #e74c3c">**400 Bad Request**</span> before any hook or handler runs:
+
+- `.` or `..` segments, raw or encoded (`/public/../secret`, `/public/%2e%2e/secret`)
+- Encoded slashes or backslashes (`/public/..%2fsecret`, `%5c`) and raw backslashes
+- NUL bytes (`%00`)
+- Invalid percent-encoding (`/admin%zz`)
+
+<span style="color: #3498db">**💡 Tip:**</span> `ctx.request.path` is still the raw request-target as the client sent it (query string included), which is what you want in logs. Don't make access decisions by comparing it as a string; use routes and hook options, which use the canonical path.
+
 # ✨ Best Practices
 
 - **Use TypeScript generics** for type-safe request/response data access
@@ -706,8 +726,8 @@ YinzerFlow implements several security measures for core concepts:
 - **YinzerFlow Solution**: Automatic parameter validation and sanitization prevents injection attacks
 
 ### 🛡️ Path Traversal Protection
-- **Problem**: Directory traversal attacks through URL paths can access unauthorized files
-- **YinzerFlow Solution**: Comprehensive path normalization and validation prevents traversal attempts
+- **Problem**: Directory traversal and encoding tricks (`/public/..%2fsecret`, `/admin?x=1`) can make a hook's `routesToInclude` / `routesToExclude` check see a different path than the router, skipping an auth hook while the protected handler still answers
+- **YinzerFlow Solution**: Routing and hook matching share one canonical path per request. Dot segments, encoded slashes or backslashes, NUL bytes and invalid percent-encoding are rejected with 400 instead of being resolved, so the attempt is visible in your access logs rather than silently landing on another route
 
 ### 🛡️ Body Parsing Protection
 - **Problem**: Malformed request bodies can cause parsing errors, memory exhaustion, or security vulnerabilities
