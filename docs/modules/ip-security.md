@@ -87,7 +87,7 @@ Options: `string[]`
 
 ### maxChainLength — @default <span style="color: #2ecc71">`10`</span>
 
-Maximum IP chain length to prevent amplification attacks.
+Maximum number of `X-Forwarded-For` hops the right-to-left walk passes. The walk stops at the first untrusted hop, so this only binds when trust is very wide (for example `'*'`); a longer walk resolves to the socket address.
 
 ```typescript
 const app = new YinzerFlow({
@@ -106,31 +106,14 @@ Options: `number`
 - `20`: Longer chains (complex infrastructure)
 </aside>
 
-### detectSpoofing — @default <span style="color: #2ecc71">`true`</span>
+### detectSpoofing — <span style="color: #95a5a6">deprecated, no effect</span>
 
-Enable spoofing pattern detection.
-
-```typescript
-const app = new YinzerFlow({
-  ipSecurity: {
-    detectSpoofing: true  // Enable spoofing detection
-  }
-});
-```
-
-<aside>
-
-Options: `boolean`
-
-- `true`: Detect spoofing patterns (default, recommended)
-- `false`: Disable detection (development only)
-</aside>
+Still accepted so existing configurations keep working, but it no longer changes anything. `X-Forwarded-For` is walked right to left and only the hops the walk reaches are examined, so the whole-chain checks this enabled (duplicate entries, mixed valid and invalid entries) are unnecessary. Running them over the left end of the header, which the client writes, let a client make a trusted proxy's header unusable on purpose.
 
 # ✨ Best Practices
 
 - **Configure trusted proxies** for your load balancer/CDN infrastructure
 - **Use specific IPs** instead of wildcards when possible
-- **Enable spoofing detection** in production environments
 - **Set appropriate chain length limits** based on your network topology
 - **Test IP extraction** with your specific infrastructure
 - **Monitor IP validation logs** for suspicious patterns
@@ -224,9 +207,9 @@ YinzerFlow implements several security measures to prevent IP spoofing attacks:
 - **Problem**: Malformed IP addresses can cause application errors or bypass security controls
 - **YinzerFlow Solution**: Comprehensive IPv4 and IPv6 validation with named capture groups for precise format checking
 
-### 🛡️ Spoofing Pattern Detection
-- **Problem**: Sophisticated attacks use patterns like duplicate IPs, overly long chains, or mixed valid/invalid IPs to confuse parsing
-- **YinzerFlow Solution**: Advanced pattern detection identifies suspicious IP chains and automatically rejects them
+### 🛡️ No Fallthrough to Client-Written Headers
+- **Problem**: A client can add any header it likes. If an unusable `X-Forwarded-For` (junk, duplicates, too many hops, ports) made YinzerFlow try the next header, a client could break the proxy's header on purpose and be resolved from an `X-Real-IP` it wrote itself.
+- **YinzerFlow Solution**: Only the hops the right-to-left walk reaches are examined, and ports are stripped, so left-hand junk can't break the header. The first configured header that is present is final: if it still can't be used, the result is the socket address, never a later header.
 
 ### 🛡️ Private IP Filtering
 - **Problem**: Internal network IPs might leak information about network topology or be used in certain attacks

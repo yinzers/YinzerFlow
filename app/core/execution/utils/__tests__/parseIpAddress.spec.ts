@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { detectSpoofingPatterns, isPrivateIp, isTrustedProxy, isValidIpAddress, parseIpAddressSecure } from '../parseIpAddress.ts';
+import { isPrivateIp, isTrustedProxy, parseIpAddressSecure } from '../parseIpAddress.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
-import type { InternalIpSecurityOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
 
 // Bug: client-IP headers were trusted without consulting the socket peer: a single-entry X-Forwarded-For was
@@ -34,7 +33,7 @@ describe('parseIpAddressSecure (client IP from the socket peer and trusted proxi
       '127.0.0.1',
       '10.0.0.5',
     ],
-    ['trusted peer, malformed hop: header ignored, socket address used', undefined, { 'x-forwarded-for': 'nope, 203.0.113.9' }, '127.0.0.1', '127.0.0.1'],
+    ['trusted peer, malformed hop the walk reaches: socket address used', undefined, { 'x-forwarded-for': '203.0.113.9, nope' }, '127.0.0.1', '127.0.0.1'],
     ['IPv4-mapped peer matches an IPv4 trusted proxy', undefined, { 'x-forwarded-for': '203.0.113.9' }, '::ffff:127.0.0.1', '203.0.113.9'],
     ['IPv4-mapped untrusted peer is reported as IPv4', undefined, { 'x-forwarded-for': '203.0.113.9' }, `::ffff:${untrustedPeer}`, untrustedPeer],
     ['IPv6 peer in a trusted fd00::/8 range', { trustedProxies: ['fd00::/8'] }, { 'x-forwarded-for': '2001:DB8::1' }, 'fd12:3456::1', '2001:db8::1'],
@@ -50,6 +49,31 @@ describe('parseIpAddressSecure (client IP from the socket peer and trusted proxi
   it.each(cases)('%s', (_description, ipSecurity, headers, peer, expected) => {
     const setup = new SetupImpl(ipSecurity ? { ipSecurity } : undefined);
     expect(parseIpAddressSecure(setup, headers, peer).ip).toBe(expected);
+  });
+});
+
+// Bug: a chain check ran over the whole X-Forwarded-For, including the left end the client writes, and an
+// unusable result fell through to the next header, so a client could make the trusted proxy's XFF "invalid" and
+// be resolved from an X-Real-IP it wrote itself. Tier: High (client-chosen identity).
+describe('X-Forwarded-For fallthrough probes from a trusted peer', () => {
+  const realClient = '198.51.100.7';
+  const ipSecurity = { headerPreference: ['x-forwarded-for', 'x-real-ip'] };
+  const elevenHops = [...Array.from({ length: 10 }, (_unused, index) => `192.0.2.${index + 1}`), realClient].join(', ');
+  const probes: Array<[description: string, forwardedFor: string, extra: ServerOptions['ipSecurity'], expected: string]> = [
+    ['junk at the left end', `junk, ${realClient}`, {}, realClient],
+    ['a duplicate entry', `${realClient}, ${realClient}`, {}, realClient],
+    ['11 hops, over maxChainLength', elevenHops, {}, realClient],
+    ['an IPv4 hop with a port', `1.2.3.4:80, ${realClient}`, {}, realClient],
+    ['a bracketed IPv6 hop with a port', `[2001:db8::1]:80, ${realClient}`, {}, realClient],
+    ['a port on the reached hop', `${realClient}:4321`, {}, realClient],
+    ['a private real client with allowPrivateIps off: socket, not the next header', '192.168.5.5', { allowPrivateIps: false }, '127.0.0.1'],
+    ['left-hand junk past the first untrusted hop is ignored', 'foo, 203.0.113.9', {}, '203.0.113.9'],
+  ];
+
+  it.each(probes)('%s', (_description, forwardedFor, extra, expected) => {
+    const setup = new SetupImpl({ ipSecurity: { ...ipSecurity, ...extra } });
+    const headers = { 'x-forwarded-for': forwardedFor, 'x-real-ip': '6.6.6.6' };
+    expect(parseIpAddressSecure(setup, headers, '127.0.0.1').ip).toBe(expected);
   });
 });
 
@@ -90,62 +114,6 @@ describe('trustedProxies validation', () => {
 });
 
 describe('IP Validation Utilities', () => {
-  describe('isValidIpAddress', () => {
-    describe('IPv4 addresses', () => {
-      it('should validate correct IPv4 addresses', () => {
-        expect(isValidIpAddress('192.168.1.1')).toBe(true);
-        expect(isValidIpAddress('10.0.0.0')).toBe(true);
-        expect(isValidIpAddress('255.255.255.255')).toBe(true);
-        expect(isValidIpAddress('127.0.0.1')).toBe(true);
-        expect(isValidIpAddress('0.0.0.0')).toBe(true);
-      });
-
-      it('should reject invalid IPv4 addresses', () => {
-        expect(isValidIpAddress('256.1.1.1')).toBe(false);
-        expect(isValidIpAddress('192.168.1')).toBe(false);
-        expect(isValidIpAddress('192.168.1.1.1')).toBe(false);
-        expect(isValidIpAddress('192.168.-1.1')).toBe(false);
-        expect(isValidIpAddress('192.168.1.256')).toBe(false);
-      });
-    });
-
-    describe('IPv6 addresses', () => {
-      it('should validate correct IPv6 addresses', () => {
-        expect(isValidIpAddress('2001:db8::1')).toBe(true);
-        expect(isValidIpAddress('::1')).toBe(true);
-        expect(isValidIpAddress('fe80::1%eth0')).toBe(true);
-        expect(isValidIpAddress('2001:db8:85a3::8a2e:370:7334')).toBe(true);
-        expect(isValidIpAddress('::ffff:192.0.2.1')).toBe(true);
-      });
-
-      it('should reject invalid IPv6 addresses', () => {
-        expect(isValidIpAddress('2001:db8::1::2')).toBe(false);
-        expect(isValidIpAddress('2001:db8:85a3::8a2e:370g:7334')).toBe(false);
-        expect(isValidIpAddress('gggg::')).toBe(false);
-      });
-
-      it('should handle bracketed IPv6 addresses', () => {
-        expect(isValidIpAddress('[2001:db8::1]')).toBe(true);
-        expect(isValidIpAddress('[::1]')).toBe(true);
-      });
-    });
-
-    describe('Invalid inputs', () => {
-      it('should reject non-string inputs', () => {
-        expect(isValidIpAddress('')).toBe(false);
-        expect(isValidIpAddress(null as any)).toBe(false);
-        expect(isValidIpAddress(undefined as any)).toBe(false);
-        expect(isValidIpAddress(123 as any)).toBe(false);
-      });
-
-      it('should reject malformed addresses', () => {
-        expect(isValidIpAddress('not.an.ip')).toBe(false);
-        expect(isValidIpAddress('just-text')).toBe(false);
-        expect(isValidIpAddress('192.168.1.1.extra')).toBe(false);
-      });
-    });
-  });
-
   describe('isPrivateIp', () => {
     describe('IPv4 private ranges', () => {
       it('should identify RFC 1918 private addresses', () => {
@@ -200,53 +168,6 @@ describe('IP Validation Utilities', () => {
     it('should handle empty/invalid inputs', () => {
       expect(isPrivateIp('')).toBe(false);
       expect(isPrivateIp('not.an.ip')).toBe(false);
-    });
-  });
-
-  describe('detectSpoofingPatterns', () => {
-    const mockConfig: InternalIpSecurityOptions = {
-      trustedProxies: ['127.0.0.1'],
-      allowPrivateIps: true,
-      headerPreference: ['x-forwarded-for'],
-      maxChainLength: 5,
-      detectSpoofing: true,
-    };
-
-    it('should detect chains that are too long', () => {
-      const longChain = Array.from({ length: 10 }, (_, i) => `192.168.1.${i + 1}`);
-      expect(detectSpoofingPatterns(longChain, mockConfig)).toBe(true);
-    });
-
-    it('should detect duplicate IPs in chain', () => {
-      const duplicateChain = ['192.168.1.1', '203.0.113.1', '192.168.1.1'];
-      expect(detectSpoofingPatterns(duplicateChain, mockConfig)).toBe(true);
-    });
-
-    it('should detect mixed valid/invalid IPs', () => {
-      const mixedChain = ['192.168.1.1', 'not.an.ip', '203.0.113.1'];
-      expect(detectSpoofingPatterns(mixedChain, mockConfig)).toBe(true);
-    });
-
-    it('should detect reverse proxy spoofing patterns (currently disabled)', () => {
-      const suspiciousChain = ['8.8.8.8', '192.168.1.1']; // Public then private
-      // Note: This pattern is actually normal for X-Forwarded-For, so detection is disabled
-      expect(detectSpoofingPatterns(suspiciousChain, mockConfig)).toBe(false);
-    });
-
-    it('should allow legitimate chains', () => {
-      const legitimateChain = ['203.0.113.1', '198.51.100.1'];
-      expect(detectSpoofingPatterns(legitimateChain, mockConfig)).toBe(false);
-    });
-
-    it('should skip detection when disabled', () => {
-      const configWithoutDetection = { ...mockConfig, detectSpoofing: false };
-      const duplicateChain = ['192.168.1.1', '192.168.1.1'];
-      expect(detectSpoofingPatterns(duplicateChain, configWithoutDetection)).toBe(false);
-    });
-
-    it('should skip single IP chains', () => {
-      const singleIp = ['192.168.1.1'];
-      expect(detectSpoofingPatterns(singleIp, mockConfig)).toBe(false);
     });
   });
 });

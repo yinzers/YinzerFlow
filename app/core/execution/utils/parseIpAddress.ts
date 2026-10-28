@@ -1,7 +1,6 @@
 import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
 import type { InternalIpAddressResult, InternalTrustedProxyMatcher } from '@typedefs/internal/InternalIpAddress.js';
 import { canonicalIpText, isIpInRange, parseIp, parseIpRange } from '@core/utils/ipAddress.ts';
-import type { InternalIpSecurityOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.ts';
 
 // Private IP ranges (RFC 1918, RFC 4193, RFC 3927)
@@ -18,40 +17,6 @@ const PRIVATE_IP_RANGES = [
   /^(?<ipv6UniqueLocalFC>fc00):/i, // unique local
   /^(?<ipv6UniqueLocalFD>fd00):/i, // unique local
 ];
-
-/**
- * Validates if an IP address is properly formatted
- */
-export const isValidIpAddress = (ip: string): boolean => {
-  if (!ip || typeof ip !== 'string') return false;
-
-  // Remove brackets from IPv6 addresses
-  const cleanIp = ip.replace(/^\[|\]$/g, '');
-
-  // IPv4 validation with named capture groups
-  const ipv4Regex = /^(?<octet>(?<highByte>25[0-5]|(?<midByte>2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$/;
-  if (ipv4Regex.test(cleanIp)) {
-    const parts = cleanIp.split('.');
-    return (
-      parts.length === 4 &&
-      parts.every((part) => {
-        const num = parseInt(part, 10);
-        return num >= 0 && num <= 255;
-      })
-    );
-  }
-
-  // IPv6 validation with named capture groups (simplified but robust)
-  // First check for invalid patterns (multiple :: compression)
-  if (cleanIp.includes('::') && (cleanIp.match(/::/g) ?? []).length > 1) {
-    return false; // Multiple :: compression is invalid
-  }
-
-  const ipv6Regex =
-    /^(?<ipv6Address>(?<fullAddress>(?<hexQuad>[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4})|(?<compressedAddress>(?<leadingPart>[0-9a-fA-F]{1,4}:){1,7}:)|(?<mixedCompression>(?<frontPart>[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4})|(?<doubleColonOnly>::)|(?<linkLocal>fe80:(?<linkSuffix>:[0-9a-fA-F]{0,4}){0,4}(?<zoneId>%[0-9a-zA-Z]+)?)|(?<ipv4MappedFull>::ffff:(?<mappedIpv4>(?<mappedOctet>[0-9]{1,3}\.){3}[0-9]{1,3}))|(?<generalPattern>(?<segmentGroup>[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}))$/;
-
-  return ipv6Regex.test(cleanIp);
-};
 
 /**
  * Checks if an IP address is in a private range
@@ -108,45 +73,40 @@ export const isTrustedProxy = (ip: string, trustedProxies: Array<string>): boole
 };
 
 /**
- * Detects potential IP spoofing patterns
+ * Strip a port from one forwarded hop: `1.2.3.4:80` -> `1.2.3.4`, `[2001:db8::1]:80` -> `2001:db8::1`. A bare
+ * IPv6 address (several colons, no brackets) has no port and is returned unchanged.
  */
-export const detectSpoofingPatterns = (chain: Array<string>, config: InternalIpSecurityOptions): boolean => {
-  if (!config.detectSpoofing || chain.length <= 1) return false;
-
-  // Pattern 1: Too many hops (potential amplification attack)
-  if (chain.length > config.maxChainLength) return true;
-
-  // Pattern 2: Duplicate IPs in chain (suspicious)
-  const uniqueIps = new Set(chain);
-  if (uniqueIps.size !== chain.length) return true;
-
-  // Pattern 3: Mix of invalid and valid IPs (obfuscation attempt)
-  const validCount = chain.filter(isValidIpAddress).length;
-  if (validCount > 0 && validCount < chain.length) return true;
-
-  // Pattern 4: Reverse proxy spoofing detection disabled
-  // Note: The pattern "public_ip, private_ip" is normal for legitimate X-Forwarded-For headers
-  // More sophisticated detection would require knowledge of expected network topology
-
-  return false;
+const _stripPort = (hop: string): string => {
+  if (hop.startsWith('[')) {
+    const close = hop.indexOf(']');
+    return close === -1 ? hop : hop.slice(1, close);
+  }
+  const colon = hop.indexOf(':');
+  return colon !== -1 && colon === hop.lastIndexOf(':') ? hop.slice(0, colon) : hop;
 };
 
 /**
- * Client from an X-Forwarded-For chain sent by a trusted peer. The peer is the rightmost hop; walk the chain
- * right to left skipping trusted proxies, and the first untrusted hop is the client. If every hop is trusted,
- * the leftmost entry is. A malformed hop or a suspicious chain makes the header unusable (null): nothing left
- * of it can be trusted.
+ * Client from an X-Forwarded-For chain sent by a trusted peer.
+ *
+ * The peer is the rightmost hop. Walk the entries right to left, parsing each one only when the walk reaches it:
+ * a trusted proxy is skipped, and the first untrusted hop is the client. Everything left of it was written by
+ * the client and is never examined, so junk, duplicates or extra hops there can't make the header unusable
+ * (which is what let a client fall through to a header it wrote). If every hop is trusted, the leftmost is the
+ * client. Null when a hop the walk reaches is malformed, or when the walk would pass more than
+ * `maxChainLength` hops, a bound that only matters with very wide trust such as `'*'`.
  */
-const _clientFromForwardedChain = (headerValue: string, matcher: InternalTrustedProxyMatcher, config: InternalIpSecurityOptions): string | null => {
-  const chain = headerValue
-    .split(',')
-    .map((ip) => ip.trim())
-    .filter(Boolean);
-  if (chain.length === 0 || detectSpoofingPatterns(chain, config)) return null;
-
+const _clientFromForwardedChain = (headerValue: string, matcher: InternalTrustedProxyMatcher, maxChainLength: number): string | null => {
+  const entries = headerValue.split(',');
   let leftmost: string | null = null;
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const hop = parseIp(chain[i] ?? '');
+  let walked = 0;
+
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const text = (entries[i] ?? '').trim();
+    if (text === '') continue;
+    walked += 1;
+    if (walked > maxChainLength) return null;
+
+    const hop = parseIp(_stripPort(text));
     if (!hop) return null;
     if (!_isTrustedHop(hop, matcher)) return canonicalIpText(hop);
     leftmost = canonicalIpText(hop);
@@ -160,7 +120,7 @@ const _clientFromSingleValue = (headerValue: string): string | null => {
     .split(',')
     .map((ip) => ip.trim())
     .filter(Boolean);
-  const hextets = parseIp(entries[entries.length - 1] ?? '');
+  const hextets = parseIp(_stripPort(entries[entries.length - 1] ?? ''));
   return hextets ? canonicalIpText(hextets) : null;
 };
 
@@ -180,7 +140,8 @@ const _socketResult = (peerAddress: string, peer: Array<number> | null): Interna
  * in `ipSecurity.trustedProxies`. From any other peer the result is the socket address whatever headers
  * arrive: a client can't pick its own rate-limit bucket or appear as someone else. X-Forwarded-For from a
  * trusted peer is walked right to left past trusted proxies (see `_clientFromForwardedChain`), never read from
- * its attacker-writable left end. `'*'` trusts every peer and every hop, which is spoofable by design.
+ * its attacker-writable left end. Only the first configured header present is used; if it is unusable the
+ * socket address is returned rather than any later header. `'*'` trusts every peer and every hop, which is spoofable by design.
  *
  * @param setup - Server setup (its `ipSecurity` configuration)
  * @param headers - Parsed request headers
@@ -197,20 +158,21 @@ export const parseIpAddressSecure = (
   const socketResult = _socketResult(peerAddress, peer);
   if (!peer || !_isTrustedHop(peer, matcher)) return socketResult;
 
-  for (const headerName of config.headerPreference) {
-    const headerValue = headers[headerName];
-    if (!headerValue) continue;
+  // The first configured header that is present is final. If it can't be used (malformed reached hop, a private
+  // client with allowPrivateIps off), the answer is the socket address, never the next header: a client can
+  // always add a header the proxy doesn't set, so falling through would let it choose its own IP.
+  const headerName = config.headerPreference.find((name) => Boolean(headers[name]));
+  const headerValue = headerName ? headers[headerName] : undefined;
+  if (!headerName || !headerValue) return socketResult;
 
-    const clientIp = headerName === 'x-forwarded-for' ? _clientFromForwardedChain(headerValue, matcher, config) : _clientFromSingleValue(headerValue);
-    if (!clientIp) continue;
+  const clientIp =
+    headerName === 'x-forwarded-for' ? _clientFromForwardedChain(headerValue, matcher, config.maxChainLength) : _clientFromSingleValue(headerValue);
+  if (!clientIp) return socketResult;
 
-    const isPrivate = isPrivateIp(clientIp);
-    if (isPrivate && !config.allowPrivateIps) continue;
+  const isPrivate = isPrivateIp(clientIp);
+  if (isPrivate && !config.allowPrivateIps) return socketResult;
 
-    return { ip: clientIp, isValid: true, isPrivate, source: headerName, trusted: true };
-  }
-
-  return socketResult;
+  return { ip: clientIp, isValid: true, isPrivate, source: headerName, trusted: true };
 };
 
 /**

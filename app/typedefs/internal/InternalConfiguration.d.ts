@@ -290,8 +290,10 @@ export interface InternalIpSecurityOptions {
   maxChainLength: number;
 
   /**
-   * Enable spoofing pattern detection
-   * Detects suspicious patterns like duplicate IPs, mixed valid/invalid IPs
+   * No longer has any effect; accepted so existing configurations keep working
+   * @deprecated The X-Forwarded-For walk examines only hops it reaches (right to left, stopping at the first
+   * untrusted one), so whole-chain heuristics such as duplicate or mixed entries are unnecessary, and running
+   * them over the client-written left end let a client make the header unusable on purpose.
    * @default true
    */
   detectSpoofing: boolean;

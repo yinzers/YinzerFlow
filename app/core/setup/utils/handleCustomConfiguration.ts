@@ -267,14 +267,6 @@ const _warnIpSecurityConfig = (config: InternalServerOptions['ipSecurity']): voi
         'Very long proxy chains can consume significant resources and may indicate amplification attacks.',
     );
   }
-
-  // Warn if spoofing detection is disabled
-  if (!config.detectSpoofing) {
-    log.warn(
-      '[SECURITY WARNING] ipSecurity.detectSpoofing is disabled. ' +
-        'This reduces protection against IP spoofing attacks. Only disable if you have other protective measures.',
-    );
-  }
 };
 
 /**
