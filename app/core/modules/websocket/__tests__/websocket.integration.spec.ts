@@ -352,6 +352,34 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
+    // Bug (0.10.0 review, blocker): a client that disconnected while an async hook was awaiting still got the 101 written,
+    // trackConnect and open(), but its close event had already fired, so the per-IP slot was never released. Dropped
+    // clients filled the cap and every later client got 429 until restart. Tier: High (per-IP cap is DoS protection).
+    it('should not leak a per-IP slot when the client disconnects during an async hook', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, websocket: { maxConnectionsPerIp: 1 } });
+      app.beforeAll([async () => new Promise((resolve) => setTimeout(resolve, 300))]);
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      // Two clients send the upgrade and vanish while the hook is still awaiting
+      for (const key of ['AAAAAAAAAAAAAAAAAAAAAA==', 'BBBBBBBBBBBBBBBBBBBBBB==']) {
+        const dropped = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
+          dropped.write(buildUpgradeRequest('/ws', key));
+          setTimeout(() => dropped.destroy(), 50);
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // The one slot is still free, and still the only one
+      const first = await connectWs(testPort, '/ws', 'CCCCCCCCCCCCCCCCCCCCCC==');
+      const second = await connectWs(testPort, '/ws', 'DDDDDDDDDDDDDDDDDDDDDD==');
+      expect(first.response).toContain('101 Switching Protocols');
+      expect(second.response).toStartWith('HTTP/1.1 429');
+      first.socket.destroy();
+      second.socket.destroy();
+    }, 10_000);
+
     it('should answer 429 from the global rate limiter on an upgrade flood', async () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, rateLimit: { max: 2, window: '1m' } });

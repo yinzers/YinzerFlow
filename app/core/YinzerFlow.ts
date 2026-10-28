@@ -729,11 +729,6 @@ export class YinzerFlow extends SetupImpl {
         return;
       }
 
-      if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
-        this._sendHttpError(socket, 429, 'Too many WebSocket connections from this IP');
-        return;
-      }
-
       const upgradeRequest = {
         headers: context.request.headers as Record<string, string>,
         path: validation.path,
@@ -747,6 +742,11 @@ export class YinzerFlow extends SetupImpl {
       await this._answerUpgradeError({ context, socket, startTime, requestBytes: buffer.length, requestHandler, error });
       return;
     }
+
+    // The client may have gone while a hook or upgrade() was awaiting: its close event has fired already, so nothing
+    // would ever release a slot taken now. Everything below up to the close wiring in _setupWsConnection is
+    // synchronous, so a socket alive here is still alive when the slot is taken and the close handler attached.
+    if (socket.destroyed || !socket.writable) return;
 
     if (data === false) {
       this._sendHttpError(socket, 403, 'WebSocket upgrade rejected');
@@ -777,6 +777,13 @@ export class YinzerFlow extends SetupImpl {
           compressionNegotiated = true;
         }
       }
+    }
+
+    // The per-IP cap is checked here, after the last await, so concurrent upgrades can't all pass it while awaiting and
+    // then all take a slot; check, 101, trackConnect and close wiring run in one synchronous stretch.
+    if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
+      this._sendHttpError(socket, 429, 'Too many WebSocket connections from this IP');
+      return;
     }
 
     // Send 101 handshake response

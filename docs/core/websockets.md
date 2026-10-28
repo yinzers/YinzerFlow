@@ -351,9 +351,9 @@ An upgrade request runs these steps, in this order, before the connection opens:
 4. The built-in global rate limiter (429 when exceeded), so upgrade floods are throttled like any other request
 5. Global `beforeAll` hooks
 6. The not-found handler, then `afterAll` hooks on its response, when no WebSocket route matched
-7. Origin check (`allowedOrigins`, 403) and the per-IP connection cap (`maxConnectionsPerIp`, 429)
+7. Origin check (`allowedOrigins`, 403)
 8. The route's `upgrade(req)` handler
-9. `101 Switching Protocols`, then `open(ws)`
+9. The per-IP connection cap (`maxConnectionsPerIp`, 429), checked after every `await` so concurrent upgrades can't overshoot it, then `101 Switching Protocols` and `open(ws)`. A client that disconnected while a hook or `upgrade(req)` was still running is dropped here and never takes a connection slot.
 
 Steps 2 to 6 are the same stages, in the same order and through the same code, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks don't run, since a WebSocket route has none, and `afterAll` hooks run only on the 404 of step 6: an accepted upgrade has no HTTP response for them to change.
 
