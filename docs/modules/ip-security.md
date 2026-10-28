@@ -57,21 +57,27 @@ Options: `boolean`
 - `false`: Only allow public IPs (more secure for public APIs)
 </aside>
 
-### headerPreference — @default <span style="color: #2ecc71">`['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip', 'x-client-ip', 'true-client-ip']`</span>
+### headerPreference — @default <span style="color: #2ecc71">`['x-forwarded-for']`</span>
 
-Header preference order for IP extraction. Headers are only consulted when the socket peer is in `trustedProxies`; from any other peer none of them are read. `X-Forwarded-For` is walked right to left past trusted proxies; the others are single-value headers, whose last entry is used as given by the trusted proxy.
+Which client-IP headers to read. They are only consulted when the socket peer is in `trustedProxies`; from any other peer none of them are read. The first header in the list that is present on the request is used, and it is final: if it can't be used, the result is the socket address, never a later header. `X-Forwarded-For` is walked right to left past trusted proxies; the others are single-value headers, read by their last entry.
+
+<span style="color: #e74c3c">**⚠️ Every header you list must be one your proxy always sets or overwrites.**</span> A client can send any header. If your proxy passes a header through unchanged, listing it lets the client choose its own IP. For example, an nginx that only sets `X-Real-IP` forwards a client's own `X-Forwarded-For: 6.6.6.6` untouched. That's why the default lists only `X-Forwarded-For`, which proxies append to, as express and Fastify do, and why YinzerFlow logs a warning at startup when more than one header is listed.
 
 ```typescript
+// Behind Cloudflare: it always sets CF-Connecting-IP. Trust Cloudflare's published ranges, not '*'.
 const app = new YinzerFlow({
   ipSecurity: {
-    headerPreference: [
-      'x-forwarded-for',     // Standard proxy header
-      'x-real-ip',          // Nginx header
-      'cf-connecting-ip',   // Cloudflare header
-      'x-client-ip',       // Alternative header
-      'true-client-ip'    // Another alternative
-    ]
-  }
+    trustedProxies: ['173.245.48.0/20', '103.21.244.0/22', '2400:cb00::/32' /* ...the rest of Cloudflare's list */],
+    headerPreference: ['cf-connecting-ip'],
+  },
+});
+
+// nginx that sets X-Real-IP (proxy_set_header X-Real-IP $remote_addr;) instead of X-Forwarded-For
+const app2 = new YinzerFlow({
+  ipSecurity: {
+    trustedProxies: ['127.0.0.1', '::1'],
+    headerPreference: ['x-real-ip'],
+  },
 });
 ```
 
@@ -79,10 +85,10 @@ const app = new YinzerFlow({
 
 Options: `string[]`
 
-- `['x-forwarded-for']`: Only X-Forwarded-For (most common)
-- `['cf-connecting-ip', 'x-forwarded-for']`: Cloudflare priority
-- `['x-real-ip']`: Only X-Real-IP (Nginx)
-- `['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip']`: Comprehensive (default)
+- 🟢 `['x-forwarded-for']`: Default. Any proxy that appends to X-Forwarded-For (nginx `$proxy_add_x_forwarded_for`, cloud load balancers, Kubernetes ingress)
+- `['cf-connecting-ip']`: Behind Cloudflare
+- `['x-real-ip']`: nginx configured to set X-Real-IP
+- ⚠️ More than one entry: only if your proxy sets or overwrites **every** listed header (startup warning)
 </aside>
 
 ### maxChainLength — @default <span style="color: #2ecc71">`10`</span>
@@ -166,11 +172,7 @@ const app = new YinzerFlow({
   ipSecurity: {
     trustedProxies: ['127.0.0.1', '::1'], // Localhost only
     allowPrivateIps: true,                 // Allow private IPs in dev
-    headerPreference: [                    // Comprehensive header support
-      'x-forwarded-for', 
-      'x-real-ip', 
-      'cf-connecting-ip'
-    ],
+    headerPreference: ['x-forwarded-for'], // The header a local reverse proxy appends to
     detectSpoofing: false,                 // Disable for development
     maxChainLength: 10                     // Standard limit
   }
@@ -260,9 +262,10 @@ ipSecurity: { allowPrivateIps: true }
 // ❌ Wrong - Cloudflare IPs not trusted
 ipSecurity: { trustedProxies: ['127.0.0.1'] }
 
-// ✅ Correct - add Cloudflare IPs or use wildcard
-ipSecurity: { 
-  trustedProxies: ['*'], // Trust any proxy
-  headerPreference: ['cf-connecting-ip', 'x-forwarded-for']
+// ✅ Correct - trust Cloudflare's published ranges and read the header Cloudflare always sets
+ipSecurity: {
+  trustedProxies: ['173.245.48.0/20', '103.21.244.0/22', '2400:cb00::/32' /* ...the rest of Cloudflare's list */],
+  headerPreference: ['cf-connecting-ip'],
 }
+// ❌ Not '*': every client could then send its own CF-Connecting-IP
 ```

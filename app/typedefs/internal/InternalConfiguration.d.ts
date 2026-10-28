@@ -273,10 +273,19 @@ export interface InternalIpSecurityOptions {
   allowPrivateIps: boolean;
 
   /**
-   * Header preference order for IP extraction, consulted only when the socket peer is a trusted proxy
-   * YinzerFlow checks headers in this order and uses the first that yields a valid client IP: X-Forwarded-For
-   * walked right to left past trusted proxies, the others (single-value) by their last entry
-   * @default ['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip', 'x-client-ip', 'true-client-ip']
+   * Client-IP headers to read, consulted only when the socket peer is a trusted proxy
+   *
+   * The first header in this list that is present on the request is used, and it is final: if it can't be used
+   * the socket address is, never a later header. X-Forwarded-For is walked right to left past trusted proxies;
+   * the others are single-value headers, read by their last entry.
+   *
+   * Every header listed must be one your trusted proxy ALWAYS sets or overwrites. A header the proxy passes
+   * through unchanged is client-written: an nginx that only sets X-Real-IP forwards a client's own
+   * `X-Forwarded-For: 6.6.6.6`, so listing both would let the client choose its IP. A startup warning is logged
+   * when more than one header is listed. Same default as express and Fastify.
+   * @default ['x-forwarded-for']
+   * @example ['cf-connecting-ip'] // Behind Cloudflare (it always sets CF-Connecting-IP); trust Cloudflare's ranges
+   * @example ['x-real-ip'] // nginx with `proxy_set_header X-Real-IP $remote_addr;`
    */
   headerPreference: Array<string>;
 

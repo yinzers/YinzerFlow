@@ -41,7 +41,7 @@ const DEFAULT_BODY_PARSER_CONFIG = {
 const DEFAULT_IP_SECURITY_CONFIG = {
   trustedProxies: ['127.0.0.1', '::1'], // Localhost only by default
   allowPrivateIps: true, // Allow private IPs for internal usage
-  headerPreference: ['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip', 'x-client-ip', 'true-client-ip'],
+  headerPreference: ['x-forwarded-for'], // Only the header every proxy appends to; others are opt-in (see TSDoc)
   maxChainLength: 10, // Reasonable proxy chain length
   detectSpoofing: true, // Enable security by default
 };
@@ -258,6 +258,16 @@ const _warnIpSecurityConfig = (config: InternalServerOptions['ipSecurity']): voi
   // Warn about wildcard or overly permissive trusted proxies
   if (config.trustedProxies.length === 0) {
     log.warn('[SECURITY WARNING] ipSecurity.trustedProxies is empty. No proxy headers will be trusted, which may prevent proper client IP detection.');
+  }
+
+  // Every header in the list beyond the first is one a client can also send: it is only safe when the trusted
+  // proxy always sets or overwrites it. Say so once, at startup.
+  if (config.headerPreference.length > 1) {
+    log.warn(
+      `[SECURITY WARNING] ipSecurity.headerPreference lists ${config.headerPreference.length} headers (${config.headerPreference.join(', ')}). ` +
+        'Every one of them must be a header your trusted proxy always sets or overwrites; a header it passes through ' +
+        'unchanged lets a client choose its own IP. Keep only the header your proxy actually sets.',
+    );
   }
 
   // Warn about very long proxy chains

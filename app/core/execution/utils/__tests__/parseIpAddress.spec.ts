@@ -18,7 +18,9 @@ describe('parseIpAddressSecure (client IP from the socket peer and trusted proxi
     ['untrusted peer, spoofed "<random>, 127.0.0.1" chain', undefined, { 'x-forwarded-for': '203.0.113.9, 127.0.0.1' }, untrustedPeer, untrustedPeer],
     ['untrusted peer, no headers', undefined, {}, untrustedPeer, untrustedPeer],
     ['trusted peer, single-entry X-Forwarded-For', undefined, { 'x-forwarded-for': '203.0.113.9' }, '127.0.0.1', '203.0.113.9'],
-    ['trusted peer, single-value X-Real-IP', undefined, { 'x-real-ip': '203.0.113.9' }, '127.0.0.1', '203.0.113.9'],
+    ['trusted peer, X-Real-IP opted in', { headerPreference: ['x-real-ip'] }, { 'x-real-ip': '203.0.113.9' }, '127.0.0.1', '203.0.113.9'],
+    // Bug: the default listed five headers, so a proxy that only sets one passed the others through from the client
+    ['trusted peer, default list ignores a passed-through X-Real-IP', undefined, { 'x-real-ip': '6.6.6.6' }, '127.0.0.1', '127.0.0.1'],
     [
       'trusted peer, multi-hop chain: first untrusted hop from the right',
       { trustedProxies: ['127.0.0.1', '10.0.0.0/8'] },
