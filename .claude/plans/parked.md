@@ -115,3 +115,80 @@ before touching the area an entry names.
   to build it (a per-route opt-out of the global limiter) or delete the recipe.
 - **Cost later**: low; doc edits plus, if built, a small hook and a test.
 - **Trigger**: the next edit to rate-limiting.md or rateLimithooks.ts, or a user copying the example.
+
+## cors-preflight-not-throttled — OPTIONS preflights bypass the global limiter
+
+- **What**: with CORS enabled, the CORS hook answers preflight `OPTIONS` requests in `beforeRouting`,
+  before the global limiter's stage (6c51ad2), so preflights are never counted or limited.
+- **Why deferred**: review round 3 minor. A preflight is cheap (no handler runs), and throttling it
+  changes browser behavior: a throttled preflight fails the real request with an opaque CORS error.
+  Whether to count preflights, and against which bucket, is a product call.
+- **Cost later**: low; run the limiter inside the CORS preflight branch, or count preflights in a
+  separate cheap bucket, plus a test.
+- **Trigger**: a report of preflight floods, or the next change to the CORS hook or the limiter stage.
+
+## unthrottled-early-rejects — malformed-path 400s and WebSocket upgrades skip the limiter
+
+- **What**: requests rejected by `canonicalizeRequestPath` get a 400 before any stage runs, and
+  WebSocket upgrades are handled in `_handleWebSocketUpgradeAsync`, which never reaches
+  RequestHandlerImpl, so neither is counted by the global limiter. The WebSocket path has its own
+  per-IP connection cap and per-connection message limit, not a request-rate limit.
+- **Why deferred**: review round 3 minor. Both rejections are cheap and happen before any user code
+  runs; counting them means moving the limiter ahead of canonicalization (and keying on a path it
+  just rejected) or wiring it into the upgrade path, which is a design choice.
+- **Cost later**: low to medium; one limiter call in each early path, plus tests.
+- **Trigger**: a report of a flood of malformed paths or upgrade attempts, or the next change to
+  `_rejectMalformedPath` or the WebSocket upgrade handshake.
+
+## sliding-window-is-fixed — the "sliding window counter" resets like a fixed window
+
+- **What**: `SlidingWindowCounterStrategy` hard-resets on a new window and sets
+  `previousWindowCount = 0`, so the weighted previous-window term is always zero. It behaves as a
+  fixed window: a client can send `max` requests at the end of one window and `max` more at the start
+  of the next, a 2x burst across the edge. The docs describe a true sliding window.
+- **Why deferred**: review round 3, outside its items. Carrying the count over changes limiting
+  decisions for every user (stricter at window edges), so it wants its own change with its own tests
+  and a changelog line, not a ride-along.
+- **Cost later**: low; carry `currentWindowCount` into `previousWindowCount` when exactly one window
+  has passed, reset only after two, plus an edge-burst test. Redis entries need a two-window TTL then.
+- **Trigger**: the next change to `SlidingWindowCounterStrategy`, or a report of edge bursts.
+
+## clock-step-back-stale-entries — a backwards clock step leaves entries unexpirable for a while
+
+- **What**: the strategy and the in-memory store use `Date.now()`. If the wall clock steps backwards
+  (NTP correction, VM resume), `now - windowStart` goes negative, so a client's window doesn't reset
+  until the clock catches up, and the store's expiry order no longer matches its insertion order, so
+  the early-exit sweep stops at an entry that is "in the future" and leaves older ones behind until
+  the clock passes them. Memory stays bounded by the cap.
+- **Why deferred**: review round 3 minor. Rare, self-healing once the clock catches up, and the cap
+  still bounds memory. The fix is a monotonic clock (`performance.now()` plus a start offset), which
+  touches every timestamp the strategy and both stores share.
+- **Cost later**: low; one clock source injected into strategy and store, plus a test with a stepped
+  clock.
+- **Trigger**: a report of a client stuck at 429 after a clock change, or the next change to how the
+  limiter reads time.
+
+## memory-store-cap-warning-logger — the cap warning goes to the module logger
+
+- **What**: `createInMemoryStore` logs its one-time "reached its cap" warning with the module-level
+  `log` from `@core/utils/log.ts`, not the app's per-instance logger. An app with a custom logger or
+  log sink doesn't see it there.
+- **Why deferred**: review round 3 minor. The store is created from `RateLimitConfig`, which doesn't
+  carry the app logger today; threading it through config, the store factory and both stores is
+  plumbing, not a fix to the bound itself.
+- **Cost later**: low; pass the logger via the store options.
+- **Trigger**: the next change to the store factory or RateLimitConfig's constructor signature, or a
+  user asking where the warning went.
+
+## redis-destroy-wipes-shared-counters — close() on one node deletes counters for all nodes
+
+- **What**: the Redis store's `destroy()` runs `KEYS <prefix>*` and deletes every match. Every
+  `close()` (deploy, restart, scale-in) on one node therefore wipes the global and per-route counters
+  that every other node shares, and `KEYS` is O(keyspace) and blocks Redis while it runs.
+- **Why deferred**: found in review round 3 (item 4, e67ccf8 made route limiters destroyed on close
+  too). Whether close() should clear shared state at all is a behavior decision for Patrick; the
+  likely answer is "never delete on close, let TTLs expire", which is a one-line change but a
+  documented behavior change.
+- **Cost later**: low; drop the delete (or switch to SCAN for an explicit reset API).
+- **Trigger**: a report of limits resetting on deploys, Redis latency spikes during shutdown, or the
+  next change to the Redis store's destroy.
