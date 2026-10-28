@@ -5,12 +5,12 @@ import type { Socket } from 'net';
 import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
 import { canonicalizeRequestPath } from '@core/execution/utils/canonicalizeRequestPath.ts';
 import { parseIpAddress } from '@core/execution/utils/parseIpAddress.ts';
+import { parseRequestHeaders } from '@core/execution/utils/parseRequestHeaders.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { createLogger, loggerBrand } from '@core/utils/log.ts';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
-import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
 import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import { accessLogBaseConfig, getStatusEmoji } from '@core/utils/accessLog.ts';
 import { _createGlobalRateLimitHook, _rateLimiterOfHook, _withStoreNamespace } from '@core/modules/rateLimit/rateLimithooks.ts';
@@ -663,8 +663,11 @@ export class YinzerFlow extends SetupImpl {
 
     // Resolve the client the same way HTTP requests do: the socket peer unless it is a trusted proxy. The per-IP
     // connection cap, the upgrade handler's remoteAddress and connection tracking all use this one value.
-    const headersMap = this._parseHeadersMap(headersStr);
-    const clientAddress = parseIpAddress(this, headersMap as Partial<Record<InternalHttpHeaders, string>>, peerAddress);
+    // The same header parser as HTTP requests (any line ending, limits, sanitizing, joined X-Forwarded-For), on the
+    // header block after the request line
+    const parsedHeaders = parseRequestHeaders(headersStr.slice(headersStr.indexOf('\r\n') + 2));
+    const clientAddress = parseIpAddress(this, parsedHeaders, peerAddress);
+    const headersMap = parsedHeaders as Record<string, string>;
 
     const validation = _validateHandshake(headersStr);
     if (!validation.valid) {
@@ -879,22 +882,6 @@ export class YinzerFlow extends SetupImpl {
         });
       },
     };
-  }
-
-  /**
-   * Parse raw headers string into a Record (lowercased keys).
-   */
-  private _parseHeadersMap(headersStr: string): Record<string, string> {
-    const headers: Record<string, string> = {};
-    const lines = headersStr.split('\r\n');
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line) continue;
-      const colonIndex = line.indexOf(':');
-      if (colonIndex < 0) continue;
-      headers[line.substring(0, colonIndex).trim().toLowerCase()] = line.substring(colonIndex + 1).trim();
-    }
-    return headers;
   }
 
   /**

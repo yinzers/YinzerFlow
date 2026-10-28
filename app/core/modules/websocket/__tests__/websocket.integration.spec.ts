@@ -90,6 +90,38 @@ describe('WebSocket Integration', () => {
     }
   });
 
+  // Bug: the upgrade used its own CRLF-only, last-wins header parser, so a second proxy's X-Forwarded-For line erased the
+  // client and the upgrade resolved to the proxy, unlike the same request over HTTP. Tier: High (client identity).
+  describe('client address on upgrade', () => {
+    it('should resolve remoteAddress with the HTTP header parser and the trusted-proxy walk', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, ipSecurity: { trustedProxies: ['127.0.0.1', '10.0.0.0/8'] } });
+      let remoteAddress = '';
+      app.ws('/ws', {
+        upgrade(request) {
+          ({ remoteAddress } = request);
+          return {};
+        },
+        message() {},
+      });
+      await app.listen();
+
+      const response = await new Promise<string>((resolve, reject) => {
+        const socket = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
+          socket.write(buildUpgradeRequest('/ws').replace('\r\n\r\n', '\r\nX-Forwarded-For: 198.51.100.7\r\nX-Forwarded-For: 10.0.0.5\r\n\r\n'));
+        });
+        socket.once('data', (chunk) => {
+          resolve(chunk.toString());
+          socket.destroy();
+        });
+        socket.on('error', reject);
+      });
+
+      expect(response).toContain('101 Switching Protocols');
+      expect(remoteAddress).toBe('198.51.100.7');
+    });
+  });
+
   describe('core connection lifecycle', () => {
     it('should complete WebSocket handshake and exchange messages', async () => {
       const messageFn = mock((_data: Buffer | string) => {});
