@@ -211,15 +211,13 @@ export class YinzerFlow extends SetupImpl {
       this.beforeRouting([corsHookFunc]);
     }
 
-    // Global rate limiting runs in beforeRouting, the earliest per-request stage: after the canonical-path
-    // 400 and BEFORE route lookup, so unmatched paths (route scanning) are throttled too. beforeAll would
-    // never see them, because a 404 returns before that stage. Registered after CORS so preflights are
-    // answered first and 429 responses still carry CORS headers.
+    // Global rate limiting runs in its own stage in RequestHandlerImpl (not a hook entry users can reorder):
+    // after beforeRouting hooks (CORS included, so 429s carry CORS headers) and route matching, so keyGenerator
+    // sees params and beforeRouting state; before the 404 and beforeAll, so unmatched paths are throttled too.
     if (rateLimitConfig.enabled) {
       this._globalRateLimiter = new RateLimiter(rateLimitConfig);
       const onRateLimitHit = this._diagnostics ? (ip: string, path: string): void => this._diagnostics?.onRateLimitHit(ip, path) : undefined;
-      const hook = _createGlobalRateLimitHook(this._globalRateLimiter, onRateLimitHit);
-      this.beforeRouting([hook]);
+      this._globalRateLimitHook = _createGlobalRateLimitHook(this._globalRateLimiter, onRateLimitHit);
     }
 
     // Setup automatic graceful shutdown if enabled

@@ -150,7 +150,8 @@ export interface Setup extends HttpMethodHandlers {
    * rate limiting, authentication checks, or request preprocessing that should
    * happen regardless of whether a matching route exists.
    *
-   * **Execution Order**: beforeRouting → routing → beforeAll → beforeRoute → handler → afterRoute → afterAll
+   * **Execution Order**: beforeRouting → routing (params filled) → built-in rate limiter → not-found handler if unmatched →
+   * beforeAll → beforeRoute → handler → afterRoute → afterAll. State set here is visible to the rate limiter's `keyGenerator`.
    *
    * @param handlers - Array of hook functions to execute
    * @param options - Optional configuration for hook execution scope

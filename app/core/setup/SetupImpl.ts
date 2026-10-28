@@ -18,6 +18,7 @@ export class SetupImpl implements InternalSetupImpl {
   readonly _configuration: InternalServerOptions;
   readonly _routeRegistry = new RouteRegistryImpl();
   readonly _hooks = new HookRegistryImpl();
+  _globalRateLimitHook: HandlerCallback | undefined = undefined;
   readonly _wsRouter = new WebSocketRouter();
   /** Per-instance logger. Defaults to module-level `log`, replaced by `_configureLogging()` in YinzerFlow. */
   _log: typeof log = log;

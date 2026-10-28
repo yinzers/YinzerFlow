@@ -260,6 +260,58 @@ describe('Rate Limiting Feature', () => {
   });
 });
 
+// Bug: with the limiter run before routing, keyGenerator saw empty params and no beforeRouting state, so every client shared one bucket and the whole app got 429. Tier: Medium (feature).
+describe('Global keyGenerator context', () => {
+  type KeyCase = [
+    description: string,
+    configure: (app: YinzerFlow) => void,
+    urlFor: (client: string) => string,
+    headersFor: (client: string) => Record<string, string>,
+  ];
+  const keyCases: Array<KeyCase> = [
+    ['a route param', (app) => app.get('/tenants/:tenant/data', () => ({ ok: true })), (client) => `/tenants/${client}/data`, () => ({})],
+    [
+      'state set by a user beforeRouting hook',
+      (app) => {
+        app.beforeRouting([
+          (ctx) => {
+            ctx.state.userId = ctx.request.headers['x-user-id' as keyof typeof ctx.request.headers];
+          },
+        ]);
+        app.get('/profile', () => ({ ok: true }));
+      },
+      () => '/profile',
+      (client) => ({ 'x-user-id': client }),
+    ],
+  ];
+
+  let keyApp: YinzerFlow | undefined;
+
+  afterEach(async () => {
+    if (keyApp?.status().isListening) await keyApp.close();
+  });
+
+  it.each(keyCases)('should give each client its own bucket when keyGenerator reads %s', async (_description, configure, urlFor, headersFor) => {
+    let testPort: number;
+    ({ app: keyApp, testPort } = createTestApp({
+      rateLimit: {
+        max: 2,
+        window: '1m',
+        keyGenerator: (ctx) => String(ctx.request.params.tenant ?? ctx.state.userId ?? 'shared'),
+      },
+    }));
+    configure(keyApp);
+    await keyApp.listen();
+
+    const send = async (client: string): Promise<number> =>
+      (await fetch(`http://127.0.0.1:${testPort}${urlFor(client)}`, { headers: headersFor(client) })).status;
+
+    expect([await send('alice'), await send('alice')]).toEqual([200, 200]);
+    expect(await send('bob')).toBe(200);
+    expect(await send('alice')).toBe(429);
+  });
+});
+
 // Bug: rateLimitHook built a new limiter (empty store) on every request, so per-route limits never applied and each request leaked a sweep timer. Tier: Medium (feature).
 describe('Per-route rateLimitHook', () => {
   let routeApp: YinzerFlow;

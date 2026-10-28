@@ -41,12 +41,9 @@ export class RequestHandlerImpl {
         return void 0;
       }
 
-      // 2. Match route based on context.request.method + the canonical path
-      const matchedRoute = await this._matchRoute(context, canonicalPath);
+      // 2. Match the route, fill params, run the global rate limiter, answer 404 when nothing matched
+      const matchedRoute = await this._resolveRoute(context, canonicalPath);
       if (!matchedRoute) return void 0;
-
-      // Set route params in the request context
-      Object.assign(context.request.params as unknown as Record<string, string>, matchedRoute.params);
 
       const { handler, options } = matchedRoute;
       const { beforeHooks = [], afterHooks = [] } = options;
@@ -156,17 +153,39 @@ export class RequestHandlerImpl {
     return false;
   }
 
-  async _matchRoute(context: InternalContextImpl, canonicalPath: string): Promise<InternalRouteRegistry | null> {
+  /**
+   * Routing stage: match the route and fill params, then run the global rate limiter, then answer 404 if
+   * nothing matched. The limiter sits between the two on purpose: after params and beforeRouting state exist
+   * (so keyGenerator can key on them) and before the 404 (so unmatched paths are throttled too, with empty
+   * params). Returns the matched route, or null when a response (429 or 404) has already been set.
+   */
+  async _resolveRoute(context: InternalContextImpl, canonicalPath: string): Promise<InternalRouteRegistry | null> {
     const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, canonicalPath);
+    if (matchedRoute) {
+      Object.assign(context.request.params as unknown as Record<string, string>, matchedRoute.params);
+    }
+
+    if (await this._handleGlobalRateLimit(context)) return null;
 
     if (!matchedRoute) {
-      const notFoundResponse = await this.setup._hooks._onNotFound(context);
-      context._response._setBody(notFoundResponse);
-      context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
-      return null; // Signal that no route was found and response is already set
+      await this._respondNotFound(context);
+      return null;
     }
 
     return matchedRoute;
+  }
+
+  /** Run the framework's global rate limiter, if enabled. Returns true when it answered (429). */
+  async _handleGlobalRateLimit(context: InternalContextImpl): Promise<boolean> {
+    const rateLimitHook = this.setup._globalRateLimitHook;
+    if (!rateLimitHook) return false;
+    return this._applyHookResponse(await rateLimitHook(context), context);
+  }
+
+  async _respondNotFound(context: InternalContextImpl): Promise<void> {
+    const notFoundResponse = await this.setup._hooks._onNotFound(context);
+    context._response._setBody(notFoundResponse);
+    context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
   }
 
   async _handleBeforeAllHooks(context: InternalContextImpl, canonicalPath: string): Promise<boolean> {

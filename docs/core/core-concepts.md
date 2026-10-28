@@ -213,7 +213,7 @@ YinzerFlow provides a comprehensive hooks system for middleware, authentication,
 
 ### Global Hooks
 
-Global hooks run for every request that matches a route and are perfect for authentication, logging, and response modification. `beforeAll` and `afterAll` do not run for unmatched routes: a request with no matching route goes straight to the not-found handler. Use `beforeRouting` for anything that must see every request, including 404s (the built-in rate limiter runs there).
+Global hooks run for every request that matches a route and are perfect for authentication, logging, and response modification. `beforeAll` and `afterAll` do not run for unmatched routes: a request with no matching route goes straight to the not-found handler. Use `beforeRouting` for anything that must see every request, including 404s. The built-in rate limiter runs in its own stage right after `beforeRouting` and route matching, so it also sees every request.
 
 ```typescript
 // Global authentication hook
@@ -311,13 +311,19 @@ app.group('/api/v1', (api) => {
 
 Hooks execute in a specific order for predictable behavior:
 
-1. **Global beforeAll hooks** (in registration order)
-2. **Group beforeHooks** (parent groups first, then child groups)
-3. **Route-specific beforeHooks** (in registration order)
-4. **Route handler**
-5. **Route-specific afterHooks** (in registration order)
-6. **Group afterHooks** (child groups first, then parent groups)
-7. **Global afterAll hooks** (in registration order)
+1. **Global beforeRouting hooks** (in registration order; CORS runs here when enabled). Runs for every request.
+2. **Route matching**: route params are filled in; nothing is answered yet
+3. **Built-in rate limiter** (when enabled). Runs for every request, matched or not, and can read `ctx.request.params` and any state set in `beforeRouting`. It answers 429 when the limit is exceeded
+4. **Not-found handler** if no route matched (the remaining steps are skipped)
+5. **Global beforeAll hooks** (in registration order)
+6. **Group beforeHooks** (parent groups first, then child groups)
+7. **Route-specific beforeHooks** (in registration order)
+8. **Route handler**
+9. **Route-specific afterHooks** (in registration order)
+10. **Group afterHooks** (child groups first, then parent groups)
+11. **Global afterAll hooks** (in registration order)
+
+Requests whose path is malformed (dot segments, encoded slashes, invalid encoding) are answered with 400 before step 1.
 
 ```typescript
 // Example showing execution order

@@ -38,6 +38,7 @@ Enable or disable rate limiting globally or per-route.
 - A route that mixes a parameter and `*` (for example `/files/:id/*`) no longer matches the bare prefix (`/files/5`). Route text is now matched literally, so the `*` there is a literal character, not a wildcard.
 - Hook patterns (`routesToInclude` / `routesToExclude`) that use a route parameter (`'/users/:id'`) or a mid-path `*` (`'/api/*/admin'`) now throw at startup. Use a trailing wildcard on the parent path (`'/users/*'`).
 - Apps behind a reverse proxy, load balancer or CDN must list it in `ipSecurity.trustedProxies` (see [IP Security](./ip-security.md)). Otherwise every client is seen as the proxy's IP and all users share one rate-limit bucket.
+- The global limiter runs in its own stage, after `beforeRouting` hooks and route matching and before the not-found handler and `beforeAll`. A custom `keyGenerator` can read `ctx.request.params` and state set in `beforeRouting`, but **not state set in `beforeAll`**, which hasn't run yet. If your key reads something like `ctx.state.userId`, set it in a `beforeRouting` hook. Otherwise the key falls back to its default and every client shares one bucket.
 
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
@@ -195,6 +196,7 @@ Options: `(context: Context) => string`
   - 🔑 User ID: `ctx.state.userId`
   - 🌐 API key: `ctx.request.headers['x-api-key']`
   - 🎨 Combination: `${tier}:${userId}`
+- ⏱️ Runs after `beforeRouting` hooks and route matching: it can read `ctx.request.params` and state set in `beforeRouting`, not state set in `beforeAll`
 
 </aside>
 
@@ -489,8 +491,8 @@ const app = new YinzerFlow({
   }
 });
 
-// Authentication middleware
-app.beforeAll([
+// Authentication middleware (beforeRouting runs before the rate limiter's keyGenerator)
+app.beforeRouting([
   async (ctx) => {
     const token = ctx.request.headers.authorization?.replace('Bearer ', '');
     if (token) {
@@ -549,8 +551,8 @@ const app = new YinzerFlow({
   }
 });
 
-// Middleware to extract user ID from JWT
-app.beforeAll([
+// Middleware to extract user ID from JWT (beforeRouting runs before the rate limiter's keyGenerator)
+app.beforeRouting([
   async (ctx) => {
     const token = ctx.request.headers.authorization?.replace('Bearer ', '');
     if (token) {
@@ -589,11 +591,14 @@ const app = new YinzerFlow({
   }
 });
 
-// Middleware to determine user tier
-app.beforeAll([
+// Identify the user and their tier in beforeRouting, which runs before the rate limiter's keyGenerator
+app.beforeRouting([
   async (ctx) => {
-    if (ctx.state.userId) {
-      ctx.state.userTier = await getUserTier(ctx.state.userId);
+    const token = ctx.request.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      const decoded = await verifyJWT(token);
+      ctx.state.userId = decoded.userId;
+      ctx.state.userTier = await getUserTier(decoded.userId);
     }
   }
 ]);
@@ -808,8 +813,8 @@ const app = new YinzerFlow({
   }
 });
 
-// Middleware to extract user ID from authentication
-app.beforeAll([
+// Middleware to extract user ID from authentication (beforeRouting runs before the rate limiter's keyGenerator)
+app.beforeRouting([
   async (ctx) => {
     const token = ctx.request.headers.authorization?.replace('Bearer ', '');
     if (token) {
