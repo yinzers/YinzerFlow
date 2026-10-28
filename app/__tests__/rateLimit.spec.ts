@@ -597,6 +597,33 @@ describe('Rate Limiting with Redis Store', () => {
     });
   });
 
+  describe('Route-level limiters on a shared client', () => {
+    // Bug: route rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other. Tier: Medium.
+    it('should namespace each route deterministically', async () => {
+      const setKeys: Array<string> = [];
+      const recordingClient = {
+        ...mockRedisClient,
+        set: async (key: string) => {
+          setKeys.push(key);
+          return Promise.resolve('OK');
+        },
+      };
+      const store = { type: 'redis' as const, client: recordingClient as any, keyPrefix: 'test:rate_limit:', maxRetries: 1 };
+      const { app: sharedApp, testPort: sharedPort } = createTestApp({ rateLimit: { max: 50, window: '1m', store } });
+      const routeLimit = rateLimitHook({ max: 5, window: '1m', store });
+      sharedApp.post('/a', () => ({ ok: true }), { beforeHooks: [routeLimit], afterHooks: [] });
+      sharedApp.get('/b', () => ({ ok: true }), { beforeHooks: [routeLimit], afterHooks: [] });
+      await sharedApp.listen();
+
+      await fetch(`http://127.0.0.1:${sharedPort}/a`, { method: 'POST' });
+      await fetch(`http://127.0.0.1:${sharedPort}/b`);
+      const namespaces = new Set(setKeys.map((key) => key.slice(0, key.lastIndexOf(':') + 1)));
+      expect(namespaces).toEqual(new Set(['test:rate_limit:', 'test:rate_limit:route:POST /a:', 'test:rate_limit:route:GET /b:']));
+
+      await sharedApp.close();
+    });
+  });
+
   describe('Store configuration validation', () => {
     it('should work with valid Redis store configuration', () => {
       expect(() => {
