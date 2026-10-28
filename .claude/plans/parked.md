@@ -192,3 +192,33 @@ before touching the area an entry names.
 - **Cost later**: low; carry the socket peer on the request internally and append it to the log line.
 - **Trigger**: the next change to the access-log line format, or an operator report of being unable to trace
   a client behind `'*'`.
+
+## header-parser-leniency — header names with whitespace before the colon and bare CR/LF line breaks are accepted
+
+- **What**: `app/core/execution/utils/parseRequestHeaders.ts:62-70` reads `X-Forwarded-For : v` as
+  X-Forwarded-For and treats a bare CR or LF as a line break. Behind a front proxy that passes those bytes
+  through, a client can smuggle its own X-Forwarded-For line after the proxy's and choose its resolved IP.
+  RFC 9112 §5.1 says both get a 400. The WebSocket upgrade now uses the same parser, so it shares the gap.
+- **Why deferred**: final security pass for 0.9.0 graded it a note: nginx and HAProxy reject both shapes before
+  they reach YinzerFlow, and the leniency predates this release. Tightening the parser is a framing change that
+  needs its own review against real clients.
+- **Cost later**: low; reject the two shapes with 400 and add one table test.
+- **Trigger**: the next change to parseRequestHeaders, or a deployment without a conforming front proxy.
+
+## ws-upgrade-parse-error-logging — a malformed upgrade header logs an ERROR with a stack and raw client bytes
+
+- **What**: `app/core/YinzerFlow.ts:668` throws on a malformed header name during a WebSocket upgrade;
+  `_handleRequestError` logs it at ERROR with a full stack, quoting the client's raw header name (any length,
+  ANSI escapes included). The socket is destroyed correctly; the cost is log noise and log injection of escapes.
+- **Why deferred**: final security pass for 0.9.0 graded it a note; no client gains anything but log lines.
+- **Cost later**: low; answer with a 400 through `_sendHttpError` and log the name at debug, JSON-quoted and
+  truncated.
+- **Trigger**: the next change to the upgrade path's error handling, or an operator report of noisy upgrade logs.
+
+## xff-port-strip-lenient — `_stripPort` accepts non-numeric ports in X-Forwarded-For hops
+
+- **What**: `app/core/execution/utils/parseIpAddress.ts:63-70` accepts `[::1]junk` and `1.2.3.4:abc` as hops.
+  Only hops a trusted proxy wrote are ever parsed, so a client can't exploit it.
+- **Why deferred**: final security pass for 0.9.0 graded it a note; it only affects proxy-written junk.
+- **Cost later**: trivial; require 1-5 digits after the colon so junk falls back to the socket address.
+- **Trigger**: the next change to parseIpAddress.ts hop parsing.
