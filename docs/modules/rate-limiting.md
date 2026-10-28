@@ -32,6 +32,13 @@ Enable or disable rate limiting globally or per-route.
 
 <span style="color: #f39c12">**⚠️ Behavior change in 0.9.0:**</span> Before 0.9.0 the global limiter was only installed when you passed `rateLimit: { enabled: true }`, so an app with no `rateLimit` options had no rate limiting despite the documented default. From 0.9.0 an app that passes no `rateLimit` options gets the default limiter (1000 requests per minute per IP). If you relied on the old behavior, for example behind a gateway that already limits, set `rateLimit: { enabled: false }`.
 
+**Upgrade notes for 0.9.0** (other request-handling changes that can surface on upgrade):
+
+- Paths that can't be reduced to one unambiguous path are rejected with **400** before any hook or handler runs: a raw `%` that isn't a valid escape (`/50%`, `/admin%zz`), `.` or `..` segments (raw or encoded as `%2e`), encoded slashes or backslashes (`%2f`, `%5c`), raw backslashes, NUL bytes (`%00`) and invalid UTF-8.
+- A route that mixes a parameter and `*` (for example `/files/:id/*`) no longer matches the bare prefix (`/files/5`). Route text is now matched literally, so the `*` there is a literal character, not a wildcard.
+- Hook patterns (`routesToInclude` / `routesToExclude`) that use a route parameter (`'/users/:id'`) or a mid-path `*` (`'/api/*/admin'`) now throw at startup. Use a trailing wildcard on the parent path (`'/users/*'`).
+- Apps behind a reverse proxy, load balancer or CDN must list it in `ipSecurity.trustedProxies` (see [IP Security](./ip-security.md)). Otherwise every client is seen as the proxy's IP and all users share one rate-limit bucket.
+
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
 

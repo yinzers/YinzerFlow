@@ -20,7 +20,7 @@ import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGe
  *
  * // Strict rate limiting IN ADDITION to global limit
  * app.get('/api/expensive',
- *   { beforeRoute: [rateLimit({ max: 5, windowMs: 60000 })] },
+ *   { beforeRoute: [rateLimitHook({ max: 5, window: 60000 })] },
  *   async (ctx) => {
  *     return { data: 'expensive computation' };
  *   }
@@ -31,7 +31,7 @@ import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGe
  *   {
  *     beforeRoute: [
  *       skipRateLimit(), // Skip global
- *       rateLimit({ max: 5, windowMs: 15 * 60 * 1000 }) // Apply route-specific
+ *       rateLimitHook({ max: 5, window: '15m' }) // Apply route-specific
  *     ]
  *   },
  *   async (ctx) => {

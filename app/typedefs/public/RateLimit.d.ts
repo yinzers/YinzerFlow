@@ -47,27 +47,27 @@ export type StoreConfig = MemoryStoreConfig | RedisStoreConfig;
  * Options for per-route rate limiting
  *
  * Allows overriding global rate limit settings for specific routes.
- * Use with the `rateLimit()` hook function in route options.
+ * Use with the `rateLimitHook()` hook function in route options.
  *
  * @example
  * ```typescript
- * import { rateLimit } from 'yinzerflow';
+ * import { rateLimitHook } from 'yinzerflow';
  * import type { RateLimitOptions } from 'yinzerflow';
  *
  * // Using friendly time format
  * const options: RateLimitOptions = {
  *   max: 5,
- *   windowMs: '1m' // 1 minute
+ *   window: '1m' // 1 minute
  * };
  *
  * // Or using milliseconds directly
  * const optionsMs: RateLimitOptions = {
  *   max: 5,
- *   windowMs: 60000 // 1 minute
+ *   window: 60000 // 1 minute
  * };
  *
  * app.post('/api/auth/login',
- *   { beforeRoute: [rateLimit(options)] },
+ *   { beforeRoute: [rateLimitHook(options)] },
  *   async (ctx) => {
  *     // Login logic
  *   }

@@ -193,6 +193,8 @@ app.group('/api/v1', (api) => {
 });
 ```
 
+Route parameters are percent-decoded exactly once: `/users/caf%C3%A9` gives `params.id === 'café'`, while a double-encoded `/files/%252e%252e` gives `params.name === '%2e%2e'`, not `..`. Don't decode a parameter again before using it as a file path or a lookup key.
+
 ### Available HTTP Methods
 
 ```typescript

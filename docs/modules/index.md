@@ -50,11 +50,10 @@ All modules can be configured through the main YinzerFlow constructor:
 import { YinzerFlow } from 'yinzerflow';
 
 const app = new YinzerFlow({
-  // Rate limiting configuration
+  // Rate limiting (on by default: 1000 requests per minute per IP); override only what you need
   rateLimit: {
-    enabled: true,
-    windowMs: 900000, // 15 minutes
-    max: 100 // 100 requests per window
+    window: '15m', // time string or milliseconds
+    max: 100 // requests per window
   },
   
   // CORS configuration
