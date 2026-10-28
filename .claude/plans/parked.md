@@ -28,3 +28,33 @@ before touching the area an entry names.
 - **Trigger**: the next plan that touches `app/core/modules/rateLimit/`, or a user report of a
   client evading the IP limit (rotating IPs or many clients behind one NAT getting throttled
   together).
+
+## request-target-dos-limits — no request-line length cap; multi-param segments backtrack
+
+- **What**: `parseHttpRequest.ts` splits the whole buffered request with no cap on the request-line
+  length (only the overall body-derived buffer cap applies), and a route with two params in one
+  segment (`/:a-:b` → `([^\/]+)-([^\/]+)`) backtracks quadratically on a long segment.
+  `canonicalizeRequestPath` itself is linear and is not the issue.
+- **Why deferred**: found by the security review of the 0.9.0 hook-path fix (19a1275), outside its
+  scope; a cap needs a chosen limit (nginx uses 8 KB for the request line) and a 414 response path,
+  and the backtracking needs either a registration-time refusal of multi-param segments or a
+  non-backtracking matcher. Both are design choices, not a patch.
+- **Cost later**: low. Both changes are local (request-line parse, route compile) and nothing built
+  since depends on unbounded request lines.
+- **Trigger**: the next change to `parseHttpRequest.ts` or `compileRoutePatter.ts`, or a report of
+  slow or stalled requests with long URLs.
+
+## canonical-path-public-field — handlers only see the raw request-target
+
+- **What**: routing and hook matching use the canonical path, but `ctx.request.path` is the raw
+  request-target (query included, undecoded). A user hook that does its own
+  `ctx.request.path.startsWith('/admin')` check is bypassed by `GET //admin` or `GET /%61dmin`, which
+  the router still serves from `/admin`. A read-only canonical field (or the matched route pattern)
+  would give handlers the value routing used.
+- **Why deferred**: 0.9.0 deliberately kept `request.path` raw and added no public field (docs never
+  promised canonical; the access log and an existing test rely on the raw value). A new public field
+  is API surface that wants a name and a decision from Patrick. The trap is documented on
+  `Request.path` TSDoc and in docs/core/core-concepts.md.
+- **Cost later**: low; additive field, nothing to rewrite.
+- **Trigger**: a user report of a path check in a handler or custom hook being bypassed, or the next
+  change to `RequestImpl`'s public fields.
