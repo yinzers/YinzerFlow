@@ -268,6 +268,8 @@ app.ws<{ userId: string }>('/feed', {
 
 ### Handler Errors
 
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> the route's `error` handler now also receives errors thrown by `open`, `message`, `close` and `drain`, not only socket errors, and the connection stays open afterwards. Before 0.10.0 such a throw went unhandled (and a throwing `message` handler could stop the connection from delivering later messages). An `error` handler written to clean up after a dead socket should check whether the connection is still open (`ws.readyState`) before treating every call as fatal.
+
 A handler that throws (or returns a rejected promise) never takes the connection down. The message that caused it is consumed, later messages keep arriving, and the error goes to the route's `error(ws, error)` handler, the way `onError` owns HTTP errors. A route without an `error` handler gets the error logged once at error level. The same applies to `open`, `close` and `drain`, with or without `wsBeforeMessage` hooks registered.
 
 ```typescript
@@ -355,6 +357,8 @@ An upgrade request runs these steps, in this order, before the connection opens:
 8. The route's `upgrade(req)` handler
 9. The per-IP connection cap (`maxConnectionsPerIp`, 429), checked after every `await` so concurrent upgrades can't overshoot it, then `101 Switching Protocols` and `open(ws)`. A client that disconnected while a hook or `upgrade(req)` was still running is dropped here and never takes a connection slot.
 
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> the origin check and the per-IP connection cap now run after the global hooks (and the cap after `upgrade(req)`), so hooks see, and the rate limiter counts, upgrades that are then refused for their origin or the cap. Before 0.10.0 both ran before anything else.
+
 Steps 2 to 6 are the same stages, in the same order and through the same code, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks don't run, since a WebSocket route has none, and `afterAll` hooks run only on the 404 of step 6: an accepted upgrade has no HTTP response for them to change.
 
 Every refusal is an ordinary HTTP response with the default security headers, written to the access log. The refusals YinzerFlow makes after the hook stages (origin 403, `upgrade()` returning `false` or `rejectUpgrade(...)`, the per-IP cap's 429) also run `afterAll` hooks, like any response that isn't a hook short-circuit. A malformed handshake, request line or path gets its 400 before any hook runs.
@@ -423,6 +427,8 @@ app.wsAfterMessage([
 ```
 
 ### Dropping a Message
+
+<span style="color: #f39c12">**⚠️ Ordering:**</span> messages reach the hooks in the order they arrive, but a hook (or a `message` handler) that returns a promise doesn't hold back the next message. With an `async` `wsBeforeMessage` hook, message 2 can reach the handler before message 1 if message 1's hook takes longer, for example on a database lookup. If order matters, keep the hooks synchronous, or queue the work per connection yourself. This was true before 0.10.0 too.
 
 A `wsBeforeMessage` hook drops a message by returning `false`, the same way an HTTP hook short-circuits by returning a value. Later before hooks, the route's `message` handler and the `wsAfterMessage` hooks don't run, and nothing is logged. To end the connection as well, call `ws.close(code, reason)` and then return `false`. A hook that throws is still treated as an error and goes to the route's `error` handler.
 
@@ -620,6 +626,8 @@ await app.listen();
 | Connection closed with "Heartbeat timeout" | Client didn't respond to ping | Check client network; increase `heartbeat.interval` |
 | Connection closed with 1008 | Message rate limit exceeded | Increase `maxMessages`/`window` or throttle client |
 | Messages not received | Client backpressured with `'drop'` | Switch to `'buffer'` or increase client throughput |
+| Upgrade answered 200 with HTML | An SPA-fallback `onNotFound` answers unmatched upgrades | Return 404 from `onNotFound` when `ctx.request.headers.upgrade` is `websocket` |
+| 400 on upgrade or request, "request line must be..." | Tabs, repeated spaces or a version other than HTTP/1.0 or 1.1 in the request line | Send `METHOD /path HTTP/1.1` with single spaces |
 | `ws.data` is `undefined` | No `upgrade` handler | Add `upgrade(req) { return { ... } }` |
 | Compression not activating | Client didn't offer permessage-deflate | Check client supports it; verify `compression.enabled: true` |
 | Small messages getting larger | Compression overhead on tiny payloads | Increase `compression.threshold` (default 128 bytes) |

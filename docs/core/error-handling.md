@@ -39,6 +39,8 @@ Options: `automatic`
 
 ### Custom Error Handler — @default <span style="color: #2ecc71">`built-in`</span>
 
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> `onError` is now called for throws during a WebSocket upgrade (from a global hook or a route's `upgrade` handler). Before 0.10.0 such a throw dropped the socket and never reached `onError`. A handler that assumes `ctx` always belongs to a normal HTTP route should allow for upgrade requests (`ctx.request.headers.upgrade === 'websocket'`).
+
 Register a custom error handler for all routes. It also answers a throw from a global hook or a route's `upgrade` handler during a WebSocket upgrade: the client gets your handler's response as a plain HTTP response (500 if your handler leaves the status at 200) and the socket is closed.
 
 ```typescript
@@ -65,6 +67,19 @@ Options: `HandlerCallback | built-in`
 ### Custom Not Found Handler — @default <span style="color: #2ecc71">`built-in`</span>
 
 Register a custom not-found handler for unmatched routes.
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> the not-found handler also answers WebSocket upgrades to a path no `app.ws()` route matches. An SPA-style fallback that returns `index.html` with 200 for every unknown path now answers those upgrades with 200 HTML too, so the client sees a failed handshake instead of a clear 404. Check for the `Upgrade` header and answer 404 for upgrades:
+
+```typescript
+app.onNotFound((ctx) => {
+  if (ctx.request.headers.upgrade?.toLowerCase() === 'websocket') {
+    ctx.response.setStatusCode(404);
+    return { error: 'No WebSocket endpoint here' };
+  }
+  ctx.response.addHeaders({ 'Content-Type': 'text/html' });
+  return spaIndexHtml; // the SPA fallback, for browser navigation only
+});
+```
 
 ```typescript
 app.onNotFound((ctx) => {
