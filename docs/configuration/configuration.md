@@ -138,7 +138,7 @@ Options: `{ enabled: false } | CorsOptions`
 
 </aside>
 
-### rateLimit — @default <span style="color: #2ecc71">`{ enabled: true, window: '15m', max: 100 }`</span>
+### rateLimit — @default <span style="color: #2ecc71">`{ enabled: true, window: '1m', max: 1000 }`</span>
 
 Rate limiting configuration to protect against DoS attacks and API abuse.
 
@@ -160,8 +160,8 @@ const app = new YinzerFlow({
 Options: `RateLimitOptions`
 
 - 🟢 `enabled: true`: Rate limiting enabled (default, recommended)
-- ⏱️ `window`: Time window (`'15m'` default)
-- 🔢 `max`: Maximum requests per window (`100` default)
+- ⏱️ `window`: Time window (`'1m'` default)
+- 🔢 `max`: Maximum requests per window (`1000` default)
 
 <span style="color: #3498db">🔗 See [Rate Limiting Documentation](../modules/rate-limiting.md) for all options</span>
 

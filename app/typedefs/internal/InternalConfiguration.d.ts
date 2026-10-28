@@ -335,7 +335,7 @@ export interface InternalServerOptions {
   /**
    * Rate limiting configuration
    * Protects against DoS attacks and API abuse by limiting requests per IP
-   * @default enabled with 100 requests per 15 minutes
+   * @default enabled with 1000 requests per 1 minute
    */
   rateLimit?: RateLimitOptions;
 

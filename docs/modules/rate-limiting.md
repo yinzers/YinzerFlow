@@ -1,6 +1,6 @@
 # 📖 Overview
 
-YinzerFlow provides built-in rate limiting to protect your API from abuse and DoS attacks. Rate limiting is <span style="color: #2ecc71">**enabled by default**</span> with sensible limits (100 requests per 15 minutes per IP) using the **Sliding Window Counter** algorithm for accurate request tracking with minimal memory overhead.
+YinzerFlow provides built-in rate limiting to protect your API from abuse and DoS attacks. Rate limiting is <span style="color: #2ecc71">**enabled by default**</span> with sensible limits (1000 requests per minute per IP, the same default as @fastify/rate-limit) using the **Sliding Window Counter** algorithm for accurate request tracking with minimal memory overhead.
 
 <span style="color: #3498db">**💡 Tip:**</span> Rate limiting is your first line of defense against DoS attacks and API abuse.
 
@@ -30,7 +30,7 @@ Enable or disable rate limiting globally or per-route.
 
 <span style="color: #e74c3c">**⚠️ Warning:**</span> Disabling rate limiting removes DoS protection from your API.
 
-<span style="color: #f39c12">**⚠️ Behavior change in 0.9.0:**</span> Before 0.9.0 the global limiter was only installed when you passed `rateLimit: { enabled: true }`, so an app with no `rateLimit` options had no rate limiting despite the documented default. From 0.9.0 an app that passes no `rateLimit` options gets the default limiter (100 requests per 15 minutes per IP). If you relied on the old behavior, for example behind a gateway that already limits, set `rateLimit: { enabled: false }`.
+<span style="color: #f39c12">**⚠️ Behavior change in 0.9.0:**</span> Before 0.9.0 the global limiter was only installed when you passed `rateLimit: { enabled: true }`, so an app with no `rateLimit` options had no rate limiting despite the documented default. From 0.9.0 an app that passes no `rateLimit` options gets the default limiter (1000 requests per minute per IP). If you relied on the old behavior, for example behind a gateway that already limits, set `rateLimit: { enabled: false }`.
 
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
@@ -51,7 +51,7 @@ Options: `boolean`
 
 </aside>
 
-### window — @default <span style="color: #2ecc71">`'15m'`</span> (15 minutes)
+### window — @default <span style="color: #2ecc71">`'1m'`</span> (1 minute)
 
 Time window for rate limiting. Accepts friendly format ('30s', '15m', '2h', '1d') or milliseconds.
 
@@ -75,11 +75,11 @@ Options: `TimeString | number`
 
 - ⏱️ Friendly format: `'30s'`, `'15m'`, `'2h'`, `'1d'`
 - ⏱️ Milliseconds: `60000` (1 minute)
-- ✅ Default: `'15m'` (900000ms)
+- ✅ Default: `'1m'` (60000ms)
 
 </aside>
 
-### max — @default <span style="color: #2ecc71">`100`</span>
+### max — @default <span style="color: #2ecc71">`1000`</span>
 
 Maximum number of requests allowed per window.
 
@@ -100,8 +100,8 @@ const app = new YinzerFlow({
 Options: `number`
 
 - 🚨 Minimum: `1`
-- ✅ Recommended: `100` for general APIs
-- 🟢 Default: `100`
+- 🟢 Default: `1000` per `window` (per minute by default), sized so a whole office or carrier-grade NAT behind one IP is not throttled by normal browsing
+- 💡 Lower it per route for sensitive endpoints (login, password reset) with `rateLimitHook`
 
 </aside>
 
@@ -716,7 +716,7 @@ YinzerFlow implements several security measures to prevent abuse while maintaini
 ```typescript
 const app = new YinzerFlow({
   port: 3000,
-  rateLimit: { max: 1000, window: '15m' }, // or { enabled: false } behind an API gateway
+  rateLimit: { max: 5000, window: '1m' }, // or { enabled: false } behind an API gateway
 });
 ```
 
@@ -826,7 +826,7 @@ app.beforeAll([
 import { YinzerFlow, rateLimitHook } from 'yinzerflow';
 
 // Per-route limit is ADDITIVE to global limit
-// Client must pass both global (100/15m) AND route-specific (5/15m) limits
+// Client must pass both global (1000/1m by default) AND route-specific (5/15m) limits
 app.post('/api/auth/login',
   {
     beforeRoute: [rateLimitHook({

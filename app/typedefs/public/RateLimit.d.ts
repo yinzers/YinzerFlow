@@ -135,7 +135,7 @@ export interface RateLimitOptions {
    * - Friendly format: '30s', '15m', '2h', '1d'
    * - Milliseconds: 900000
    *
-   * @default '15m' (15 minutes / 900000ms)
+   * @default '1m' (1 minute / 60000ms)
    *
    * @example
    * ```typescript
@@ -149,7 +149,7 @@ export interface RateLimitOptions {
 
   /**
    * Maximum requests per window
-   * @default 100
+   * @default 1000
    */
   max?: number;
 

@@ -28,8 +28,8 @@ export class RateLimitConfig implements RateLimitOptions {
     this.enabled = options.enabled ?? true;
     this.algorithm = options.algorithm ?? rateLimitAlgorithm.slidingWindowCounter;
     this.store = options.store ?? { type: 'memory' };
-    this.window = _convertTimeToMs(options.window ?? '15m');
-    this.max = options.max ?? 100;
+    this.window = _convertTimeToMs(options.window ?? '1m');
+    this.max = options.max ?? 1000;
     this.standardHeaders = options.standardHeaders ?? true;
     this.skipSuccessfulRequests = options.skipSuccessfulRequests ?? false;
     this.skipFailedRequests = options.skipFailedRequests ?? false;

@@ -272,8 +272,8 @@ describe('Rate Limiting with no rateLimit option (documented default)', () => {
     }
   });
 
-  it('should answer 429 after the default 100 requests per window', async () => {
-    const defaultMax = 100;
+  it('should answer 429 after the default 1000 requests per window', async () => {
+    const defaultMax = 1000;
     // Sequential on purpose: the default store's get-then-set is not atomic, and parallel requests would race it
     for (let i = 0; i < defaultMax; i++) {
       const response = await getRequest({ testPort: defaultPort });
