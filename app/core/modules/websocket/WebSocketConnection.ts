@@ -2,7 +2,8 @@ import type { Socket } from 'net';
 import { _encodeCloseFrame, _encodeFrame, _parseFrame } from './WebSocketFrame.ts';
 import { _compressPayload, _decompressPayload } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
-import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
+import { wsCloseCode, wsOpcode, wsReadyState, wsSendStatus } from '@constants/websocket.ts';
+import type { InternalWsSendStatus } from '@typedefs/constants/websocket.js';
 import type { WebSocketBackpressureOptions, WebSocketHandlers } from '@typedefs/public/WebSocket.js';
 
 /**
@@ -119,8 +120,8 @@ export class WebSocketConnection<T = unknown> {
     this._channelManager = manager;
   }
 
-  send(data: Buffer | string): void {
-    if (this._readyState !== wsReadyState.open) return;
+  send(data: Buffer | string): InternalWsSendStatus {
+    if (this._readyState !== wsReadyState.open) return wsSendStatus.dropped;
 
     const isString = typeof data === 'string';
     const payload = isString ? Buffer.from(data, 'utf8') : data;
@@ -129,15 +130,14 @@ export class WebSocketConnection<T = unknown> {
     const compress = this._options.compression.enabled && payload.length >= this._options.compression.threshold;
     if (compress) {
       const compressed = _compressPayload(payload, this._options.compression.level, this._options.compression.serverMaxWindowBits);
-      this._writeFrame(_encodeFrame(opcode, compressed, true, true));
-    } else {
-      this._writeFrame(_encodeFrame(opcode, payload));
+      return this._writeFrame(_encodeFrame(opcode, compressed, true, true));
     }
+    return this._writeFrame(_encodeFrame(opcode, payload));
   }
 
-  sendRaw(encodedFrame: Buffer): void {
-    if (this._readyState !== wsReadyState.open) return;
-    this._writeFrame(encodedFrame);
+  sendRaw(encodedFrame: Buffer): InternalWsSendStatus {
+    if (this._readyState !== wsReadyState.open) return wsSendStatus.dropped;
+    return this._writeFrame(encodedFrame);
   }
 
   close(code: number = wsCloseCode.normal, reason?: string): void {
@@ -397,17 +397,19 @@ export class WebSocketConnection<T = unknown> {
   // Write with backpressure
   // ============================================
 
-  private _writeFrame(frame: Buffer): void {
-    if (this._backpressured) {
+  /** Write a frame under the backpressure strategy and report what happened to it. */
+  private _writeFrame(frame: Buffer): InternalWsSendStatus {
+    const wasBackpressured = this._backpressured;
+    if (wasBackpressured) {
       if (this._options.backpressure.strategy === 'drop') {
-        return;
+        return wsSendStatus.dropped;
       }
       // Buffer strategy — check if we'd exceed the limit
       this._bufferedAmount += frame.length;
       if (this._bufferedAmount > this._options.backpressure.limit) {
         this.close(wsCloseCode.tooLarge, 'Send buffer overflow');
         this._destroySocket();
-        return;
+        return wsSendStatus.dropped;
       }
     }
 
@@ -416,6 +418,7 @@ export class WebSocketConnection<T = unknown> {
       this._backpressured = true;
       this._bufferedAmount += frame.length;
     }
+    return flushed && !wasBackpressured ? wsSendStatus.sent : wsSendStatus.buffered;
   }
 
   // ============================================

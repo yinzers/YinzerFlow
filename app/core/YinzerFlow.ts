@@ -957,7 +957,10 @@ export class YinzerFlow extends SetupImpl {
     socket.destroy();
   }
 
-  /** Publish a message to all subscribers of a WebSocket channel. Returns recipient count. */
+  /**
+   * Publish a message to all subscribers of a WebSocket channel. Returns how many subscribers took the frame (sent or
+   * buffered); subscribers whose `'drop'` backpressure strategy discarded it, or whose buffer overflowed, aren't counted.
+   */
   publish(channel: string, data: Buffer | string): number {
     return this._wsChannelManager?.publish(channel, data) ?? 0;
   }

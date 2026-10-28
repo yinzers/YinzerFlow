@@ -53,6 +53,20 @@ export const wsBackpressureStrategy = {
 } as const;
 
 /**
+ * What `ws.send()` / `ws.sendRaw()` did with a frame.
+ *
+ * - `sent`: written and taken by the socket without queuing (handed to the OS; not proof the client received it)
+ * - `buffered`: accepted but queued, because the socket's write buffer is full; it goes out as the socket drains
+ * - `dropped`: discarded: the connection isn't open, the `'drop'` backpressure strategy skipped it, or it would
+ *   overflow the `'buffer'` strategy's limit (which also closes the connection)
+ */
+export const wsSendStatus = {
+  sent: 'sent',
+  buffered: 'buffered',
+  dropped: 'dropped',
+} as const;
+
+/**
  * RFC 6455 §4.2.2 — magic GUID concatenated with Sec-WebSocket-Key for accept hash
  */
 export const wsMagicGuid = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';

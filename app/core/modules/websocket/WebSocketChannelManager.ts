@@ -1,7 +1,7 @@
 import { _encodeFrame } from './WebSocketFrame.ts';
 import { _compressPayload } from './WebSocketCompression.ts';
 import type { WebSocketConnection } from './WebSocketConnection.ts';
-import { wsOpcode } from '@constants/websocket.ts';
+import { wsOpcode, wsSendStatus } from '@constants/websocket.ts';
 
 /**
  * Channel-based pub/sub engine for WebSocket connections.
@@ -85,6 +85,7 @@ export class WebSocketChannelManager {
    * Publish a message to all subscribers of a channel.
    * Encodes the WebSocket frame ONCE, then writes the raw bytes to each subscriber.
    * Optionally excludes the sender (so publishers don't echo their own messages).
+   * Returns how many subscribers took the frame (sent or buffered); one whose backpressure dropped it isn't counted.
    */
   publish(channel: string, data: Buffer | string, sender?: WebSocketConnection): number {
     const subscribers = this._channels.get(channel);
@@ -104,11 +105,10 @@ export class WebSocketChannelManager {
 
       if (connection._compressionEnabled && payload.length >= this._compressionThreshold) {
         compressedFrame ??= _encodeFrame(opcode, _compressPayload(payload, this._compressionLevel, this._compressionWindowBits), true, true);
-        connection.sendRaw(compressedFrame);
-      } else {
-        connection.sendRaw(uncompressedFrame);
+        if (connection.sendRaw(compressedFrame) !== wsSendStatus.dropped) recipientCount++;
+      } else if (connection.sendRaw(uncompressedFrame) !== wsSendStatus.dropped) {
+        recipientCount++;
       }
-      recipientCount++;
     }
 
     return recipientCount;

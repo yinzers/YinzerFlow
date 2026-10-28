@@ -32,10 +32,12 @@ const createConnection = (
 // ============================================
 
 describe('WebSocketConnection', () => {
+  // send() reports what happened to the frame (0.10.0). Bug: it returned void, so a 'drop'-strategy app couldn't tell a
+  // discarded message from a sent one. Tier: Medium (send contract; each case below is a different outcome).
   describe('send', () => {
     it('should write a text frame to the socket', () => {
       const { conn, socket } = createConnection();
-      conn.send('Hello');
+      expect(conn.send('Hello')).toBe('sent');
 
       expect(socket.written.length).toBe(1);
       const frame = socket.written[0]!;
@@ -56,7 +58,7 @@ describe('WebSocketConnection', () => {
       const { conn, socket } = createConnection();
       conn.close();
       const writtenBeforeSend = socket.written.length;
-      conn.send('Should not arrive');
+      expect(conn.send('Should not arrive')).toBe('dropped');
       // Only the close frame should have been written, not this message
       expect(socket.written.length).toBe(writtenBeforeSend);
     });
@@ -246,7 +248,7 @@ describe('WebSocketConnection', () => {
       const { conn, socket } = createConnection();
       socket.simulateBackpressure();
 
-      conn.send('data');
+      expect(conn.send('data')).toBe('buffered');
       expect(conn.bufferedAmount).toBeGreaterThan(0);
     });
 
@@ -263,7 +265,7 @@ describe('WebSocketConnection', () => {
       conn.send('first'); // causes backpressure
 
       const writtenCount = socket.written.length;
-      conn.send('dropped'); // should be silently dropped
+      expect(conn.send('dropped')).toBe('dropped'); // discarded, and reported as such
       expect(socket.written.length).toBe(writtenCount);
     });
 
@@ -293,7 +295,7 @@ describe('WebSocketConnection', () => {
       conn.send('first message causes backpressure');
 
       // Subsequent send should push over the 10-byte limit and trigger close
-      conn.send('more data that exceeds limit');
+      expect(conn.send('more data that exceeds limit')).toBe('dropped');
       expect(socket.destroyed).toBe(true);
     });
   });

@@ -311,6 +311,8 @@ const count = app.subscriberCount('quotes');
 
 <span style="color: #3498db">**💡 Tip:**</span> `ws.publish()` excludes the sender automatically. `app.publish()` sends to all subscribers (no sender context).
 
+Both return how many subscribers took the frame, sent or buffered. A subscriber whose backpressure dropped it (the `'drop'` strategy, or a `'buffer'` overflow that closes it) isn't counted, so the number is the delivery count, not the subscriber count; use `app.subscriberCount()` for that. Before 0.10.0 every subscriber was counted.
+
 ### Encode-Once Broadcast
 
 When publishing to a channel, the WebSocket frame is encoded **once** into raw bytes, then the same `Buffer` is written to every subscriber. This is O(messageSize + N×write) instead of O(N×messageSize) — critical for high-throughput scenarios like trading quote distribution.
@@ -398,17 +400,42 @@ Available in all handlers:
 
 | Property/Method | Type | Description |
 |----------------|------|-------------|
-| `ws.send(data)` | `(string \| Buffer) => void` | Send a message |
+| `ws.send(data)` | `(string \| Buffer) => 'sent' \| 'buffered' \| 'dropped'` | Send a message; returns what happened to it |
 | `ws.close(code?, reason?)` | `(number?, string?) => void` | Close connection |
 | `ws.ping(data?)` | `(Buffer?) => void` | Send ping |
 | `ws.subscribe(channel)` | `(string) => void` | Join channel |
 | `ws.unsubscribe(channel)` | `(string) => void` | Leave channel |
-| `ws.publish(channel, data)` | `(string, string \| Buffer) => number` | Broadcast (excludes self) |
+| `ws.publish(channel, data)` | `(string, string \| Buffer) => number` | Broadcast (excludes self); returns subscribers that took the frame |
 | `ws.isSubscribed(channel)` | `(string) => boolean` | Check membership |
 | `ws.data` | `T` (readonly) | Per-socket data from upgrade |
 | `ws.readyState` | `number` (readonly) | Connection state |
 | `ws.remoteAddress` | `string` (readonly) | Client IP |
 | `ws.bufferedAmount` | `number` (readonly) | Queued bytes |
+
+### Send Results
+
+`ws.send()` returns a `WebSocketSendStatus`, so a sender can react to a slow client instead of guessing:
+
+<aside>
+
+Returns: `'sent' | 'buffered' | 'dropped'` (also exported as the `wsSendStatus` constant)
+
+- `'sent'`: the socket took the frame without queuing. It was handed to the operating system, which is not proof the client has read it.
+- `'buffered'`: the socket's write buffer is full, so the frame is queued and goes out as it drains (`'buffer'` strategy). `ws.bufferedAmount` says how much is waiting; the `drain` handler fires when it empties.
+- `'dropped'`: the frame was discarded: the connection isn't open, the `'drop'` strategy skipped it, or it would overflow `backpressure.limit` (which also closes the connection).
+</aside>
+
+```typescript
+import { wsSendStatus } from 'yinzerflow';
+
+app.ws('/quotes', {
+  message(ws, data) {
+    if (ws.send(quoteFor(String(data))) === wsSendStatus.dropped) metrics.increment('quotes.dropped');
+  },
+});
+```
+
+<span style="color: #3498db">**💡 Tip:**</span> YinzerFlow speaks WebSocket over its own TCP sockets, not Bun's `ServerWebSocket`, so the result is a named status rather than Bun's byte count (`-1` / `0` / bytes).
 
 # ✨ Best Practices
 

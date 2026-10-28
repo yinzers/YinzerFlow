@@ -35,7 +35,7 @@ export { logLevels } from '@constants/log.ts';
 export { rateLimitAlgorithm, rateLimitStoreType } from '@constants/rateLimit.ts';
 
 // WebSocket constants
-export { wsOpcode, wsCloseCode, wsReadyState, wsBackpressureStrategy } from '@constants/websocket.ts';
+export { wsOpcode, wsCloseCode, wsReadyState, wsBackpressureStrategy, wsSendStatus } from '@constants/websocket.ts';
 
 // ============================================
 // Public Types
@@ -51,4 +51,5 @@ export type {
   WebSocketBackpressureOptions,
   WebSocketMessageHook,
   WebSocketUpgradeRejection,
+  WebSocketSendStatus,
 } from '@typedefs/public/WebSocket.d.ts';

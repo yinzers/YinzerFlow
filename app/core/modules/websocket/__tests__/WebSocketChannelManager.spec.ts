@@ -9,7 +9,7 @@ import { _encodeFrame } from '../WebSocketFrame.ts';
 import { MockSocket } from './ws-test-utils.ts';
 import { wsOpcode } from '@constants/websocket.ts';
 
-const createTestConnection = (): { conn: WebSocketConnection; socket: MockSocket } => {
+const createTestConnection = (strategy: 'buffer' | 'drop' = 'buffer'): { conn: WebSocketConnection; socket: MockSocket } => {
   const socket = new MockSocket();
   const conn = new WebSocketConnection<unknown>(
     socket as never,
@@ -18,7 +18,7 @@ const createTestConnection = (): { conn: WebSocketConnection; socket: MockSocket
     {
       maxPayloadLength: 16_777_216,
       idleTimeout: 0,
-      backpressure: { strategy: 'buffer' as const, limit: 1_048_576 },
+      backpressure: { strategy, limit: 1_048_576 },
       heartbeatInterval: 0,
       messageRateLimit: { enabled: false, maxMessages: 100, window: 10 },
       compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11, clientMaxWindowBits: 15 },
@@ -144,6 +144,20 @@ describe('WebSocketChannelManager', () => {
       expect(count).toBe(2);
       expect(sock1.written.length).toBe(1);
       expect(sock2.written.length).toBe(1);
+    });
+
+    // Bug (0.9.x): publish counted every subscriber, including ones whose 'drop' strategy discarded the frame, so the
+    // count overstated delivery. Tier: Medium (return contract of publish).
+    it('should count only subscribers that took the frame, not ones that dropped it', () => {
+      const manager = new WebSocketChannelManager();
+      const { conn: healthy } = createTestConnection();
+      const { conn: slow, socket: slowSocket } = createTestConnection('drop');
+      manager.subscribe(healthy, 'quotes');
+      manager.subscribe(slow, 'quotes');
+      slowSocket.simulateBackpressure();
+      slow.send('fills the socket buffer'); // now backpressured: the next frame is dropped
+
+      expect(manager.publish('quotes', 'tick')).toBe(1);
     });
 
     it('should encode the frame only once (same Buffer reference to all subscribers)', () => {

@@ -1,4 +1,12 @@
 import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
+import type { InternalWsSendStatus } from '@typedefs/constants/websocket.js';
+
+/**
+ * What a send did with the frame: `'sent'` (taken by the socket), `'buffered'` (queued behind backpressure, goes out
+ * on drain) or `'dropped'` (discarded: connection not open, `'drop'` strategy, or over the `'buffer'` limit, which
+ * also closes the connection). Compare against the `wsSendStatus` constant.
+ */
+export type WebSocketSendStatus = InternalWsSendStatus;
 
 /**
  * User-facing WebSocket types for YinzerFlow.
@@ -29,10 +37,13 @@ import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
  * ```
  */
 export interface WebSocket<T = unknown> {
-  /** Send a text or binary message to this client. */
-  send: (data: Buffer | string) => void;
-  /** Write a pre-encoded WebSocket frame directly (used internally by pub/sub broadcast). */
-  sendRaw: (encodedFrame: Buffer) => void;
+  /**
+   * Send a text or binary message to this client. Returns what happened to it: `'sent'`, `'buffered'` (queued behind
+   * backpressure) or `'dropped'` (see {@link WebSocketSendStatus}).
+   */
+  send: (data: Buffer | string) => WebSocketSendStatus;
+  /** Write a pre-encoded WebSocket frame directly (used internally by pub/sub broadcast). Returns the same status as `send`. */
+  sendRaw: (encodedFrame: Buffer) => WebSocketSendStatus;
   /** Initiate a graceful close handshake. */
   close: (code?: number, reason?: string) => void;
   /** Send a ping frame (payload must be ≤125 bytes per RFC 6455 §5.5). */
@@ -41,7 +52,10 @@ export interface WebSocket<T = unknown> {
   subscribe: (channel: string) => void;
   /** Unsubscribe this connection from a named channel. */
   unsubscribe: (channel: string) => void;
-  /** Publish a message to all subscribers of a channel (excluding this connection). Returns recipient count. */
+  /**
+   * Publish a message to all subscribers of a channel (excluding this connection). Returns how many subscribers took
+   * the frame (sent or buffered); subscribers that dropped it aren't counted.
+   */
   publish: (channel: string, data: Buffer | string) => number;
   /** Check if this connection is subscribed to a channel. */
   isSubscribed: (channel: string) => boolean;
