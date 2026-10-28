@@ -288,6 +288,8 @@ export class RequestHandlerImpl {
   _applyHookResponse(result: unknown, context: InternalContextImpl): boolean {
     if (result === undefined) return false;
     context._response._setBody(result);
+    // A HEAD response carries no body, whichever stage answered it (the same strip _finishResponse applies)
+    if (context.request.method === 'HEAD') context._response._setBody(null);
     context._response._parseResponseIntoString();
     return true;
   }

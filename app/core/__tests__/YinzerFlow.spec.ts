@@ -626,6 +626,16 @@ describe('YinzerFlow', () => {
           expect(await sendHttpRequest(testPort, createHttpRequest('GET', '/private/missing'))).toStartWith('HTTP/1.1 401');
         });
 
+        // Review note (0.10.0): a hook's short-circuit response kept its body on HEAD, which must have none (RFC 9110 9.3.2)
+        it('should send no body when a hook answers a HEAD request', async () => {
+          app.beforeAll([authHook]);
+          await app.listen();
+
+          const response = await sendHttpRequest(testPort, createHttpRequest('HEAD', '/nope'));
+          expect(response).toStartWith('HTTP/1.1 401');
+          expect(response.split('\r\n\r\n')[1]).toBe('');
+        });
+
         it('should run afterAll hooks on a 404', async () => {
           app.afterAll([(ctx) => void ctx.response.addHeaders({ 'X-Request-Id': 'abc123' })]);
           await app.listen();
