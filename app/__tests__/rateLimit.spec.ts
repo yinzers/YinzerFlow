@@ -287,6 +287,15 @@ describe('Rate Limiting with no rateLimit option (documented default)', () => {
 });
 
 describe('Rate Limit Configuration Validation', () => {
+  // Bug: `enabled ?? true` accepted '' / 0 / 'false' silently, so a config meant to disable (or enable) the limiter did something else. Tier: Medium (config validation).
+  it.each([[''], [0], ['false']])('should throw error for non-boolean enabled value %p', (enabled) => {
+    expect(() => {
+      new YinzerFlow({
+        rateLimit: { enabled: enabled as unknown as boolean },
+      });
+    }).toThrow('rateLimit.enabled must be a boolean');
+  });
+
   it('should throw error for invalid max value', () => {
     expect(() => {
       new YinzerFlow({

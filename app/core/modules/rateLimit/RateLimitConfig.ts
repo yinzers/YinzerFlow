@@ -62,6 +62,13 @@ export class RateLimitConfig implements RateLimitOptions {
  * Validate rate limit configuration minimums
  */
 const _validateRateLimitConfig = (config: RateLimitOptions): void => {
+  // JavaScript callers (or env-derived values) can pass '' / 0 / 'false'; `?? true` would silently treat
+  // '' and 0 as "keep the default on" while a reader assumes "off". Only a real boolean is accepted.
+  const { enabled }: { enabled?: unknown } = config;
+  if (enabled !== undefined && typeof enabled !== 'boolean') {
+    throw new Error(`rateLimit.enabled must be a boolean (true or false). Received: ${JSON.stringify(enabled)} (${typeof enabled})`);
+  }
+
   if (config.max !== undefined) {
     if (typeof config.max !== 'number' || isNaN(config.max)) {
       throw new Error('rateLimit.max must be a number');
