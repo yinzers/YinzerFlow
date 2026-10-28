@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { isPrivateIp, isTrustedProxy, parseIpAddressSecure } from '../parseIpAddress.ts';
+import { isPrivateIp, parseIpAddressSecure } from '../parseIpAddress.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
 
@@ -81,7 +81,7 @@ describe('X-Forwarded-For fallthrough probes from a trusted peer', () => {
 
 // Bug: trustedProxies only matched exact strings, so a proxy fleet behind a CIDR could not be trusted and an
 // IPv4-mapped or respelled peer didn't match its own entry. Tier: High (range boundaries decide trust).
-describe('isTrustedProxy CIDR membership', () => {
+describe('trustedProxies CIDR membership', () => {
   const cases: Array<[range: string, address: string, expected: boolean]> = [
     ['10.0.0.0/8', '10.0.0.0', true],
     ['10.0.0.0/8', '10.255.255.255', true],
@@ -103,8 +103,21 @@ describe('isTrustedProxy CIDR membership', () => {
     ['::1', '0:0:0:0:0:0:0:1', true],
   ];
 
+  // A peer inside the range is trusted, so its forwarded client is used; outside it, the socket address is
   it.each(cases)('%s contains %s: %p', (range, address, expected) => {
-    expect(isTrustedProxy(address, [range])).toBe(expected);
+    const setup = new SetupImpl({ ipSecurity: { trustedProxies: [range] } });
+    const forwardedClient = '203.0.113.200';
+    expect(parseIpAddressSecure(setup, { 'x-forwarded-for': forwardedClient }, address).ip === forwardedClient).toBe(expected);
+  });
+});
+
+// Bug: requests compiled trustedProxies from the live configured array, so replacing it after startup with a bad
+// entry made every request throw. Tier: High (one config write takes down every request).
+describe('trustedProxies after construction', () => {
+  it('should keep using the list compiled at construction', () => {
+    const setup = new SetupImpl();
+    (setup._configuration.ipSecurity as { trustedProxies: Array<string> }).trustedProxies = ['not-an-ip'];
+    expect(parseIpAddressSecure(setup, { 'x-forwarded-for': '203.0.113.9' }, '127.0.0.1').ip).toBe('203.0.113.9');
   });
 });
 

@@ -1,5 +1,7 @@
 import { httpMethod } from '@constants/http.ts';
 import { handleCustomConfiguration } from '@core/setup/utils/handleCustomConfiguration.ts';
+import { compileTrustedProxies } from '@core/execution/utils/parseIpAddress.ts';
+import type { InternalTrustedProxyMatcher } from '@typedefs/internal/InternalIpAddress.js';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.ts';
 import { HookRegistryImpl } from '@core/execution/HookRegistryImpl.ts';
 import type { InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
@@ -24,8 +26,12 @@ export class SetupImpl implements InternalSetupImpl {
   /** Per-instance logger. Defaults to module-level `log`, replaced by `_configureLogging()` in YinzerFlow. */
   _log: typeof log = log;
 
+  readonly _trustedProxyMatcher: InternalTrustedProxyMatcher;
+
   constructor(customConfiguration?: ServerOptions) {
     this._configuration = handleCustomConfiguration(customConfiguration);
+    // A parsed copy: changing ipSecurity.trustedProxies after construction has no effect, by design
+    this._trustedProxyMatcher = compileTrustedProxies(this._configuration.ipSecurity.trustedProxies);
   }
 
   //   ===== Route Registration =====

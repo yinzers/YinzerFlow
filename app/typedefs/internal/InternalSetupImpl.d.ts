@@ -3,6 +3,7 @@ import type { InternalHookRegistryImpl } from '@typedefs/internal/InternalHookRe
 import type { InternalRouteRegistryImpl, InternalRouteRegistryOptions } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import type { InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { Setup } from '@typedefs/public/Setup.js';
+import type { InternalTrustedProxyMatcher } from '@typedefs/internal/InternalIpAddress.js';
 
 export type InternalSetupMethod = (path: string, handler: HandlerCallback<any>, options?: InternalRouteRegistryOptions) => void;
 
@@ -10,6 +11,8 @@ export interface InternalSetupImpl extends Setup {
   readonly _configuration: InternalServerOptions;
   readonly _routeRegistry: InternalRouteRegistryImpl;
   readonly _hooks: InternalHookRegistryImpl;
+  /** `ipSecurity.trustedProxies` compiled once at construction; requests use only this, never the configured array. */
+  readonly _trustedProxyMatcher: InternalTrustedProxyMatcher;
   /**
    * The framework's global rate limiter, run by RequestHandlerImpl in its own stage: after beforeRouting
    * hooks and route matching (so keyGenerator sees params and beforeRouting state), before the 404 and

@@ -160,8 +160,8 @@ const _validateIpSecurityConfig = (config: InternalServerOptions['ipSecurity']):
     throw new Error('ipSecurity.trustedProxies must be an array');
   }
 
-  // Parse every entry (exact IP, CIDR, or '*') now: a malformed entry throws here, at startup, and the compiled
-  // ranges are cached so requests never re-parse them
+  // Parse every entry (exact IP, CIDR, or '*') now so a malformed one throws here, at startup. SetupImpl keeps
+  // its own compiled copy for requests.
   compileTrustedProxies(config.trustedProxies);
 
   if (!Array.isArray(config.headerPreference)) {
@@ -317,9 +317,6 @@ const _handleIpSecurityConfig = (defaultConfig: InternalServerOptions, userConfi
     // Validate configuration for security
     _validateIpSecurityConfig(defaultConfig.ipSecurity);
     _warnIpSecurityConfig(defaultConfig.ipSecurity);
-  } else {
-    // Defaults need no validation, but compile them now too so no request ever parses trustedProxies
-    compileTrustedProxies(defaultConfig.ipSecurity.trustedProxies);
   }
 };
 

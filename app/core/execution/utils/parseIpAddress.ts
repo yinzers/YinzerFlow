@@ -27,19 +27,15 @@ export const isPrivateIp = (ip: string): boolean => {
   return PRIVATE_IP_RANGES.some((range) => range.test(cleanIp));
 };
 
-const _trustedProxyCache = new WeakMap<Array<string>, InternalTrustedProxyMatcher>();
-
 /**
  * Compile `ipSecurity.trustedProxies` into a matcher: exact IPs and CIDR ranges (IPv4 and IPv6, such as
- * `10.0.0.0/8` or `fd00::/8`), or `'*'` to trust every peer. Run at config time, where a malformed entry throws,
- * and cached per array, so requests never re-parse it.
+ * `10.0.0.0/8` or `fd00::/8`), or `'*'` to trust every peer. Run at config time only: validation calls it so a
+ * malformed entry throws at startup, and SetupImpl keeps the result as `_trustedProxyMatcher`, a parsed copy, so
+ * requests never parse the list and later changes to the configured array have no effect.
  *
  * @throws Error naming the malformed entry
  */
 export const compileTrustedProxies = (trustedProxies: Array<string>): InternalTrustedProxyMatcher => {
-  const cached = _trustedProxyCache.get(trustedProxies);
-  if (cached) return cached;
-
   const matcher: InternalTrustedProxyMatcher = { trustsAll: false, ranges: [] };
   for (const [index, entry] of trustedProxies.entries()) {
     if (entry === '*') {
@@ -56,21 +52,12 @@ export const compileTrustedProxies = (trustedProxies: Array<string>): InternalTr
     matcher.ranges.push(range);
   }
 
-  _trustedProxyCache.set(trustedProxies, matcher);
   return matcher;
 };
 
 /** True when the address (as hextets) is a trusted proxy. */
 const _isTrustedHop = (hextets: Array<number>, matcher: InternalTrustedProxyMatcher): boolean =>
   matcher.trustsAll || matcher.ranges.some((range) => isIpInRange(hextets, range));
-
-/**
- * Checks if an IP address text is a trusted proxy (exact IP, CIDR range, or `'*'`)
- */
-export const isTrustedProxy = (ip: string, trustedProxies: Array<string>): boolean => {
-  const hextets = parseIp(ip);
-  return hextets !== null && _isTrustedHop(hextets, compileTrustedProxies(trustedProxies));
-};
 
 /**
  * Strip a port from one forwarded hop: `1.2.3.4:80` -> `1.2.3.4`, `[2001:db8::1]:80` -> `2001:db8::1`. A bare
@@ -153,7 +140,7 @@ export const parseIpAddressSecure = (
   peerAddress: string,
 ): InternalIpAddressResult => {
   const config = setup._configuration.ipSecurity;
-  const matcher = compileTrustedProxies(config.trustedProxies);
+  const matcher = setup._trustedProxyMatcher;
   const peer = parseIp(peerAddress);
   const socketResult = _socketResult(peerAddress, peer);
   if (!peer || !_isTrustedHop(peer, matcher)) return socketResult;
