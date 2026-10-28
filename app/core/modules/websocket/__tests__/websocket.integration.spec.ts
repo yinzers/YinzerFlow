@@ -566,6 +566,59 @@ describe('WebSocket Integration', () => {
     });
   });
 
+  // Claim investigated for 0.10.0: "the idle timer only resets on client frames and the server never pings, so a
+  // listen-only browser drops after 120 s". Heartbeat is on by default (30 s < 120 s idle) and a pong is a client frame,
+  // so it resets the idle timer. These pin that with short timings; the control proves the idle timer does fire.
+  // Tier: Medium (a listen-only client is a core flow: dashboards, tickers).
+  describe('listen-only client and the idle timeout', () => {
+    /** Connect a client that never sends data, only answers pings with pongs as every browser does. */
+    const connectListenOnly = async (testPort: number, answerPings: boolean): Promise<{ socket: net.Socket; closed: () => boolean }> => {
+      const { socket } = await connectWs(testPort);
+      let closed = false;
+      socket.on('data', (chunk: Buffer) => {
+        const opcode = chunk[0]! & 0x0f;
+        if (opcode === wsOpcode.ping && answerPings) socket.write(buildClientFrame(wsOpcode.pong, Buffer.alloc(0)));
+        if (opcode === wsOpcode.close) closed = true;
+      });
+      socket.on('close', () => {
+        closed = true;
+      });
+      return { socket, closed: () => closed };
+    };
+
+    it('should keep a listen-only client that answers pings open past several idle timeouts', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, websocket: { idleTimeout: 1.5, heartbeat: { interval: 1 } } });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const client = await connectListenOnly(testPort, true);
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+
+      expect(client.closed()).toBe(false);
+      client.socket.destroy();
+    }, 15_000);
+
+    it('should close a silent client at the idle timeout when no heartbeat runs (control)', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({
+        port: testPort,
+        host: '127.0.0.1',
+        gracefulShutdownTimeout: 0,
+        logging: { level: 'off' },
+        websocket: { idleTimeout: 1.5, heartbeat: { enabled: false } },
+      });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const client = await connectListenOnly(testPort, true);
+      await waitFor(client.closed, 4000);
+
+      expect(client.closed()).toBe(true);
+      client.socket.destroy();
+    }, 15_000);
+  });
+
   describe('graceful shutdown', () => {
     it('should send close frame to all WS connections on server close', async () => {
       const { testPort } = createTestApp();

@@ -225,3 +225,27 @@ before touching the area an entry names.
 - **Why deferred**: final security pass for 0.9.0 graded it a note; it only affects proxy-written junk.
 - **Cost later**: trivial; require 1-5 digits after the colon so junk falls back to the socket address.
 - **Trigger**: the next change to parseIpAddress.ts hop parsing.
+
+## ws-heartbeat-route-interval-ignored — a route's heartbeatInterval only switches the heartbeat on or off
+
+- **What**: `_ensureHeartbeatSweep` (app/core/YinzerFlow.ts) runs one `setInterval` at the global
+  `websocket.heartbeat.interval` and returns early when the global heartbeat is disabled. A route's
+  `heartbeatInterval` only sets `connection._heartbeatEnabled`, so `heartbeatInterval: 10` on a route still pings
+  every 30 s, and with the global heartbeat off no route is pinged at all. The TSDoc now states this.
+- **Why deferred**: found during the 0.10.0 idle-timeout investigation, which proved the defaults keep listen-only
+  clients alive. Honouring per-route intervals means one sweep per distinct interval (or per-connection timers),
+  which is a design choice about timer count, not a patch.
+- **Cost later**: low; a Map of interval → sweep timer, started lazily, plus a test with two routes.
+- **Trigger**: the next change to `_ensureHeartbeatSweep` or `WebSocketRouteOptions.heartbeatInterval`, or a user
+  report of a route's heartbeat timing being ignored.
+
+## ws-idle-below-heartbeat-unwarned — nothing flags idleTimeout at or below the heartbeat interval
+
+- **What**: with `idleTimeout <= heartbeat.interval` (globally, or a route's `idleTimeout` below the global
+  interval), a listen-only client is closed for idleness before the next ping arrives. `_warnWebSocketConfig`
+  doesn't warn, and the per-route override isn't validated at all. The docs now carry the warning.
+- **Why deferred**: found during the same investigation; with the defaults (30 s vs 120 s) it can't happen, and the
+  fix touches config validation for both the global and per-route options.
+- **Cost later**: trivial; one warning in `_warnWebSocketConfig` and one in `app.ws()` route registration.
+- **Trigger**: the next change to `WebSocketConfig.ts` validation or to `app.ws()` option handling, or a report of
+  listen-only clients dropping.

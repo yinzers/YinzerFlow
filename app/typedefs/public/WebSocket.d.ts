@@ -175,7 +175,11 @@ export interface WebSocketRouteOptions {
   idleTimeout?: number;
   /** Backpressure handling for this route. */
   backpressure?: WebSocketBackpressureOptions;
-  /** Override heartbeat interval for this route (seconds). `0` disables heartbeat for this route. */
+  /**
+   * `0` disables the heartbeat for this route; a positive value keeps it on. The ping sweep runs at the global
+   * `websocket.heartbeat.interval` for every route, so a different positive value here does not change the timing, and
+   * with the global heartbeat disabled no route is pinged.
+   */
   heartbeatInterval?: number;
   /** Per-connection message rate limiting override for this route. */
   messageRateLimit?: {
