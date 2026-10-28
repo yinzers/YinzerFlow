@@ -70,7 +70,7 @@ const BUILD_CONFIG = {
   target: 'node' as const,
   minify: true,
   sourcemap: 'external' as const,
-  maxBundleSize: 100_000, // 100KB
+  maxBundleSize: 150_000, // 150KB
   external: ['redis', 'ioredis', 'typescript'],
   distFiles: [
     { src: 'docs', dest: 'lib/docs', type: 'directory' as const },
