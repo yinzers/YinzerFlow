@@ -355,9 +355,9 @@ An upgrade request runs these steps, in this order, before the connection opens:
 6. The not-found handler, then `afterAll` hooks on its response, when no WebSocket route matched
 7. Origin check (`allowedOrigins`, 403)
 8. The route's `upgrade(req)` handler
-9. The per-IP connection cap (`maxConnectionsPerIp`, 429), checked after every `await` so concurrent upgrades can't overshoot it, then `101 Switching Protocols` and `open(ws)`. A client that disconnected while a hook or `upgrade(req)` was still running is dropped here and never takes a connection slot.
+9. The per-IP connection cap (`maxConnectionsPerIp`, 429), checked after every `await` so concurrent upgrades can't overshoot it (an IP already at its cap is also refused before step 2, so a flood from a full IP never reaches hooks or `upgrade(req)`), then `101 Switching Protocols` and `open(ws)`. A client that disconnected while a hook or `upgrade(req)` was still running is dropped here and never takes a connection slot.
 
-<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> the origin check and the per-IP connection cap now run after the global hooks (and the cap after `upgrade(req)`), so hooks see, and the rate limiter counts, upgrades that are then refused for their origin or the cap. Before 0.10.0 both ran before anything else.
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> the origin check and the per-IP connection cap now run after the global hooks (and the cap after `upgrade(req)`), so hooks see, and the rate limiter counts, upgrades that are then refused for their origin or for a cap that filled while they waited. An IP that is already at its cap is still refused before any hook runs. Before 0.10.0 both ran before anything else.
 
 Steps 2 to 6 are the same stages, in the same order and through the same code, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks don't run, since a WebSocket route has none, and `afterAll` hooks run only on the 404 of step 6: an accepted upgrade has no HTTP response for them to change.
 

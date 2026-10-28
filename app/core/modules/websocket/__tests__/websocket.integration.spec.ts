@@ -567,16 +567,26 @@ describe('WebSocket Integration', () => {
         websocket: { allowedOrigins: ['https://app.example'], maxConnectionsPerIp: 1 },
       });
       app.afterAll([(ctx) => void ctx.response.addHeaders({ 'X-Request-Id': 'abc123' })]);
-      app.ws('/ws', { upgrade: () => (refusal === 'false' ? false : {}) });
+      let upgradeCalls = 0;
+      app.ws('/ws', {
+        upgrade: () => {
+          upgradeCalls++;
+          return refusal === 'false' ? false : {};
+        },
+      });
       await app.listen();
 
       const held = refusal === 'cap' ? await connectWs(testPort, '/ws', 'AAAAAAAAAAAAAAAAAAAAAA==') : undefined;
+      const callsBeforeRefusal = upgradeCalls;
       const origin = refusal === 'origin' ? 'https://evil.example' : undefined;
       const { socket, response } = await connectWs(testPort, '/ws', undefined, origin);
 
       expect(response).toStartWith(statusLine);
       expect(response).toContain('X-Request-Id: abc123');
       expect(response).toContain('X-Content-Type-Options: nosniff');
+      // Security pass (0.10.0): an IP already at its cap ran every global hook and upgrade() before its 429, so a held
+      // cap didn't stop an upgrade flood from reaching app code. The pre-check refuses before any of it runs.
+      if (refusal === 'cap') expect(upgradeCalls - callsBeforeRefusal).toBe(0);
       socket.destroy();
       held?.socket.destroy();
     });

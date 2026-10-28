@@ -738,6 +738,14 @@ export class YinzerFlow extends SetupImpl {
     // Everything that runs app code (global hooks, the upgrade handler) sits in one try: a throw anywhere in it is
     // answered with the app's onError response as a real HTTP response, never a silently dropped socket.
     try {
+      // Cheap pre-check, not authoritative: an IP already at its cap is refused before any app code runs, so a flood from
+      // a held cap never reaches the hooks or upgrade(). It reads the count and takes no slot; the check after the last
+      // await below is the one that decides, since slots can fill while this upgrade awaits.
+      if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
+        await refuse(httpStatusCode.tooManyRequests, { error: 'Too many WebSocket connections from this IP' });
+        return;
+      }
+
       // Global hooks and the global limiter decide before anything else does, exactly as for an HTTP request to this path
       if (!(await requestHandler._handleUpgrade(context, canonicalPath, () => match)) || !match) {
         this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
@@ -778,22 +786,8 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
-    // Negotiate compression if server has it enabled and client offers it
-    let compressionNegotiated = false;
-    let extensionResponse: string | undefined = undefined;
-    if (wsConfig.compression.enabled) {
-      const extHeader = context.request.headers['sec-websocket-extensions'];
-      if (extHeader) {
-        const offer = _parseCompressionOffer(extHeader);
-        if (offer) {
-          extensionResponse = _buildCompressionResponse(offer, {
-            serverMaxWindowBits: wsConfig.compression.serverMaxWindowBits,
-            clientMaxWindowBits: wsConfig.compression.clientMaxWindowBits,
-          });
-          compressionNegotiated = true;
-        }
-      }
-    }
+    const extensionResponse = this._negotiateWsCompression(context.request.headers['sec-websocket-extensions']);
+    const compressionNegotiated = extensionResponse !== undefined;
 
     // The per-IP cap is checked here, after the last await, so concurrent upgrades can't all pass it while awaiting and
     // then all take a slot; check, 101, trackConnect and close wiring run in one synchronous stretch.
@@ -827,6 +821,21 @@ export class YinzerFlow extends SetupImpl {
       this._sendHttpError(socket, httpStatusCode.badRequest, 'Malformed request headers');
       return null;
     }
+  }
+
+  /**
+   * Negotiate permessage-deflate: when the server has compression enabled and the client's Sec-WebSocket-Extensions
+   * offer is acceptable, return the extension response header value; otherwise undefined (no compression).
+   */
+  private _negotiateWsCompression(extensionsHeader: string | undefined): string | undefined {
+    const { compression } = this._configuration.websocket;
+    if (!compression.enabled || !extensionsHeader) return undefined;
+    const offer = _parseCompressionOffer(extensionsHeader);
+    if (!offer) return undefined;
+    return _buildCompressionResponse(offer, {
+      serverMaxWindowBits: compression.serverMaxWindowBits,
+      clientMaxWindowBits: compression.clientMaxWindowBits,
+    });
   }
 
   /**
