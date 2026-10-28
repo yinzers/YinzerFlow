@@ -598,14 +598,19 @@ describe('Rate Limiting with Redis Store', () => {
   });
 
   describe('Route-level limiters on a shared client', () => {
-    // Bug: route rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other. Tier: Medium.
-    it('should namespace each route deterministically', async () => {
+    // Bug: route rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other, and their limiters were never destroyed on close(). Tier: Medium.
+    it('should namespace each route deterministically and destroy those namespaces on close, then keep limiting after listen again', async () => {
       const setKeys: Array<string> = [];
+      const destroyedPatterns: Array<string> = [];
       const recordingClient = {
         ...mockRedisClient,
         set: async (key: string) => {
           setKeys.push(key);
           return Promise.resolve('OK');
+        },
+        keys: async (pattern: string) => {
+          destroyedPatterns.push(pattern);
+          return Promise.resolve([]);
         },
       };
       const store = { type: 'redis' as const, client: recordingClient as any, keyPrefix: 'test:rate_limit:', maxRetries: 1 };
@@ -621,6 +626,14 @@ describe('Rate Limiting with Redis Store', () => {
       expect(namespaces).toEqual(new Set(['test:rate_limit:', 'test:rate_limit:route:POST /a:', 'test:rate_limit:route:GET /b:']));
 
       await sharedApp.close();
+      expect(new Set(destroyedPatterns)).toEqual(new Set(['test:rate_limit:*', 'test:rate_limit:route:POST /a:*', 'test:rate_limit:route:GET /b:*']));
+
+      const keysBeforeRestart = setKeys.length;
+      await sharedApp.listen();
+      const afterRestart = await fetch(`http://127.0.0.1:${sharedPort}/b`);
+      await sharedApp.close();
+      expect(afterRestart.headers.get('RateLimit-Limit')).toBe('5');
+      expect(setKeys.slice(keysBeforeRestart).some((key) => !key.includes(':route:'))).toBe(true);
     });
   });
 

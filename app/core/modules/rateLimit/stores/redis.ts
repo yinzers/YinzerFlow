@@ -239,7 +239,8 @@ const _delete = async ({
  */
 const _destroy = async ({ client, keyPrefix, connectionHealthy }: { client: RedisClient; keyPrefix: string; connectionHealthy: boolean }): Promise<void> => {
   try {
-    const pattern = `${keyPrefix}*`;
+    // Escape glob metacharacters: route namespaces contain the route pattern, and a user prefix may too
+    const pattern = `${keyPrefix.replace(/[*?[\]\\]/g, '\\$&')}*`;
     const keys = await client.keys(pattern);
     if (keys.length > 0) {
       await Promise.all(keys.map(async (key) => client.del(key)));

@@ -6,6 +6,9 @@ import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
 import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.js';
 
+/** Hook instance -> the limiter it owns, so the app can destroy every limiter it holds on close(). */
+const _hookLimiters = new WeakMap<object, RateLimiter>();
+
 /** Unbound rateLimitHook instance -> factory for a clone bound to one route registration. */
 const _routeBinders = new WeakMap<object, (routeId: string) => HandlerCallback>();
 
@@ -80,6 +83,7 @@ const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOption
     // Continue to next hook/handler
     return void 0;
   };
+  _hookLimiters.set(hook, rateLimiter);
   return hook;
 };
 
@@ -90,6 +94,9 @@ const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOption
  * other hook is returned unchanged.
  */
 export const _bindRateLimitHookToRoute = (hook: HandlerCallback, routeId: string): HandlerCallback => _routeBinders.get(hook)?.(routeId) ?? hook;
+
+/** The limiter a rateLimitHook instance owns, or undefined for any other hook. */
+export const _rateLimiterOfHook = (hook: HandlerCallback): RateLimiter | undefined => _hookLimiters.get(hook);
 
 /**
  * Create a global rate limiting hook used internally by the framework

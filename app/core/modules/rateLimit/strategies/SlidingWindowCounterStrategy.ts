@@ -34,15 +34,19 @@ import { createRateLimitStore } from '@core/modules/rateLimit/stores/index.ts';
  */
 export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
   private readonly _config: RateLimitConfig;
-  private _store: InternalRateLimitStore<InternalSlidingWindowCounterEntry> | null = null;
+  /**
+   * The store, created on first use. The promise is cached (not the awaited store) so concurrent first
+   * requests share one store instead of each creating one, and each in-memory store's sweep timer with it.
+   */
+  private _storePromise: Promise<InternalRateLimitStore<InternalSlidingWindowCounterEntry>> | null = null;
 
   constructor(config: RateLimitConfig) {
     this._config = config;
   }
 
   private async _getStore(): Promise<InternalRateLimitStore<InternalSlidingWindowCounterEntry>> {
-    this._store ??= await createRateLimitStore<InternalSlidingWindowCounterEntry>(this._config);
-    return this._store;
+    this._storePromise ??= createRateLimitStore<InternalSlidingWindowCounterEntry>(this._config);
+    return this._storePromise;
   }
 
   /**
@@ -105,10 +109,13 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
   }
 
   /**
-   * Clean up resources
+   * Destroy the store, if one was ever created. The next check() lazily creates a fresh one, so destroy is
+   * symmetric with restart: an app that closes and listens again gets a working store (and in-memory sweep).
    */
   async destroy(): Promise<void> {
-    const store = await this._getStore();
-    await store.destroy();
+    const storePromise = this._storePromise;
+    if (!storePromise) return;
+    this._storePromise = null;
+    await (await storePromise).destroy();
   }
 }

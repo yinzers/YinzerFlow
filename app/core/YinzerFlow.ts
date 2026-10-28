@@ -8,8 +8,10 @@ import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { createLogger, loggerBrand } from '@core/utils/log.ts';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
+import type { HandlerCallback } from '@typedefs/public/Context.js';
+import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import { accessLogBaseConfig, getStatusEmoji } from '@core/utils/accessLog.ts';
-import { _createGlobalRateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
+import { _createGlobalRateLimitHook, _rateLimiterOfHook } from '@core/modules/rateLimit/rateLimithooks.ts';
 import { RateLimiter } from '@core/modules/rateLimit/RateLimiter.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
@@ -167,7 +169,7 @@ const maxHeaderOverhead = 65_536;
 export class YinzerFlow extends SetupImpl {
   private _isListening = false;
   private _server?: ReturnType<typeof createServer>;
-  private _globalRateLimiter?: RateLimiter | undefined;
+  private readonly _globalRateLimiter?: RateLimiter | undefined;
   private _diagnostics?: DiagnosticsMonitor | undefined;
   private readonly _maxBufferSize: number;
   private _accessLog?: ReturnType<typeof createLogger>;
@@ -929,16 +931,38 @@ export class YinzerFlow extends SetupImpl {
     });
   }
 
+  /** Every rate limiter owned by this app: the global one plus each rateLimitHook on a route or global hook. */
+  private _collectRateLimiters(): Set<RateLimiter> {
+    const limiters = new Set<RateLimiter>();
+    if (this._globalRateLimiter) limiters.add(this._globalRateLimiter);
+
+    const addFromHooks = (hooks: Iterable<HandlerCallback>): void => {
+      for (const hook of hooks) {
+        const limiter = _rateLimiterOfHook(hook);
+        if (limiter) limiters.add(limiter);
+      }
+    };
+    const addFromRoute = (route: InternalRouteRegistry): void => {
+      addFromHooks(route.options.beforeHooks ?? []);
+      addFromHooks(route.options.afterHooks ?? []);
+    };
+
+    for (const routes of this._routeRegistry._exactRoutes.values()) for (const route of routes.values()) addFromRoute(route);
+    for (const routes of this._routeRegistry._parameterizedRoutes.values()) for (const route of routes) addFromRoute(route);
+    for (const stage of [this._hooks._beforeRouting, this._hooks._beforeAll, this._hooks._afterAll]) {
+      addFromHooks([...stage].map((entry) => entry.handler));
+    }
+    return limiters;
+  }
+
   async close(): Promise<void> {
     if (!this._isListening || !this._server) {
       return;
     }
 
-    // Clean up rate limiter resources (intervals, memory)
-    if (this._globalRateLimiter) {
-      await this._globalRateLimiter.destroy();
-      this._globalRateLimiter = undefined;
-    }
+    // Clean up every rate limiter this app holds (global, per-route, and rateLimitHook in global hooks).
+    // Destroy is restart-safe: each limiter recreates its store on next use, so close() then listen() works.
+    await Promise.all([...this._collectRateLimiters()].map(async (limiter) => limiter.destroy()));
 
     // Clean up diagnostics timers
     if (this._diagnostics) {
