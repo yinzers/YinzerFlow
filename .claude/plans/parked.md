@@ -127,18 +127,16 @@ before touching the area an entry names.
   separate cheap bucket, plus a test.
 - **Trigger**: a report of preflight floods, or the next change to the CORS hook or the limiter stage.
 
-## unthrottled-early-rejects — malformed-path 400s and WebSocket upgrades skip the limiter
+## unthrottled-early-rejects — malformed-path and malformed-handshake 400s skip the limiter
 
-- **What**: requests rejected by `canonicalizeRequestPath` get a 400 before any stage runs, and
-  WebSocket upgrades are handled in `_handleWebSocketUpgradeAsync`, which never reaches
-  RequestHandlerImpl, so neither is counted by the global limiter. The WebSocket path has its own
-  per-IP connection cap and per-connection message limit, not a request-rate limit.
-- **Why deferred**: review round 3 minor. Both rejections are cheap and happen before any user code
-  runs; counting them means moving the limiter ahead of canonicalization (and keying on a path it
-  just rejected) or wiring it into the upgrade path, which is a design choice.
-- **Cost later**: low to medium; one limiter call in each early path, plus tests.
-- **Trigger**: a report of a flood of malformed paths or upgrade attempts, or the next change to
-  `_rejectMalformedPath` or the WebSocket upgrade handshake.
+- **What**: requests rejected by `canonicalizeRequestPath` get a 400 before any stage runs, so the global limiter
+  never counts them. WebSocket upgrades now run the limiter (0.9.1), but the same holds for an upgrade refused
+  before the stages: a malformed handshake or a malformed path gets its 400 uncounted.
+- **Why deferred**: review round 3 minor. Both rejections are cheap and happen before any user code runs; counting
+  them means moving the limiter ahead of canonicalization and keying on a path it just rejected, which is a design
+  choice.
+- **Cost later**: low; one limiter call in `_rejectMalformedPath` and in the upgrade's two early 400s, plus tests.
+- **Trigger**: a report of a flood of malformed paths or handshakes, or the next change to `_rejectMalformedPath`.
 
 ## sliding-window-is-fixed — the "sliding window counter" resets like a fixed window
 

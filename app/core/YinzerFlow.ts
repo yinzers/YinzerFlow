@@ -4,8 +4,6 @@ import type { Socket } from 'net';
 
 import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
 import { canonicalizeRequestPath } from '@core/execution/utils/canonicalizeRequestPath.ts';
-import { parseIpAddress } from '@core/execution/utils/parseIpAddress.ts';
-import { parseRequestHeaders } from '@core/execution/utils/parseRequestHeaders.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { createLogger, loggerBrand } from '@core/utils/log.ts';
@@ -335,6 +333,24 @@ export class YinzerFlow extends SetupImpl {
 
     await requestHandler.handle(context);
 
+    this._sendContextResponse({ context, socket, startTime, requestBytes: data.length });
+  }
+
+  /**
+   * Write a context's built response, end the socket, then write the access log line and run diagnostics.
+   * Shared by HTTP requests and refused WebSocket upgrades, so both reach the client and the log the same way.
+   */
+  private _sendContextResponse({
+    context,
+    socket,
+    startTime,
+    requestBytes,
+  }: {
+    context: ContextImpl;
+    socket: Socket;
+    startTime: number;
+    requestBytes: number;
+  }): void {
     // Guard against writing to a socket that was destroyed (client disconnect, timeout, etc.)
     if (!socket.destroyed) {
       socket.write(context._response._stringBody);
@@ -361,7 +377,7 @@ export class YinzerFlow extends SetupImpl {
       // Diagnostics — check thresholds after response is sent (receives pre-sanitized values)
       this._diagnostics?.checkRequest({
         duration: processingTime,
-        reqBytes: data.length,
+        reqBytes: requestBytes,
         resBytes: responseBytes,
         method: safeMethod,
         path: safePath,
@@ -635,7 +651,7 @@ export class YinzerFlow extends SetupImpl {
       const headersStr = buffer.subarray(0, state.headerEndIndex).toString();
       if (_isWebSocketUpgrade(headersStr)) {
         state.requestDispatched = true;
-        this._handleWebSocketUpgrade(buffer, socket, clientAddress);
+        this._handleWebSocketUpgrade({ buffer, socket, peerAddress: clientAddress, requestHandler });
         return;
       }
     }
@@ -650,29 +666,53 @@ export class YinzerFlow extends SetupImpl {
   }
 
   /**
-   * Handle a WebSocket upgrade request. Validates handshake, matches route,
-   * calls upgrade handler, sends 101, and creates the connection.
+   * Handle a WebSocket upgrade request: validate the handshake and path, run the global HTTP request stages
+   * (beforeRouting, global rate limiter, beforeAll), check origin and the per-IP cap, call the route's upgrade
+   * handler, then send 101 and create the connection. Any refusal is answered as a real HTTP response.
    */
-  private _handleWebSocketUpgrade(buffer: Buffer, socket: Socket, clientAddress: string): void {
-    this._handleWebSocketUpgradeAsync(buffer, socket, clientAddress).catch((error: unknown) => this._handleRequestError(error, clientAddress, socket));
+  private _handleWebSocketUpgrade(upgrade: { buffer: Buffer; socket: Socket; peerAddress: string; requestHandler: RequestHandlerImpl }): void {
+    this._handleWebSocketUpgradeAsync(upgrade).catch((error: unknown) => this._handleRequestError(error, upgrade.peerAddress, upgrade.socket));
   }
 
   // eslint-disable-next-line max-statements
-  private async _handleWebSocketUpgradeAsync(buffer: Buffer, socket: Socket, peerAddress: string): Promise<void> {
+  private async _handleWebSocketUpgradeAsync({
+    buffer,
+    socket,
+    peerAddress,
+    requestHandler,
+  }: {
+    buffer: Buffer;
+    socket: Socket;
+    peerAddress: string;
+    requestHandler: RequestHandlerImpl;
+  }): Promise<void> {
+    const startTime = Date.now();
     const headerEndIndex = buffer.indexOf('\r\n\r\n');
     const headersStr = buffer.subarray(0, headerEndIndex).toString();
 
-    // Resolve the client the same way HTTP requests do: the socket peer unless it is a trusted proxy. The per-IP
-    // connection cap, the upgrade handler's remoteAddress and connection tracking all use this one value.
-    // The same header parser as HTTP requests (any line ending, limits, sanitizing, joined X-Forwarded-For), on the
-    // header block after the request line
-    const parsedHeaders = parseRequestHeaders(headersStr.slice(headersStr.indexOf('\r\n') + 2));
-    const clientAddress = parseIpAddress(this, parsedHeaders, peerAddress);
-    const headersMap = parsedHeaders as Record<string, string>;
+    // The same request object HTTP hooks get: headers through the shared parser, ipAddress resolved through the
+    // trusted-proxy walk, an empty state. The per-IP cap, the upgrade handler's remoteAddress and connection tracking
+    // all use this one resolved address.
+    const context = new ContextImpl(buffer, this, peerAddress);
+    const clientAddress = context.request.ipAddress;
 
     const validation = _validateHandshake(headersStr);
     if (!validation.valid) {
       this._sendHttpError(socket, 400, validation.reason);
+      return;
+    }
+
+    // Same canonical form, and the same rejections, as HTTP routing
+    const canonicalPath = canonicalizeRequestPath(validation.path);
+    if (canonicalPath === null) {
+      this._sendHttpError(socket, 400, 'Malformed request path');
+      return;
+    }
+
+    // Global hooks and the global limiter decide before anything else does, exactly as for an HTTP request to this path
+    const match = this._wsRouter._match(canonicalPath);
+    if (!(await requestHandler._handleUpgrade(context, canonicalPath, match?.params ?? null)) || !match) {
+      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
       return;
     }
 
@@ -690,21 +730,8 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
-    // Same canonical form, and the same rejections, as HTTP routing
-    const canonicalPath = canonicalizeRequestPath(validation.path);
-    if (canonicalPath === null) {
-      this._sendHttpError(socket, 400, 'Malformed request path');
-      return;
-    }
-
-    const match = this._wsRouter._match(canonicalPath);
-    if (!match) {
-      this._sendHttpError(socket, 404, 'No WebSocket route matches this path');
-      return;
-    }
-
     const upgradeRequest = {
-      headers: headersMap,
+      headers: context.request.headers as Record<string, string>,
       path: validation.path,
       query: validation.query,
       params: match.params,

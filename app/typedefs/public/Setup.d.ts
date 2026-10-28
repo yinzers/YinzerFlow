@@ -153,6 +153,9 @@ export interface Setup extends HttpMethodHandlers {
    * **Execution Order**: beforeRouting → routing (params filled) → built-in rate limiter → not-found handler if unmatched →
    * beforeAll → beforeRoute → handler → afterRoute → afterAll. State set here is visible to the rate limiter's `keyGenerator`.
    *
+   * **WebSocket upgrades**: these hooks also run on an upgrade request to an `app.ws()` route, matched against the same
+   * canonical path. Returning a value, or setting a status other than 200, refuses the upgrade with that HTTP response.
+   *
    * @param handlers - Array of hook functions to execute
    * @param options - Optional configuration for hook execution scope
    *
@@ -202,6 +205,11 @@ export interface Setup extends HttpMethodHandlers {
    * state, authentication, logging, or request preprocessing. Unmatched routes
    * skip them and go straight to the not-found handler; use `beforeRouting` for
    * anything that must see every request.
+   *
+   * **WebSocket upgrades**: these hooks also run on an upgrade request to an `app.ws()` route, after the rate limiter
+   * and before the route's `upgrade` handler, with the same `routesToInclude` / `routesToExclude` matching. Returning a
+   * value, or setting a status other than 200, refuses the upgrade with that HTTP response (a 401 from an auth hook
+   * reaches the client). `afterAll` hooks don't run on upgrades.
    *
    * @param handlers - Array of hook functions to execute
    * @param options - Optional configuration for hook execution scope

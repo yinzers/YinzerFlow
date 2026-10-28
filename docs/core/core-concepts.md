@@ -325,6 +325,8 @@ Hooks execute in a specific order for predictable behavior:
 
 Requests whose path is malformed (dot segments, encoded slashes, invalid encoding) are answered with 400 before step 1.
 
+<span style="color: #f39c12">**🌐 WebSocket upgrades (since 0.9.1):**</span> an upgrade request to an `app.ws()` route runs steps 1 to 5 exactly as an HTTP request to that path would: the same `beforeRouting` hooks, the built-in rate limiter, the not-found handler when no WebSocket route matches, then the same `beforeAll` hooks, with `routesToInclude` / `routesToExclude` matched against the same canonical path. Hooks get a normal `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress` and `ctx.state` work unchanged. A hook that returns a value, or sets a status other than 200, refuses the upgrade with that status and body as a plain HTTP response, so a 401 from an auth hook reaches the client. Steps 6 to 11 don't run: a WebSocket route has no route hooks, and an accepted upgrade has no HTTP response. In 0.9.0 upgrades skipped every global hook. See [WebSockets](./websockets.md#global-http-hooks-on-upgrade).
+
 <span style="color: #e74c3c">**⚠️ beforeRouting is not rate limited:**</span> step 1 runs before the built-in limiter (step 3). A `beforeRouting` hook that answers early, such as a 401 for a bad token, is never counted, so brute-force attempts rejected there are never throttled, and any database lookup it makes runs for every request. Keep `beforeRouting` to cheap work that doesn't answer on its own. For brute-force-sensitive auth (login, password reset, OTP), add a route-level `rateLimitHook` to that route, which counts every attempt before the handler runs.
 
 ```typescript

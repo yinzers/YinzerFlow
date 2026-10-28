@@ -95,6 +95,38 @@ export class RequestHandlerImpl {
   }
 
   /**
+   * Run the global request stages on a WebSocket upgrade request, with the same hooks, order and canonical-path
+   * matching as an HTTP request: beforeRouting, then the global rate limiter (after the ws route's params are filled),
+   * then 404 when no ws route matched, then beforeAll. Route-level hooks and afterAll don't run: an upgrade has no HTTP
+   * route and, when accepted, no HTTP response.
+   *
+   * A hook refuses the upgrade by returning a value (as for HTTP) or by setting a status code other than 200 without
+   * returning one; there is no route handler left to carry that status, so it becomes the answer.
+   *
+   * @returns true when the upgrade may proceed; false when `context` holds the HTTP response to send instead
+   */
+  async _handleUpgrade(context: InternalContextImpl, canonicalPath: string, wsRouteParams: Record<string, string> | null): Promise<boolean> {
+    if ((await this._handleBeforeRoutingHooks(context, canonicalPath)) || this._answeredByStatus(context)) return false;
+
+    if (wsRouteParams) Object.assign(context.request.params as unknown as Record<string, string>, wsRouteParams);
+    if (await this._handleGlobalRateLimit(context)) return false;
+
+    if (!wsRouteParams) {
+      await this._respondNotFound(context);
+      return false;
+    }
+
+    return !((await this._handleBeforeAllHooks(context, canonicalPath)) || this._answeredByStatus(context));
+  }
+
+  /** On an upgrade, a hook that set a non-200 status without returning a body refused it: build that response. */
+  _answeredByStatus(context: InternalContextImpl): boolean {
+    if (context._response._statusCode === httpStatusCode.ok) return false;
+    context._response._parseResponseIntoString();
+    return true;
+  }
+
+  /**
    * Handle errors using the user-defined or default error handler
    * The error handler returns a response object that we apply to the context
    */

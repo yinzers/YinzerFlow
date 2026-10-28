@@ -8,7 +8,7 @@ YinzerFlow includes production-level WebSocket support built on raw RFC 6455 —
 - **Heartbeat/keepalive** — server-initiated ping/pong detects dead connections automatically
 - **Message rate limiting** — per-connection token bucket throttling
 - **Compression** — permessage-deflate (RFC 7692) with broadcast-safe no-context-takeover
-- **Hook integration** — `wsBeforeMessage` / `wsAfterMessage` for cross-cutting concerns
+- **Hook integration** — global `beforeRouting` / `beforeAll` hooks and the global rate limiter run on upgrades; `wsBeforeMessage` / `wsAfterMessage` run per message
 - **Security** — origin validation, per-IP connection limits
 - **Zero overhead** when no `app.ws()` routes registered
 
@@ -296,6 +296,45 @@ When publishing to a channel, the WebSocket frame is encoded **once** into raw b
 
 ## 🪝 Hooks
 
+### Global HTTP Hooks on Upgrade
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.9.1:**</span> upgrade requests now run the app's global HTTP hooks. In 0.9.0 they skipped every one of them, so a `beforeAll` auth hook protected the REST routes while a WebSocket route without its own `upgrade` check accepted anyone. Apps whose global hooks assumed they only ever see HTTP requests should check those hooks against upgrades.
+
+An upgrade request runs these steps, in this order, before the connection opens:
+
+1. Handshake validation and path canonicalization (400 on a malformed handshake or path)
+2. Global `beforeRouting` hooks (CORS runs here when enabled)
+3. WebSocket route matching: `ctx.request.params` is filled from the `app.ws()` pattern
+4. The built-in global rate limiter (429 when exceeded), so upgrade floods are throttled like any other request
+5. The not-found handler when no WebSocket route matched
+6. Global `beforeAll` hooks
+7. Origin check (`allowedOrigins`, 403) and the per-IP connection cap (`maxConnectionsPerIp`, 429)
+8. The route's `upgrade(req)` handler
+9. `101 Switching Protocols`, then `open(ws)`
+
+Steps 2 to 6 are the same stages, in the same order, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks and `afterAll` hooks don't run: a WebSocket route has no route hooks, and an accepted upgrade has no HTTP response for them to change.
+
+A hook refuses the upgrade the way it answers an HTTP request early: by returning a value. On an upgrade, setting a status other than 200 without returning anything refuses it too, because there is no route handler left to carry that status. Either way the client gets a real HTTP response with that status and body, and the socket is closed.
+
+```typescript
+// One auth hook protects REST and WebSocket routes alike
+app.beforeAll([
+  async (ctx) => {
+    const user = await validateToken(ctx.request.headers.authorization);
+    if (!user) {
+      ctx.response.setStatusCode(401);
+      return { error: 'Unauthorized' }; // REST gets a 401; so does an upgrade, before any 101
+    }
+    ctx.state.user = user;
+  },
+], { routesToExclude: ['/health', '/ws/public/*'] });
+
+app.ws('/ws/feed', { message(ws, data) { ws.send(data); } }); // protected by the hook above
+app.ws('/ws/public/ticker', { open(ws) { ws.subscribe('ticker'); } }); // excluded
+```
+
+<span style="color: #3498db">**💡 Tip:**</span> `ctx.state` set by these hooks lives for the upgrade request only; it is not copied onto `ws.data`. Use the route's `upgrade(req)` handler to attach per-socket data.
+
 ### WS Message Hooks
 
 Global hooks that run before/after every WebSocket message handler:
@@ -352,7 +391,7 @@ Available in all handlers:
 
 # ✨ Best Practices
 
-- **Authenticate in `upgrade`** — reject unauthorized connections before the handshake completes, not after
+- **Authenticate before the handshake** — a global `beforeAll` auth hook now covers upgrades too; use the route's `upgrade` handler for per-route checks and per-socket data
 - **Use channels for grouping** — `ws.subscribe('user:123')` rather than manual connection tracking
 - **Set `strategy: 'drop'` for real-time data** — stale trading quotes are worse than gaps
 - **Keep message handlers fast** — expensive work should be dispatched to background jobs
@@ -461,6 +500,10 @@ await app.listen();
 - **Problem**: Unauthorized origins connecting to WebSocket endpoints
 - **YinzerFlow Solution**: `websocket.allowedOrigins` validates the Origin header during upgrade. Case-insensitive matching. Empty list = allow all (for server-to-server or development).
 
+### 🛡️ Global Hooks and Rate Limiting on Upgrade
+- **Problem**: Upgrades that bypass the app's auth hooks or rate limiter open a second, unguarded door into the app
+- **YinzerFlow Solution**: Every upgrade runs the global `beforeRouting` hooks, the global rate limiter and the global `beforeAll` hooks before the route's `upgrade` handler, matched on the same canonical path as HTTP (since 0.9.1)
+
 ### 🛡️ Connection Limits
 - **Problem**: Connection exhaustion from a single IP
 - **YinzerFlow Solution**: `websocket.maxConnectionsPerIp` limits concurrent connections. Returns 429 when exceeded. Counter automatically decrements on disconnect.
@@ -473,8 +516,9 @@ await app.listen();
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| 401 (or another status) on upgrade | A global `beforeRouting` / `beforeAll` hook refused it | Send the credentials the hook expects, or exclude the path with `routesToExclude` |
 | 403 on upgrade | Origin not in `allowedOrigins` | Add origin or set `allowedOrigins: []` |
-| 429 on upgrade | Too many connections from IP | Increase `maxConnectionsPerIp` |
+| 429 on upgrade | Too many connections from IP, or the global rate limiter | Increase `maxConnectionsPerIp`, or `rateLimit.max` |
 | Connection drops silently | Idle timeout | Increase `idleTimeout` or send periodic pings |
 | Connection closed with "Heartbeat timeout" | Client didn't respond to ping | Check client network; increase `heartbeat.interval` |
 | Connection closed with 1008 | Message rate limit exceeded | Increase `maxMessages`/`window` or throttle client |

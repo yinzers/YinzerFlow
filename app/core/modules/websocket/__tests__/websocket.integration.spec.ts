@@ -23,9 +23,10 @@ const createTestApp = (customConfig?: Record<string, unknown>): { app: YinzerFlo
 /**
  * Build a WebSocket upgrade request string.
  */
-const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', origin?: string): string => {
+const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', origin?: string, extraHeaders = ''): string => {
   let req = `GET ${path} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n`;
   if (origin) req += `Origin: ${origin}\r\n`;
+  req += extraHeaders;
   req += '\r\n';
   return req;
 };
@@ -38,13 +39,14 @@ const connectWs = async (
   path = '/ws',
   key = 'dGhlIHNhbXBsZSBub25jZQ==',
   origin?: string,
+  extraHeaders = '',
 ): Promise<{
   socket: net.Socket;
   response: string;
 }> =>
   new Promise((resolve, reject) => {
     const socket = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
-      socket.write(buildUpgradeRequest(path, key, origin));
+      socket.write(buildUpgradeRequest(path, key, origin, extraHeaders));
     });
     let data = '';
     const onData = (chunk: Buffer): void => {
@@ -263,6 +265,77 @@ describe('WebSocket Integration', () => {
       expect(seen).toEqual(['keep']);
       expect(afterSeen).toEqual(['keep']);
       socket.destroy();
+    });
+  });
+
+  // Bug (0.9.0, security): upgrades skipped every global hook, so a ws route with no upgrade handler answered 101 while
+  // the same app's REST routes answered 401: auth failed open. Tier: High (authz on a whole transport).
+  describe('global hooks on upgrade', () => {
+    const authHook = (ctx: { request: { headers: Record<string, string | undefined> }; response: { setStatusCode: (code: 401) => void } }): unknown => {
+      if (ctx.request.headers.authorization === 'Bearer good') return undefined;
+      ctx.response.setStatusCode(401);
+      return { error: 'Unauthorized' };
+    };
+    const authHeader = (token: string): string => `Authorization: Bearer ${token}\r\n`;
+
+    it('should refuse an upgrade with the 401 a beforeAll auth hook returns for REST, and pass a valid token', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.beforeAll([authHook as never]);
+      app.get('/api/me', () => ({ ok: true }));
+      app.ws('/ws', {
+        message(ws, data) {
+          ws.send(data);
+        },
+      });
+      await app.listen();
+
+      const rest = await fetch(`http://127.0.0.1:${testPort}/api/me`);
+      expect(rest.status).toBe(401);
+
+      const refused = await connectWs(testPort, '/ws', undefined, undefined, authHeader('bad'));
+      await waitFor(() => refused.socket.readableEnded || refused.socket.destroyed).catch(() => {});
+      expect(refused.response).toStartWith('HTTP/1.1 401');
+      expect(refused.response).toContain('Unauthorized');
+      expect(refused.response).not.toContain('101 Switching Protocols');
+
+      const accepted = await connectWs(testPort, '/ws', undefined, undefined, authHeader('good'));
+      expect(accepted.response).toContain('101 Switching Protocols');
+      refused.socket.destroy();
+      accepted.socket.destroy();
+    });
+
+    it('should skip a hook whose routesToExclude matches the ws path, by its canonical form', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.beforeAll([authHook as never], { routesToExclude: ['/ws/*'] });
+      app.ws('/ws/public', { message() {} });
+      app.ws('/private', { message() {} });
+      await app.listen();
+
+      // '//ws/public/' canonicalizes to '/ws/public', so the exclusion applies exactly as it would for HTTP
+      const excluded = await connectWs(testPort, '//ws/public/');
+      expect(excluded.response).toContain('101 Switching Protocols');
+      const guarded = await connectWs(testPort, '/private');
+      expect(guarded.response).toStartWith('HTTP/1.1 401');
+      excluded.socket.destroy();
+      guarded.socket.destroy();
+    });
+
+    it('should answer 429 from the global rate limiter on an upgrade flood', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, rateLimit: { max: 2, window: '1m' } });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const first = await connectWs(testPort, '/ws', 'AAAAAAAAAAAAAAAAAAAAAA==');
+      const second = await connectWs(testPort, '/ws', 'BBBBBBBBBBBBBBBBBBBBBB==');
+      const third = await connectWs(testPort, '/ws', 'CCCCCCCCCCCCCCCCCCCCCC==');
+
+      expect(first.response).toContain('101 Switching Protocols');
+      expect(second.response).toContain('101 Switching Protocols');
+      expect(third.response).toStartWith('HTTP/1.1 429');
+      for (const client of [first, second, third]) client.socket.destroy();
     });
   });
 
