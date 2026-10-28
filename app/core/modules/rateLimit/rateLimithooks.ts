@@ -5,9 +5,13 @@ import { _convertTimeToMs } from '@core/utils/time.ts';
 import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
 import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.js';
+import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.js';
 
-/** Hook instance -> the limiter it owns, so the app can destroy every limiter it holds on close(). */
-const _hookLimiters = new WeakMap<object, RateLimiter>();
+/** Hook instance -> lookup of the limiter it holds for one app, so each app destroys only its own on close(). */
+const _hookLimiters = new WeakMap<object, (app: object) => RateLimiter | undefined>();
+
+/** Key for a hook called outside a YinzerFlow request (no app on the context), so it still has a limiter. */
+const _noApp = {};
 
 /** Creation-order counter naming hooks created without `name`. */
 let _unnamedHookCount = 0;
@@ -66,11 +70,28 @@ export const rateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOption
   return _createRateLimitHook<T>(rateLimitOptions, namespace);
 };
 
-/** Build one hook with its own limiter (and one store), created once, in its own Redis key namespace. */
+/**
+ * Build one hook in its own Redis key namespace. The configuration is validated once, here; the limiter itself
+ * is one per app that uses the hook, created on that app's first request. Two YinzerFlow apps in one process
+ * sharing a hook are separate servers, so they get separate in-memory budgets, and appA.close() destroys only
+ * appA's limiter, never the one appB is still counting in. (With a Redis store they share counters through the
+ * namespace, exactly as two nodes of one service do.)
+ */
 const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions, namespace: string): HandlerCallback<T> => {
-  const rateLimiter = new RateLimiter(new RateLimitConfig(_withStoreNamespace(rateLimitOptions, namespace)));
+  const rateLimitConfig = new RateLimitConfig(_withStoreNamespace(rateLimitOptions, namespace));
+  const limitersByApp = new WeakMap<object, RateLimiter>();
+  const limiterFor = (app: object): RateLimiter => {
+    let limiter = limitersByApp.get(app);
+    if (!limiter) {
+      limiter = new RateLimiter(rateLimitConfig);
+      limitersByApp.set(app, limiter);
+    }
+    return limiter;
+  };
 
   const hook: HandlerCallback<T> = async (context) => {
+    const rateLimiter = limiterFor((context as unknown as Partial<InternalContextImpl>)._request?._setup ?? _noApp);
+
     // Check if request is within rate limit
     const result = await rateLimiter.check(context);
 
@@ -87,12 +108,12 @@ const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOption
     // Continue to next hook/handler
     return void 0;
   };
-  _hookLimiters.set(hook, rateLimiter);
+  _hookLimiters.set(hook, (app) => limitersByApp.get(app));
   return hook;
 };
 
-/** The limiter a rateLimitHook instance owns, or undefined for any other hook. */
-export const _rateLimiterOfHook = (hook: HandlerCallback): RateLimiter | undefined => _hookLimiters.get(hook);
+/** The limiter a rateLimitHook instance holds for `app` (if that app has used it), or undefined for any other hook. */
+export const _rateLimiterOfHook = (hook: HandlerCallback, app: object): RateLimiter | undefined => _hookLimiters.get(hook)?.(app);
 
 /**
  * Create a global rate limiting hook used internally by the framework

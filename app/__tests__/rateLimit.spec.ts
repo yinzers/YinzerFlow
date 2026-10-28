@@ -412,6 +412,28 @@ describe('One budget per rateLimitHook', () => {
     for (const [method, path] of requests) statuses.push((await fetch(`http://127.0.0.1:${testPort}${path}`, { method })).status);
     expect(statuses).toEqual([200, 200, 429]);
   });
+
+  // Bug: one rateLimitHook used by two apps in one process held one limiter, so appA.close() destroyed the store appB was still counting in and reset appB's budget. Tier: Medium.
+  it('should give each app its own budget, and closing one app must not reset the other', async () => {
+    const shared = rateLimitHook({ max: 2, window: '1m' });
+    const first = createTestApp({ rateLimit: { enabled: false } });
+    const second = createTestApp({ rateLimit: { enabled: false } });
+    first.app.get('/shared', () => ({ ok: true }), { beforeHooks: [shared], afterHooks: [] });
+    second.app.get('/shared', () => ({ ok: true }), { beforeHooks: [shared], afterHooks: [] });
+    await first.app.listen();
+    await second.app.listen();
+    const send = async (port: number): Promise<number> => (await fetch(`http://127.0.0.1:${port}/shared`)).status;
+
+    try {
+      expect([await send(first.testPort), await send(first.testPort)]).toEqual([200, 200]);
+      expect(await send(second.testPort)).toBe(200); // separate budget from the first app
+      await first.app.close();
+      expect([await send(second.testPort), await send(second.testPort)]).toEqual([200, 429]);
+    } finally {
+      if (first.app.status().isListening) await first.app.close();
+      if (second.app.status().isListening) await second.app.close();
+    }
+  });
 });
 
 // Bug: the limiter was only installed when `rateLimit.enabled: true` was passed explicitly, so the documented default left apps unprotected. Tier: Medium (feature default).

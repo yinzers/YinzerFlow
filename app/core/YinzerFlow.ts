@@ -948,7 +948,7 @@ export class YinzerFlow extends SetupImpl {
 
     const addFromHooks = (hooks: Iterable<HandlerCallback>): void => {
       for (const hook of hooks) {
-        const limiter = _rateLimiterOfHook(hook);
+        const limiter = _rateLimiterOfHook(hook, this);
         if (limiter) limiters.add(limiter);
       }
     };
