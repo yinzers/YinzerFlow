@@ -447,7 +447,7 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
-    it('should answer 400 to a malformed upgrade header and log the name at debug, quoted, never at error', async () => {
+    it('should answer 400 to a malformed upgrade header and log the name at debug, sanitized, never at error', async () => {
       const logged: { debug: Array<string>; error: Array<string> } = { debug: [], error: [] };
       const sink =
         (level: 'debug' | 'error') =>
@@ -466,7 +466,8 @@ describe('WebSocket Integration', () => {
       const { socket, response } = await connectWs(testPort, '/ws', undefined, undefined, 'X-\u001b[31mEvil Name: 1\r\n');
       expect(response).toStartWith('HTTP/1.1 400');
       expect(logged.error).toEqual([]);
-      expect(logged.debug.some((line) => line.includes('"Invalid header name: X-\\u001b[31mEvil Name"'))).toBe(true);
+      expect(logged.debug.some((line) => line.includes('Invalid header name: X-[31mEvil Name'))).toBe(true);
+      expect(logged.debug.some((line) => line.includes('\u001b'))).toBe(false);
       socket.destroy();
     });
   });

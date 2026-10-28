@@ -285,7 +285,7 @@ app.ws('/jobs', {
 
 <span style="color: #3498db">**💡 Tip:**</span> Call `ws.close(code, reason)` from `error` when a failure should end the connection.
 
-Before the handshake there is no `ws` yet, so a throw from a global hook or from `upgrade(req)` goes to the app's `onError` handler instead, exactly like an HTTP error. The client gets that response as a plain HTTP response (500 by default, and 500 if `onError` leaves the status at 200), and the socket is closed. An upgrade request whose headers fail parsing (an invalid header name, too many or too long headers) gets a 400 and one debug-level log line with the reason JSON-quoted and truncated.
+Before the handshake there is no `ws` yet, so a throw from a global hook or from `upgrade(req)` goes to the app's `onError` handler instead, exactly like an HTTP error. The client gets that response as a plain HTTP response (500 by default, and 500 if `onError` leaves the status at 200), and the socket is closed. An upgrade request whose headers fail parsing (an invalid header name, too many or too long headers) gets a 400 and one debug-level log line with the reason sanitized (control characters and newlines stripped) and cut to 200 characters.
 
 ### Per-Socket Typed Data
 

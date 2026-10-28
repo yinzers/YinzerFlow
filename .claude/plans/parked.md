@@ -204,20 +204,19 @@ before touching the area an entry names.
 - **Cost later**: low; reject the two shapes with 400 and add one table test.
 - **Trigger**: the next change to parseRequestHeaders, or a deployment without a conforming front proxy.
 
-## http-parse-error-logging — a malformed HTTP request header gets no response and an ERROR with a stack
+## http-parse-error-logging — a malformed HTTP request header gets no response
 
 - **What**: `_processRequest` builds `ContextImpl` outside any handler, so when `parseRequestHeaders` throws (an
-  invalid header name, too many or too long headers) the `.catch` in `_dispatchRequest` logs it at ERROR with a full
-  stack, quoting the client's raw header name (ANSI escapes included), and destroys the socket with no response.
-  The WebSocket upgrade path had the same flaw and answers 400 with a quoted debug line since 0.10.0
-  (`_buildUpgradeContext`); plain HTTP requests still don't.
-- **Why deferred**: found while fixing the upgrade half; outside the 0.10.0 WebSocket items, and answering 400
-  instead of dropping changes what every HTTP client sees for a malformed request, which wants its own changelog
-  line and a decision on whether the 400 goes through the access log.
+  invalid header name, too many or too long headers) the `.catch` in `_dispatchRequest` logs it at ERROR and destroys
+  the socket with no response. The log line itself is safe since 0.10.0 (message through `_sanitizeLogField`, stack
+  logged without its message line); what is left is the missing 400. The WebSocket upgrade path already answers 400
+  (`_buildUpgradeContext`).
+- **Why deferred**: answering 400 instead of dropping changes what every HTTP client sees for a malformed request,
+  which wants its own changelog line and a decision on whether the 400 goes through the access log.
 - **Cost later**: low; the same try/catch as `_buildUpgradeContext` around `new ContextImpl` in `_processRequest`,
   answering 400, plus one test.
-- **Trigger**: the next change to `_processRequest` or `_handleRequestError`, or an operator report of noisy
-  header-parse errors.
+- **Trigger**: the next change to `_processRequest` or `_handleRequestError`'s response behavior, or an operator report
+  of clients getting dropped connections for bad headers.
 
 ## xff-port-strip-lenient — `_stripPort` accepts non-numeric ports in X-Forwarded-For hops
 

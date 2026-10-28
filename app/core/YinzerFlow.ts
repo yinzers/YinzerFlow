@@ -393,8 +393,11 @@ export class YinzerFlow extends SetupImpl {
    * Handle errors from request processing — log and destroy socket
    */
   private _handleRequestError(error: unknown, clientAddress: string, socket: Socket): void {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    this._log.error(`Request processing error from ${clientAddress}: ${errorMessage}`, error);
+    // The message can quote client bytes (a header parse error names the header), so it is sanitized, and the stack is
+    // logged without its first line, which repeats that message raw; the frames below it are code locations only.
+    const errorMessage = _sanitizeLogField(error instanceof Error ? error.message : 'Unknown error', 200);
+    const stackFrames = error instanceof Error ? (error.stack ?? '').split('\n').slice(1).join('\n') : '';
+    this._log.error(`Request processing error from ${clientAddress}: ${errorMessage}`, stackFrames);
     if (!socket.destroyed) {
       socket.destroy();
     }
@@ -811,8 +814,8 @@ export class YinzerFlow extends SetupImpl {
 
   /**
    * Build the hook context for an upgrade request. A request whose headers the shared parser rejects (an invalid
-   * header name, too many or too long headers) is answered 400 and logged at debug with the parser's reason
-   * JSON-quoted and truncated, so client-chosen bytes (ANSI escapes included) can't reach the log raw.
+   * header name, too many or too long headers) is answered 400 and logged at debug with the parser's reason passed
+   * through _sanitizeLogField (control characters, newlines and BiDi overrides stripped, cut to 200 characters).
    * Returns null when the request was answered.
    */
   private _buildUpgradeContext(buffer: Buffer, socket: Socket, peerAddress: string): ContextImpl | null {
@@ -820,7 +823,7 @@ export class YinzerFlow extends SetupImpl {
       return new ContextImpl(buffer, this, peerAddress);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      this._log.debug(`Malformed WebSocket upgrade request from ${peerAddress}: ${JSON.stringify(reason.slice(0, 200))}`);
+      this._log.debug(`Malformed WebSocket upgrade request from ${peerAddress}: ${_sanitizeLogField(reason, 200)}`);
       this._sendHttpError(socket, httpStatusCode.badRequest, 'Malformed request headers');
       return null;
     }

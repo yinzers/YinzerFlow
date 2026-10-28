@@ -658,6 +658,26 @@ describe('YinzerFlow', () => {
         expect(response).toBeTruthy();
       });
 
+      // Review note (0.10.0): an HTTP request with a malformed header name logged the client's raw bytes at error level,
+      // ANSI escapes included, in the message and again in the logged error's stack. Tier: High (log injection from
+      // untrusted input). The missing 400 response is parked as http-parse-error-logging.
+      it('should log a malformed header name with control characters stripped', async () => {
+        const logged: Array<string> = [];
+        const sink = (...args: Array<unknown>): void => void logged.push(args.map(String).join(' '));
+        app = new YinzerFlow({
+          port: testPort,
+          host: '127.0.0.1',
+          gracefulShutdownTimeout: 0,
+          logging: { level: 'debug', logger: { info: () => {}, warn: () => {}, error: sink, debug: () => {} } },
+        });
+        await app.listen();
+
+        await sendHttpRequest(testPort, 'GET / HTTP/1.1\r\nX-\u001b[31mEvil Name: 1\r\n\r\n').catch(() => '');
+
+        expect(logged.some((line) => line.includes('Invalid header name: X-[31mEvil Name'))).toBe(true);
+        expect(logged.some((line) => line.includes('\u001b'))).toBe(false);
+      });
+
       // Bug (0.10.0 review): the status line echoed the client's protocol token, so a bare LF after the version put a
       // client-chosen header into the response. Tier: High (response splitting from untrusted input).
       it('should answer 400 to a request line with an injected header, and never echo it', async () => {
