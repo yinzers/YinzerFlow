@@ -1,6 +1,7 @@
 /* eslint-disable no-new */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
+import { rateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
 import { createTestApp } from 'app/__tests__/test-utils/create-server.spec.ts';
 import { getRequest, postRequest } from 'app/__tests__/test-utils/dummy-requests.spec.ts';
 
@@ -256,6 +257,32 @@ describe('Rate Limiting Feature', () => {
       expect(response.headers.get('RateLimit-Remaining')).toBeNull();
       expect(response.headers.get('RateLimit-Reset')).toBeNull();
     });
+  });
+});
+
+// Bug: rateLimitHook built a new limiter (empty store) on every request, so per-route limits never applied and each request leaked a sweep timer. Tier: Medium (feature).
+describe('Per-route rateLimitHook', () => {
+  let routeApp: YinzerFlow;
+  let routePort: number;
+
+  beforeEach(async () => {
+    ({ app: routeApp, testPort: routePort } = createTestApp({ rateLimit: { enabled: false } }));
+    routeApp.post('/login', () => ({ ok: true }), { beforeHooks: [rateLimitHook({ max: 2, window: '1m' })], afterHooks: [] });
+    await routeApp.listen();
+  });
+
+  afterEach(async () => {
+    if (routeApp.status().isListening) {
+      await routeApp.close();
+    }
+  });
+
+  it('should answer 429 once the route-specific max is used up', async () => {
+    const statuses: Array<number> = [];
+    for (let i = 0; i < 3; i++) {
+      statuses.push((await fetch(`http://127.0.0.1:${routePort}/login`, { method: 'POST' })).status);
+    }
+    expect(statuses).toEqual([200, 200, 429]);
   });
 });
 

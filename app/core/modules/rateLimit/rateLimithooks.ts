@@ -40,13 +40,14 @@ import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGe
  * );
  * ```
  */
-export const rateLimitHook =
-  <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions): HandlerCallback<T> =>
-  // Return the hook function
-  async (context) => {
-    const rateLimitConfig = new RateLimitConfig(rateLimitOptions);
-    const rateLimiter = new RateLimiter(rateLimitConfig);
+export const rateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions): HandlerCallback<T> => {
+  // One limiter (and one store) per hook, created when the route is registered. Building it inside the
+  // per-request closure gave every request a fresh, empty store, so the limit never applied, and each
+  // throwaway in-memory store started its own sweep timer.
+  const rateLimitConfig = new RateLimitConfig(rateLimitOptions);
+  const rateLimiter = new RateLimiter(rateLimitConfig);
 
+  return async (context) => {
     // Check if request is within rate limit
     const result = await rateLimiter.check(context);
 
@@ -63,6 +64,7 @@ export const rateLimitHook =
     // Continue to next hook/handler
     return void 0;
   };
+};
 
 /**
  * Create a global rate limiting hook used internally by the framework
