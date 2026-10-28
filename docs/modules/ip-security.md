@@ -4,6 +4,8 @@ YinzerFlow provides comprehensive IP address validation and security protection 
 
 For detailed configuration examples and patterns, see [Configuration Guide](../configuration/configuration.md).
 
+<span style="color: #f39c12">**⚠️ Upgrading to 0.9.0?**</span> Client-IP handling changed: headers are trusted only from `trustedProxies` peers, `headerPreference` defaults to `['x-forwarded-for']`, malformed `trustedProxies` entries throw at startup, and `request.ipAddress` is canonical text. See the [0.9.0 upgrade notes](./rate-limiting.md#upgrade-notes-0-9-0) for what to change.
+
 # ⚙️ Usage
 
 ## 🎛️ Settings
