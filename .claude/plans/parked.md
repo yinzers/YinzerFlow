@@ -19,8 +19,9 @@ before touching the area an entry names.
     Whether Bun exposes the TLS ClientHello at all is unknown and needs a spike before design;
     behind a TLS-terminating proxy or CDN the framework never sees it and has to trust a header
     the proxy sets, through the same trusted-proxy path as `parseIpAddress.ts`.
-  - Bucket cardinality grows with fingerprint variety, so the in-memory store needs a bound and
-    the Redis store a TTL check before this ships.
+  - Bucket cardinality grows with fingerprint variety. The in-memory store bound has landed
+    (expiry, sweep and `store.maxEntries` cap, 2d3026e) and the Redis store already sets a per-key
+    TTL of one window; the fingerprint feature itself is still waiting on its trigger.
 - **Why deferred**: requested as a "someday" feature; current IP-key limiter is correct for what
   it claims, and the TLS-signal question is an unknown that needs a spike first.
 - **Cost later**: low. The `keyGenerator` seam means the feature is additive; nothing built today
@@ -61,3 +62,33 @@ before touching the area an entry names.
 - **Cost later**: low; additive field, nothing to rewrite.
 - **Trigger**: a user report of a path check in a handler, custom hook or WebSocket `upgrade` handler
   being bypassed, or the next change to `RequestImpl`'s or `WebSocketUpgradeRequest`'s public fields.
+
+## canonical-400-cors-headers — the malformed-path 400 carries no CORS headers
+
+- **What**: `RequestHandlerImpl` answers a path that fails `canonicalizeRequestPath` with 400 before
+  the `beforeRouting` stage, where the CORS hook runs. A cross-origin browser client gets a 400
+  without `Access-Control-Allow-Origin`, so script sees an opaque network error instead of the
+  400 body; an `OPTIONS` preflight to such a path fails the same way.
+- **Why deferred**: review-round minor; the rejected requests are malformed (traversal, encoded
+  slashes, bad encoding), which legitimate browser apps don't send, and the status still reaches
+  the access log. Adding CORS headers means running the CORS decision on a path that has no
+  canonical form, which wants its own small design (origin-only CORS on the reject path).
+- **Cost later**: low; one call to the CORS header logic in `_rejectMalformedPath`, plus a test.
+- **Trigger**: a user report of an opaque CORS error on a 400, or the next change to
+  `_rejectMalformedPath` or the CORS hook.
+
+## path-normalizer-drift — registration and request paths use two normalizers
+
+- **What**: routes, WebSocket routes and hook patterns are normalized by `normalizePath`
+  (`app/core/setup/utils/normalizeStringPatterns.ts`), which resolves `.`/`..` and keeps text it
+  cannot decode; request paths go through `canonicalizeRequestPath`, which rejects both. They agree
+  on every pattern a developer would write today (leading slash, no repeated or trailing slash,
+  decoded once), but they are two implementations of one contract, so a change to one that isn't
+  mirrored in the other reopens the router-vs-hook disagreement fixed in 19a1275. A route registered
+  as `/a/../b` silently becomes `/b`, and a pattern with an invalid `%` silently never matches.
+- **Why deferred**: review-round minor; no current divergence produces a wrong decision on a
+  request, and unifying means changing registration semantics (reject `..` and bad `%` in
+  developer patterns at startup), which is a breaking change for any app that has one.
+- **Cost later**: low to medium; one shared normalizer with a "registration" mode that throws, plus
+  re-running the route and hook tests.
+- **Trigger**: the next change to either `normalizePath` or `canonicalizeRequestPath`.
