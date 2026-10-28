@@ -179,3 +179,16 @@ before touching the area an entry names.
 - **Cost later**: low; pass the logger via the store options.
 - **Trigger**: the next change to the store factory or RateLimitConfig's constructor signature, or a
   user asking where the warning went.
+
+## access-log-hides-peer-under-star — with trustedProxies '*' the access log shows only the client-chosen IP
+
+- **What**: since dbb006d the access log prints the resolved `request.ipAddress`. With
+  `ipSecurity.trustedProxies: ['*']` every peer is trusted, so that address is whatever the leftmost
+  `X-Forwarded-For` entry says, chosen by the client, and the socket peer that actually connected is never
+  logged. An operator investigating abuse has no real address to block.
+- **Why deferred**: review round 5 minor. `'*'` is documented as the spoofable escape hatch, and the right shape
+  (log both the resolved client and the socket peer, or only add the peer when they differ) changes the
+  nginx-style line format that log parsers depend on, which is a decision about the format, not a patch.
+- **Cost later**: low; carry the socket peer on the request internally and append it to the log line.
+- **Trigger**: the next change to the access-log line format, or an operator report of being unable to trace
+  a client behind `'*'`.
