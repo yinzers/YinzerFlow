@@ -79,14 +79,17 @@ describe('Rate Limiting Feature', () => {
   });
 
   describe('when rate limit is exceeded', () => {
-    it('should return 429 status', async () => {
+    // Bug (row 2): the global limiter ran in beforeAll, after route lookup, so unmatched paths 404'd unthrottled and route scanning was never limited. Tier: Medium (feature).
+    it.each([['/test'], ['/no-such-route']])('should return 429 with rate-limit headers past the limit on %s', async (path) => {
       // Send 3 requests to hit limit
-      const requests = Array.from({ length: 3 }, async () => getRequest({ testPort }));
+      const requests = Array.from({ length: 3 }, async () => fetch(`http://127.0.0.1:${testPort}${path}`));
       await Promise.all(requests);
 
       // 4th request should be rate limited
-      const response = await getRequest({ testPort });
+      const response = await fetch(`http://127.0.0.1:${testPort}${path}`);
       expect(response.status).toBe(429);
+      expect(response.headers.get('RateLimit-Limit')).toBe('3');
+      expect(response.headers.get('RateLimit-Remaining')).toBe('0');
     });
 
     it('should return error message with Pittsburgh personality', async () => {

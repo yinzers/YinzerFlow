@@ -192,13 +192,8 @@ export class YinzerFlow extends SetupImpl {
 
     // Global rate limiting is enabled by default: gate on the RESOLVED config, never the raw user input,
     // or an app that passes no rateLimit options (the documented default) silently gets no limiter.
+    // The hook itself is registered after CORS below.
     const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit, this._log);
-    if (rateLimitConfig.enabled) {
-      this._globalRateLimiter = new RateLimiter(rateLimitConfig);
-      const onRateLimitHit = this._diagnostics ? (ip: string, path: string): void => this._diagnostics?.onRateLimitHit(ip, path) : undefined;
-      const hook = _createGlobalRateLimitHook(this._globalRateLimiter, onRateLimitHit);
-      this.beforeAll([hook]);
-    }
 
     // Setup cookie parser, if enabled, since it is deisabled by default we can set the configuration after the conditional
     if (configuration?.cookieParser?.enabled) {
@@ -214,6 +209,17 @@ export class YinzerFlow extends SetupImpl {
       // Type assertion safe here: validate() throws if config is disabled
       const corsHookFunc = corsHook(corsConfig as InternalCorsEnabledOptions);
       this.beforeRouting([corsHookFunc]);
+    }
+
+    // Global rate limiting runs in beforeRouting, the earliest per-request stage: after the canonical-path
+    // 400 and BEFORE route lookup, so unmatched paths (route scanning) are throttled too. beforeAll would
+    // never see them, because a 404 returns before that stage. Registered after CORS so preflights are
+    // answered first and 429 responses still carry CORS headers.
+    if (rateLimitConfig.enabled) {
+      this._globalRateLimiter = new RateLimiter(rateLimitConfig);
+      const onRateLimitHit = this._diagnostics ? (ip: string, path: string): void => this._diagnostics?.onRateLimitHit(ip, path) : undefined;
+      const hook = _createGlobalRateLimitHook(this._globalRateLimiter, onRateLimitHit);
+      this.beforeRouting([hook]);
     }
 
     // Setup automatic graceful shutdown if enabled
