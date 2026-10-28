@@ -150,3 +150,4 @@ out
 
 # Linked git worktrees (worktree-birth.sh); keeps the main checkout clean for the release script
 .claude/worktrees/
+.claude/settings.local.json
