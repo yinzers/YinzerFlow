@@ -2,6 +2,7 @@ import { httpStatusCode } from '@constants/http.ts';
 import { rateLimitAlgorithm } from '@constants/rateLimit.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import { log } from '@core/utils/log.ts';
+import { rateLimitIpKey } from '@core/modules/rateLimit/ipKey.ts';
 import type { Logger } from '@typedefs/public/Logger.js';
 import type { RateLimitAlgorithm } from '@typedefs/constants/rateLimit.js';
 import type { Context, HandlerCallback } from '@typedefs/public/Context.js';
@@ -17,6 +18,7 @@ export class RateLimitConfig implements RateLimitOptions {
   standardHeaders: boolean;
   skipSuccessfulRequests: boolean;
   skipFailedRequests: boolean;
+  ipv6Subnet: number | false;
   keyGenerator: (ctx: Context<any>) => string;
   handler: <T extends HandlerCallbackGenerics>(ctx: Context<T>) => HandlerCallback<T>;
 
@@ -33,7 +35,8 @@ export class RateLimitConfig implements RateLimitOptions {
     this.standardHeaders = options.standardHeaders ?? true;
     this.skipSuccessfulRequests = options.skipSuccessfulRequests ?? false;
     this.skipFailedRequests = options.skipFailedRequests ?? false;
-    this.keyGenerator = options.keyGenerator ?? defaultKeyGenerator;
+    this.ipv6Subnet = options.ipv6Subnet ?? 56;
+    this.keyGenerator = options.keyGenerator ?? _createDefaultKeyGenerator(this.ipv6Subnet);
     this.handler = (options.handler ?? defaultHandler) as <T extends HandlerCallbackGenerics>(ctx: Context<T>) => HandlerCallback<T>;
   }
 
@@ -52,6 +55,7 @@ export class RateLimitConfig implements RateLimitOptions {
       standardHeaders: this.standardHeaders,
       skipSuccessfulRequests: this.skipSuccessfulRequests,
       skipFailedRequests: this.skipFailedRequests,
+      ipv6Subnet: this.ipv6Subnet,
       keyGenerator: this.keyGenerator,
       handler: this.handler,
     };
@@ -122,6 +126,7 @@ const _validateRateLimitConfig = (config: RateLimitOptions): void => {
     }
   }
   _validateMemoryStoreConfig(config.store);
+  _validateIpv6Subnet(config.ipv6Subnet);
 };
 
 /**
@@ -190,4 +195,21 @@ const defaultHandler = (ctx: Context<any>): { success: false; message: string } 
   };
 };
 
-const defaultKeyGenerator = (ctx: Context<any>): string => ctx.request.ipAddress;
+/**
+ * Default key: the client IP, with IPv6 masked to its `/ipv6Subnet` prefix (IPv4-mapped IPv6 keyed as IPv4),
+ * so one client can't rotate through its IPv6 block for fresh buckets. Same default (/56) as express-rate-limit v8.
+ */
+const _createDefaultKeyGenerator =
+  (ipv6Subnet: number | false) =>
+  (ctx: Context<any>): string =>
+    rateLimitIpKey(ctx.request.ipAddress, ipv6Subnet);
+
+/**
+ * Validate the IPv6 prefix length used by the default key generator
+ */
+const _validateIpv6Subnet = (ipv6Subnet: unknown): void => {
+  if (ipv6Subnet === undefined || ipv6Subnet === false) return;
+  if (typeof ipv6Subnet !== 'number' || !Number.isInteger(ipv6Subnet) || ipv6Subnet < 1 || ipv6Subnet > 128) {
+    throw new Error(`rateLimit.ipv6Subnet must be an integer from 1 to 128, or false to key on the full address. Received: ${JSON.stringify(ipv6Subnet)}`);
+  }
+};

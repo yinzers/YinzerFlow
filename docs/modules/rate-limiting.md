@@ -191,12 +191,35 @@ const app = new YinzerFlow({
 
 Options: `(context: Context) => string`
 
-- ✅ Default: `(ctx) => ctx.request.ipAddress`
+- ✅ Default: the client IP (`ctx.request.ipAddress`), IPv6 masked to `ipv6Subnet`
 - 🎯 Common patterns:
   - 🔑 User ID: `ctx.state.userId`
   - 🌐 API key: `ctx.request.headers['x-api-key']`
   - 🎨 Combination: `${tier}:${userId}`
 - ⏱️ Runs after `beforeRouting` hooks and route matching: it can read `ctx.request.params` and state set in `beforeRouting`, not state set in `beforeAll`
+
+</aside>
+
+### ipv6Subnet — @default <span style="color: #2ecc71">`56`</span>
+
+Prefix length the default key generator masks IPv6 client addresses to. One IPv6 customer usually holds a whole /64 or more, so keying on the full address would let one client rotate addresses and get a fresh bucket each time. With the default, every address in the same /56 shares one bucket, matching express-rate-limit v8. IPv4 addresses, and IPv4-mapped IPv6 such as `::ffff:203.0.113.7`, are keyed as the IPv4 address. Different spellings of one address (compressed or expanded, any letter case) always land on the same key.
+
+```typescript
+const app = new YinzerFlow({
+  rateLimit: {
+    ipv6Subnet: 64, // one bucket per /64; use false to key on the full address
+  },
+});
+```
+
+<aside>
+
+Options: `number | false`
+
+- 🟢 Default: `56`
+- 🔢 `1`–`128`: mask IPv6 to that prefix (`64` for one bucket per typical end site)
+- 🔴 `false`: key on the full IPv6 address
+- 📝 Applies to the default key only; a custom `keyGenerator` decides its own key
 
 </aside>
 

@@ -178,8 +178,18 @@ export interface RateLimitOptions {
   store?: StoreConfig;
 
   /**
+   * IPv6 prefix length the default key generator masks client addresses to @default 56
+   *
+   * One IPv6 customer usually holds a whole /64 or larger, so keying on the full address lets one client
+   * rotate addresses for a fresh bucket each time. With the default, every address in the same /56 shares a
+   * bucket (the same default as express-rate-limit v8). IPv4 and IPv4-mapped IPv6 (`::ffff:1.2.3.4`) are keyed
+   * as the IPv4 address. Set `false` to key on the full IPv6 address. Ignored when you pass `keyGenerator`.
+   */
+  ipv6Subnet?: number | false;
+
+  /**
    * Custom key generator function for identifying clients
-   * @default (ctx) => ctx.request.ipAddress
+   * @default the client IP, IPv6 masked to `ipv6Subnet` (see above)
    *
    * @example
    * ```typescript
