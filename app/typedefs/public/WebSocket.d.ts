@@ -177,5 +177,23 @@ export interface WebSocketBackpressureOptions {
 /**
  * WebSocket message hook handler signature.
  * Used for `wsBeforeMessage` and `wsAfterMessage` global hooks.
+ *
+ * A `wsBeforeMessage` hook that returns (or resolves to) `false` drops the message: later before hooks, the route's
+ * `message` handler and the after hooks don't run, and nothing is logged. To also end the connection, call
+ * `ws.close(code, reason)` before returning `false`. A throw is still an error and goes to the route's `error` handler.
+ * The return value of a `wsAfterMessage` hook is ignored.
+ *
+ * @example
+ * ```typescript
+ * app.wsBeforeMessage([
+ *   (ws, data) => {
+ *     if (String(data).length > 4096) {
+ *       ws.close(wsCloseCode.policyViolation, 'Message too long');
+ *       return false;
+ *     }
+ *     if (String(data) === 'ping') return false; // app-level keepalive, nothing to handle
+ *   },
+ * ]);
+ * ```
  */
-export type WebSocketMessageHook = (ws: WebSocket, data: Buffer | string, isBinary: boolean) => Promise<void> | void;
+export type WebSocketMessageHook = (ws: WebSocket, data: Buffer | string, isBinary: boolean) => Promise<false | void> | false | void;

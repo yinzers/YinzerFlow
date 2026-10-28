@@ -237,6 +237,35 @@ describe('WebSocket Integration', () => {
     });
   });
 
+  // Bug (0.9.0): a wsBeforeMessage hook could only stop a message by throwing, which logged an error. Returning false
+  // must drop the message (no handler, no after hooks) without an error. Tier: Medium (hook short-circuit contract).
+  describe('wsBeforeMessage short-circuit', () => {
+    it('should drop a message when a before hook returns false, and still deliver the next one', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      const seen: Array<string> = [];
+      const afterSeen: Array<string> = [];
+      app.wsBeforeMessage([(_ws, data) => (String(data) === 'drop' ? false : undefined)]);
+      app.wsAfterMessage([(_ws, data) => void afterSeen.push(String(data))]);
+      app.ws('/ws', {
+        message(_ws, data) {
+          seen.push(String(data));
+        },
+      });
+      await app.listen();
+
+      const { socket } = await connectWs(testPort);
+      socket.write(buildClientFrame(wsOpcode.text, Buffer.from('drop')));
+      socket.write(buildClientFrame(wsOpcode.text, Buffer.from('keep')));
+      await waitFor(() => seen.length >= 1);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(seen).toEqual(['keep']);
+      expect(afterSeen).toEqual(['keep']);
+      socket.destroy();
+    });
+  });
+
   describe('upgrade rejection', () => {
     it('should return 403 when upgrade handler returns false', async () => {
       const { testPort } = createTestApp();

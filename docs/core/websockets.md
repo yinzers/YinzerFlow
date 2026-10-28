@@ -314,6 +314,24 @@ app.wsAfterMessage([
 ]);
 ```
 
+### Dropping a Message
+
+A `wsBeforeMessage` hook drops a message by returning `false`, the same way an HTTP hook short-circuits by returning a value. Later before hooks, the route's `message` handler and the `wsAfterMessage` hooks don't run, and nothing is logged. To end the connection as well, call `ws.close(code, reason)` and then return `false`. A hook that throws is still treated as an error and goes to the route's `error` handler.
+
+```typescript
+import { wsCloseCode } from 'yinzerflow';
+
+app.wsBeforeMessage([
+  (ws, data) => {
+    if (String(data).length > 4096) {
+      ws.close(wsCloseCode.policyViolation, 'Message too long');
+      return false;
+    }
+    if (String(data) === 'ping') return false; // app-level keepalive, nothing to handle
+  },
+]);
+```
+
 ## 📡 The `ws` Object
 
 Available in all handlers:

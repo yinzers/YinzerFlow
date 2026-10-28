@@ -53,7 +53,8 @@ const _invokeGuarded = (call: () => unknown, onError: (error: unknown) => void):
 };
 
 /**
- * Before hooks, the route's message handler, then after hooks, in order. A hook or handler that returns a promise is
+ * Before hooks, the route's message handler, then after hooks, in order. A before hook that returns (or resolves to)
+ * `false` ends the pipeline for that message. A hook or handler that returns a promise is
  * awaited; a synchronous one is not, so a route with no hooks and a synchronous handler delivers in the same tick.
  */
 const _runMessagePipeline = async ({
@@ -71,7 +72,8 @@ const _runMessagePipeline = async ({
 }): Promise<void> => {
   for (const hook of hooks._wsBeforeMessage) {
     const result = hook.handler(ws, data, isBinary);
-    if (result instanceof Promise) await result;
+    // `false` drops the message: no later before hook, no handler, no after hooks, and nothing logged
+    if ((result instanceof Promise ? await result : result) === false) return;
   }
 
   const handlerResult: unknown = handlers.message?.(ws, data, isBinary);

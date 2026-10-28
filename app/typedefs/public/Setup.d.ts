@@ -367,7 +367,7 @@ export interface Setup extends HttpMethodHandlers {
    */
   ws: <T = unknown>(path: string, handlers: WebSocketHandlers<T>, options?: WebSocketRouteOptions) => void;
 
-  /** Register global hooks that run before each WebSocket message handler. */
+  /** Register global hooks that run before each WebSocket message handler. A hook that returns `false` drops the message. */
   wsBeforeMessage: (handlers: Array<WebSocketMessageHook>) => void;
 
   /** Register global hooks that run after each WebSocket message handler. */
