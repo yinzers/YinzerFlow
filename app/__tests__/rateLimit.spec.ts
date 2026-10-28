@@ -338,6 +338,53 @@ describe('Per-route rateLimitHook', () => {
   });
 });
 
+// Bug: binding a limiter per route registration split one hook's budget: GET and its automatic HEAD, or two routes
+// sharing one hook, each got their own count, so the handler ran past the limit. Tier: Medium (feature).
+describe('One budget per rateLimitHook', () => {
+  type BudgetCase = [description: string, register: (app: YinzerFlow) => void, requests: Array<[method: string, path: string]>];
+  const budgetCases: Array<BudgetCase> = [
+    [
+      'GET then HEAD on one route',
+      (app) => app.get('/x', () => ({ ok: true }), { beforeHooks: [rateLimitHook({ max: 2, window: '1m' })], afterHooks: [] }),
+      [
+        ['GET', '/x'],
+        ['HEAD', '/x'],
+        ['GET', '/x'],
+      ],
+    ],
+    [
+      'one hook on two routes',
+      (app) => {
+        const shared = rateLimitHook({ max: 2, window: '1m' });
+        app.post('/a', () => ({ ok: true }), { beforeHooks: [shared], afterHooks: [] });
+        app.get('/b', () => ({ ok: true }), { beforeHooks: [shared], afterHooks: [] });
+      },
+      [
+        ['POST', '/a'],
+        ['GET', '/b'],
+        ['POST', '/a'],
+      ],
+    ],
+  ];
+
+  let budgetApp: YinzerFlow | undefined;
+
+  afterEach(async () => {
+    if (budgetApp?.status().isListening) await budgetApp.close();
+  });
+
+  it.each(budgetCases)('should share one budget for %s', async (_description, register, requests) => {
+    let testPort: number;
+    ({ app: budgetApp, testPort } = createTestApp({ rateLimit: { enabled: false } }));
+    register(budgetApp);
+    await budgetApp.listen();
+
+    const statuses: Array<number> = [];
+    for (const [method, path] of requests) statuses.push((await fetch(`http://127.0.0.1:${testPort}${path}`, { method })).status);
+    expect(statuses).toEqual([200, 200, 429]);
+  });
+});
+
 // Bug: the limiter was only installed when `rateLimit.enabled: true` was passed explicitly, so the documented default left apps unprotected. Tier: Medium (feature default).
 describe('Rate Limiting with no rateLimit option (documented default)', () => {
   let defaultApp: YinzerFlow;
@@ -597,9 +644,9 @@ describe('Rate Limiting with Redis Store', () => {
     });
   });
 
-  describe('Route-level limiters on a shared client', () => {
-    // Bug: route rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other, and their limiters were never destroyed on close(). Tier: Medium.
-    it('should namespace each route deterministically and destroy those namespaces on close, then keep limiting after listen again', async () => {
+  describe('Separate rateLimitHooks on a shared client', () => {
+    // Bug: rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other. Tier: Medium.
+    it('should keep each hook and the global limiter in their own namespace, and keep working after close and listen', async () => {
       const setKeys: Array<string> = [];
       const destroyedPatterns: Array<string> = [];
       const recordingClient = {
@@ -615,25 +662,27 @@ describe('Rate Limiting with Redis Store', () => {
       };
       const store = { type: 'redis' as const, client: recordingClient as any, keyPrefix: 'test:rate_limit:', maxRetries: 1 };
       const { app: sharedApp, testPort: sharedPort } = createTestApp({ rateLimit: { max: 50, window: '1m', store } });
-      const routeLimit = rateLimitHook({ max: 5, window: '1m', store });
-      sharedApp.post('/a', () => ({ ok: true }), { beforeHooks: [routeLimit], afterHooks: [] });
-      sharedApp.get('/b', () => ({ ok: true }), { beforeHooks: [routeLimit], afterHooks: [] });
+      sharedApp.post('/login', () => ({ ok: true }), { beforeHooks: [rateLimitHook({ name: 'login', max: 5, window: '1m', store })], afterHooks: [] });
+      sharedApp.get('/search', () => ({ ok: true }), { beforeHooks: [rateLimitHook({ max: 5, window: '1m', store })], afterHooks: [] });
       await sharedApp.listen();
 
-      await fetch(`http://127.0.0.1:${sharedPort}/a`, { method: 'POST' });
-      await fetch(`http://127.0.0.1:${sharedPort}/b`);
-      const namespaces = new Set(setKeys.map((key) => key.slice(0, key.lastIndexOf(':') + 1)));
-      expect(namespaces).toEqual(new Set(['test:rate_limit:', 'test:rate_limit:route:POST /a:', 'test:rate_limit:route:GET /b:']));
+      await fetch(`http://127.0.0.1:${sharedPort}/login`, { method: 'POST' });
+      await fetch(`http://127.0.0.1:${sharedPort}/search`);
+      const namespaces = [...new Set(setKeys.map((key) => key.slice(0, key.lastIndexOf(':') + 1)))].sort();
+      expect(namespaces).toHaveLength(3);
+      expect(namespaces[0]).toBe('test:rate_limit:global:');
+      expect(namespaces[1]).toMatch(/^test:rate_limit:hook:#\d+:$/);
+      expect(namespaces[2]).toBe('test:rate_limit:hook:login:');
 
       await sharedApp.close();
-      expect(new Set(destroyedPatterns)).toEqual(new Set(['test:rate_limit:*', 'test:rate_limit:route:POST /a:*', 'test:rate_limit:route:GET /b:*']));
+      expect(destroyedPatterns.sort()).toEqual([...namespaces].map((namespace) => `${namespace}*`).sort());
 
       const keysBeforeRestart = setKeys.length;
       await sharedApp.listen();
-      const afterRestart = await fetch(`http://127.0.0.1:${sharedPort}/b`);
+      const afterRestart = await fetch(`http://127.0.0.1:${sharedPort}/login`, { method: 'POST' });
       await sharedApp.close();
       expect(afterRestart.headers.get('RateLimit-Limit')).toBe('5');
-      expect(setKeys.slice(keysBeforeRestart).some((key) => !key.includes(':route:'))).toBe(true);
+      expect(setKeys.slice(keysBeforeRestart).some((key) => key.startsWith('test:rate_limit:global:'))).toBe(true);
     });
   });
 

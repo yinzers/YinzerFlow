@@ -9,8 +9,20 @@ import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGe
 /** Hook instance -> the limiter it owns, so the app can destroy every limiter it holds on close(). */
 const _hookLimiters = new WeakMap<object, RateLimiter>();
 
-/** Unbound rateLimitHook instance -> factory for a clone bound to one route registration. */
-const _routeBinders = new WeakMap<object, (routeId: string) => HandlerCallback>();
+/** Creation-order counter naming hooks created without `name`. */
+let _unnamedHookCount = 0;
+
+/**
+ * Give a Redis store config its own key namespace: keys become `<keyPrefix><namespace>:<client key>`. The
+ * global limiter uses `global` and each rateLimitHook `hook:<name>`, so no client key (a custom keyGenerator
+ * can return anything) can collide with another limiter's keys on a shared client and prefix. The in-memory
+ * store is already one per limiter, so it is returned unchanged.
+ */
+export const _withStoreNamespace = <O extends RateLimitOptions | undefined>(rateLimitOptions: O, namespace: string): O => {
+  const store = rateLimitOptions?.store;
+  if (store?.type !== 'redis') return rateLimitOptions;
+  return { ...rateLimitOptions, store: { ...store, keyPrefix: `${store.keyPrefix ?? 'rate_limit:'}${namespace}:` } };
+};
 
 /**
  * Create a rate limiting hook for use in route options
@@ -47,24 +59,16 @@ const _routeBinders = new WeakMap<object, (routeId: string) => HandlerCallback>(
  * ```
  */
 export const rateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions): HandlerCallback<T> => {
-  const hook = _createRateLimitHook<T>(rateLimitOptions, 'unbound');
-  // Route registration swaps this instance for a per-route clone (see _bindRateLimitHookToRoute)
-  _routeBinders.set(hook, (routeId) => _createRateLimitHook(rateLimitOptions, `route:${routeId}`));
-  return hook;
+  // One budget per rateLimitHook() call, wherever the hook is used: GET and its automatic HEAD, several routes
+  // sharing one hook, or a group hook all count against the same limiter (the express-rate-limit model).
+  _unnamedHookCount += 1;
+  const namespace = `hook:${rateLimitOptions.name ?? `#${_unnamedHookCount}`}`;
+  return _createRateLimitHook<T>(rateLimitOptions, namespace);
 };
 
-/**
- * Build one hook with its own limiter. `namespace` keeps its Redis keys apart from the global limiter's and
- * from every other route's when they share a client and key prefix: keys become
- * `<keyPrefix><namespace>:<client key>`. The in-memory store is already per limiter, so it needs no namespace.
- */
+/** Build one hook with its own limiter (and one store), created once, in its own Redis key namespace. */
 const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions, namespace: string): HandlerCallback<T> => {
-  const { store } = rateLimitOptions;
-  const namespacedOptions: RateLimitOptions =
-    store?.type === 'redis' ? { ...rateLimitOptions, store: { ...store, keyPrefix: `${store.keyPrefix ?? 'rate_limit:'}${namespace}:` } } : rateLimitOptions;
-  // One limiter (and one store) per hook, created once. Building it inside the per-request closure gave every
-  // request a fresh, empty store, so the limit never applied.
-  const rateLimiter = new RateLimiter(new RateLimitConfig(namespacedOptions));
+  const rateLimiter = new RateLimiter(new RateLimitConfig(_withStoreNamespace(rateLimitOptions, namespace)));
 
   const hook: HandlerCallback<T> = async (context) => {
     // Check if request is within rate limit
@@ -86,14 +90,6 @@ const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOption
   _hookLimiters.set(hook, rateLimiter);
   return hook;
 };
-
-/**
- * Called by route registration for every route hook. A rateLimitHook instance is replaced by a clone whose
- * namespace is the route registration (`route:<METHOD> <pattern>`): deterministic, so it is the same on every
- * node and after restarts, and distinct per route even when one hook instance is reused across routes. Any
- * other hook is returned unchanged.
- */
-export const _bindRateLimitHookToRoute = (hook: HandlerCallback, routeId: string): HandlerCallback => _routeBinders.get(hook)?.(routeId) ?? hook;
 
 /** The limiter a rateLimitHook instance owns, or undefined for any other hook. */
 export const _rateLimiterOfHook = (hook: HandlerCallback): RateLimiter | undefined => _hookLimiters.get(hook);

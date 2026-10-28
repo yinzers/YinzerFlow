@@ -11,7 +11,7 @@ import type { ServerOptions } from '@typedefs/public/Configuration.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import { accessLogBaseConfig, getStatusEmoji } from '@core/utils/accessLog.ts';
-import { _createGlobalRateLimitHook, _rateLimiterOfHook } from '@core/modules/rateLimit/rateLimithooks.ts';
+import { _createGlobalRateLimitHook, _rateLimiterOfHook, _withStoreNamespace } from '@core/modules/rateLimit/rateLimithooks.ts';
 import { RateLimiter } from '@core/modules/rateLimit/RateLimiter.ts';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
@@ -195,7 +195,8 @@ export class YinzerFlow extends SetupImpl {
     // Global rate limiting is enabled by default: gate on the RESOLVED config, never the raw user input,
     // or an app that passes no rateLimit options (the documented default) silently gets no limiter.
     // The hook itself is registered after CORS below.
-    const rateLimitConfig = new RateLimitConfig(configuration?.rateLimit, this._log);
+    // The global limiter's Redis keys live under `<keyPrefix>global:`, apart from every rateLimitHook's namespace
+    const rateLimitConfig = new RateLimitConfig(_withStoreNamespace(configuration?.rateLimit, 'global'), this._log);
 
     // Setup cookie parser, if enabled, since it is deisabled by default we can set the configuration after the conditional
     if (configuration?.cookieParser?.enabled) {

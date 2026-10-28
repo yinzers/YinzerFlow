@@ -1,7 +1,6 @@
 import { compileRoutePattern } from '@core/setup/utils/compileRoutePatter.ts';
 import { normalizePath, normalizeRouteStructure } from '@core/setup/utils/normalizeStringPatterns.ts';
 import { validateParameterNames } from '@core/setup/utils/validateParameterNames.ts';
-import { _bindRateLimitHookToRoute } from '@core/modules/rateLimit/rateLimithooks.ts';
 import type { InternalHttpMethod } from '@typedefs/constants/http.ts';
 import type { InternalPreCompiledRoute, InternalRouteRegistry, InternalRouteRegistryImpl } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 
@@ -61,17 +60,7 @@ export class RouteRegistryImpl implements InternalRouteRegistryImpl {
       throw new Error(`Route ${normalizedPath} already exists for method ${method}`);
     }
 
-    // Give each rateLimitHook its own per-route limiter, keyed by this registration (method + pattern), so
-    // route limits never share counters with each other or with the global limiter. New arrays: GET and its
-    // auto-registered HEAD share one options object.
-    const routeId = `${method} ${normalizedPath}`;
-    const boundOptions = {
-      ...options,
-      beforeHooks: (options.beforeHooks ?? []).map((hook) => _bindRateLimitHookToRoute(hook, routeId)),
-      afterHooks: (options.afterHooks ?? []).map((hook) => _bindRateLimitHookToRoute(hook, routeId)),
-    };
-
-    const route = { method, path: normalizedPath, handler, options: boundOptions, params: {} };
+    const route = { method, path: normalizedPath, handler, options, params: {} };
 
     if (isParameterized) {
       // Store in parameterized routes with pre-compiled regex

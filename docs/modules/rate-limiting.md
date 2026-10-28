@@ -39,6 +39,7 @@ Enable or disable rate limiting globally or per-route.
 - Hook patterns (`routesToInclude` / `routesToExclude`) that use a route parameter (`'/users/:id'`) or a mid-path `*` (`'/api/*/admin'`) now throw at startup. Use a trailing wildcard on the parent path (`'/users/*'`).
 - Apps behind a reverse proxy, load balancer or CDN must list it in `ipSecurity.trustedProxies` (see [IP Security](./ip-security.md)). Otherwise every client is seen as the proxy's IP and all users share one rate-limit bucket.
 - The global limiter runs in its own stage, after `beforeRouting` hooks and route matching and before the not-found handler and `beforeAll`. A custom `keyGenerator` can read `ctx.request.params` and state set in `beforeRouting`, but **not state set in `beforeAll`**, which hasn't run yet. If your key reads something like `ctx.state.userId`, set it in a `beforeRouting` hook. Otherwise the key falls back to its default and every client shares one bucket.
+- **Redis users: counters restart once on upgrade.** Keys now live in per-limiter namespaces: `<keyPrefix>global:<client>` for the global limiter and `<keyPrefix>hook:<name>:<client>` for each `rateLimitHook`. Before, every limiter wrote `<keyPrefix><client>`, so the global limit and every route limit on a shared client counted each other's requests. Give each `rateLimitHook` a `name` if several nodes share one Redis (see Per-Route Limits below).
 
 ```typescript
 import { YinzerFlow } from 'yinzerflow';
@@ -710,6 +711,17 @@ YinzerFlow implements several security measures to prevent abuse while maintaini
 
 - **Problem**: One-size-fits-all limits don't work for different endpoint types (public vs authenticated, read vs write).
 - **YinzerFlow Solution**: Per-route rate limiting with `rateLimitHook()` allows strict limits for sensitive endpoints while keeping generous limits for general API usage.
+
+**One budget per `rateLimitHook()` call.** A hook counts every request it sees against one limit, wherever it is used: a GET route and its automatic HEAD, several routes given the same hook, or a hook set on a group. To give routes separate limits, call `rateLimitHook()` once per route.
+
+```typescript
+const loginLimit = rateLimitHook({ name: 'login', max: 5, window: '15m', store: redisStore });
+
+app.post('/api/auth/login', loginHandler, { beforeHooks: [loginLimit] });
+app.post('/api/auth/login/otp', otpHandler, { beforeHooks: [loginLimit] }); // same 5-per-15-minutes budget
+```
+
+<span style="color: #f39c12">**⚠️ Multi-node Redis:**</span> each hook's Redis keys live under `<keyPrefix>hook:<name>:`. Without `name`, the namespace is the hook's creation order (`hook:#1`, `hook:#2`, ...), which matches across nodes and restarts only while every node creates its hooks in the same order. Give every hook a unique `name` when several nodes share one Redis.
 
 ### 🛡️ Custom Key Generators
 

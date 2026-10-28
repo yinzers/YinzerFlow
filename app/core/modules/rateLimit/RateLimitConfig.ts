@@ -127,6 +127,7 @@ const _validateRateLimitConfig = (config: RateLimitOptions): void => {
   }
   _validateMemoryStoreConfig(config.store);
   _validateIpv6Subnet(config.ipv6Subnet);
+  _validateHookName(config.name);
 };
 
 /**
@@ -203,6 +204,16 @@ const _createDefaultKeyGenerator =
   (ipv6Subnet: number | false) =>
   (ctx: Context<any>): string =>
     rateLimitIpKey(ctx.request.ipAddress, ipv6Subnet);
+
+/**
+ * Validate a rateLimitHook budget name (its Redis key namespace)
+ */
+const _validateHookName = (name: unknown): void => {
+  if (name === undefined) return;
+  if (typeof name !== 'string' || name.trim() === '') {
+    throw new Error(`rateLimit name must be a non-empty string. Received: ${JSON.stringify(name)}`);
+  }
+};
 
 /**
  * Validate the IPv6 prefix length used by the default key generator

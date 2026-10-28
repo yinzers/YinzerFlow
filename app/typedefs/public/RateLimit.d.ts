@@ -178,6 +178,22 @@ export interface RateLimitOptions {
   store?: StoreConfig;
 
   /**
+   * Name of a `rateLimitHook()` budget, used as its Redis key namespace (`<keyPrefix>hook:<name>:`)
+   *
+   * Each `rateLimitHook()` call is one budget wherever the hook is used: GET and its automatic HEAD, several
+   * routes sharing one hook, or a group hook all count against it. Without `name`, the namespace is a creation-order
+   * number (`hook:#3`), which is the same on every node and after restarts only while every node creates its hooks
+   * in the same order. Give every hook a unique `name` when several nodes share one Redis. Ignored by the
+   * global limiter, whose keys always live under `<keyPrefix>global:`.
+   *
+   * @example
+   * ```typescript
+   * const loginLimit = rateLimitHook({ name: 'login', max: 5, window: '15m', store: redisStore });
+   * ```
+   */
+  name?: string;
+
+  /**
    * IPv6 prefix length the default key generator masks client addresses to @default 56
    *
    * One IPv6 customer usually holds a whole /64 or larger, so keying on the full address lets one client
