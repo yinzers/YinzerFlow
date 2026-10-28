@@ -111,15 +111,15 @@ const _clientFromSingleValue = (headerValue: string): string | null => {
   return hextets ? canonicalIpText(hextets) : null;
 };
 
-let _hasWarnedUnparseablePeer = false;
+let _hasWarnedUnparsedPeer = false;
 
 /**
  * Warn once per process when a socket peer address doesn't parse (a Unix socket, `'unknown'`, an unexpected runtime
  * format). Such a peer is never trusted, so forwarded headers are ignored and every such client shares one key.
  */
-const _warnUnparseablePeer = (setup: InternalSetupImpl, peerAddress: string): void => {
-  if (_hasWarnedUnparseablePeer) return;
-  _hasWarnedUnparseablePeer = true;
+const _warnUnparsedPeer = (setup: InternalSetupImpl, peerAddress: string): void => {
+  if (_hasWarnedUnparsedPeer) return;
+  _hasWarnedUnparsedPeer = true;
   setup._log.warn(
     `[IP SECURITY] Could not parse the socket peer address ${JSON.stringify(peerAddress)}. Forwarded client-IP headers ` +
       'are ignored for such connections and they all share one rate-limit key. Check how YinzerFlow is being reached.',
@@ -157,7 +157,7 @@ export const parseIpAddressSecure = (
   const config = setup._configuration.ipSecurity;
   const matcher = setup._trustedProxyMatcher;
   const peer = parseIp(peerAddress);
-  if (!peer && peerAddress !== '') _warnUnparseablePeer(setup, peerAddress);
+  if (!peer && peerAddress !== '') _warnUnparsedPeer(setup, peerAddress);
   const socketResult = _socketResult(peerAddress, peer);
   if (!peer || !_isTrustedHop(peer, matcher)) return socketResult;
 
