@@ -300,7 +300,7 @@ When publishing to a channel, the WebSocket frame is encoded **once** into raw b
 
 ### Global HTTP Hooks on Upgrade
 
-<span style="color: #f39c12">**⚠️ Behavior change in 0.9.1:**</span> upgrade requests now run the app's global HTTP hooks. In 0.9.0 they skipped every one of them, so a `beforeAll` auth hook protected the REST routes while a WebSocket route without its own `upgrade` check accepted anyone. Apps whose global hooks assumed they only ever see HTTP requests should check those hooks against upgrades.
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> upgrade requests now run the app's global HTTP hooks. Before 0.10.0 they skipped every one of them, so a `beforeAll` auth hook protected the REST routes while a WebSocket route without its own `upgrade` check accepted anyone. Apps whose global hooks assumed they only ever see HTTP requests should check those hooks against upgrades.
 
 An upgrade request runs these steps, in this order, before the connection opens:
 
@@ -308,13 +308,13 @@ An upgrade request runs these steps, in this order, before the connection opens:
 2. Global `beforeRouting` hooks (CORS runs here when enabled)
 3. WebSocket route matching: `ctx.request.params` is filled from the `app.ws()` pattern
 4. The built-in global rate limiter (429 when exceeded), so upgrade floods are throttled like any other request
-5. The not-found handler when no WebSocket route matched
-6. Global `beforeAll` hooks
+5. Global `beforeAll` hooks
+6. The not-found handler, then `afterAll` hooks on its response, when no WebSocket route matched
 7. Origin check (`allowedOrigins`, 403) and the per-IP connection cap (`maxConnectionsPerIp`, 429)
 8. The route's `upgrade(req)` handler
 9. `101 Switching Protocols`, then `open(ws)`
 
-Steps 2 to 6 are the same stages, in the same order, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks and `afterAll` hooks don't run: a WebSocket route has no route hooks, and an accepted upgrade has no HTTP response for them to change.
+Steps 2 to 6 are the same stages, in the same order and through the same code, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks don't run, since a WebSocket route has none, and `afterAll` hooks run only on the 404 of step 6: an accepted upgrade has no HTTP response for them to change.
 
 A hook refuses the upgrade the way it answers an HTTP request early: by returning a value. On an upgrade, setting a status other than 200 without returning anything refuses it too, because there is no route handler left to carry that status. Either way the client gets a real HTTP response with that status and body, and the socket is closed.
 
@@ -504,7 +504,7 @@ await app.listen();
 
 ### 🛡️ Global Hooks and Rate Limiting on Upgrade
 - **Problem**: Upgrades that bypass the app's auth hooks or rate limiter open a second, unguarded door into the app
-- **YinzerFlow Solution**: Every upgrade runs the global `beforeRouting` hooks, the global rate limiter and the global `beforeAll` hooks before the route's `upgrade` handler, matched on the same canonical path as HTTP (since 0.9.1)
+- **YinzerFlow Solution**: Every upgrade runs the global `beforeRouting` hooks, the global rate limiter and the global `beforeAll` hooks before the route's `upgrade` handler, matched on the same canonical path as HTTP (since 0.10.0)
 
 ### 🛡️ Connection Limits
 - **Problem**: Connection exhaustion from a single IP

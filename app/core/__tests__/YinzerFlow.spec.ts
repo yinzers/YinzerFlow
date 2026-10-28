@@ -593,6 +593,48 @@ describe('YinzerFlow', () => {
         expect(response).toContain('404 Not Found');
         expect(response).toContain(JSON.stringify(customNotFoundResponse));
       });
+
+      // Bug (0.9.x, security): the 404 was answered before beforeAll, so an auth hook answered 401 on real routes and
+      // 404 on made-up ones, which let an unauthenticated client map the routes; afterAll never saw a 404 either.
+      // Tier: High (authz must not leak which routes exist).
+      describe('global hooks on unmatched routes', () => {
+        const authHook: HandlerCallback = (ctx) => {
+          if (ctx.request.headers.authorization === 'Bearer good') return undefined;
+          ctx.response.setStatusCode(httpStatusCode.unauthorized);
+          return { error: 'Unauthorized' };
+        };
+
+        it('should answer 401 from a beforeAll auth hook on a made-up path and a real one, and 404 with a valid token', async () => {
+          app.beforeAll([authHook]);
+          app.get('/api/real', createTestHandler({ ok: true }));
+          await app.listen();
+
+          const madeUp = await sendHttpRequest(testPort, createHttpRequest('GET', '/api/made-up'));
+          const real = await sendHttpRequest(testPort, createHttpRequest('GET', '/api/real'));
+          const authed = await sendHttpRequest(testPort, createHttpRequest('GET', '/api/made-up', ['Authorization: Bearer good']));
+
+          expect(madeUp).toStartWith('HTTP/1.1 401');
+          expect(real).toStartWith('HTTP/1.1 401');
+          expect(authed).toStartWith('HTTP/1.1 404');
+        });
+
+        it('should still skip a beforeAll hook on an unmatched path its routesToExclude covers', async () => {
+          app.beforeAll([authHook], { routesToExclude: ['/public/*'] });
+          await app.listen();
+
+          expect(await sendHttpRequest(testPort, createHttpRequest('GET', '/public/missing'))).toStartWith('HTTP/1.1 404');
+          expect(await sendHttpRequest(testPort, createHttpRequest('GET', '/private/missing'))).toStartWith('HTTP/1.1 401');
+        });
+
+        it('should run afterAll hooks on a 404', async () => {
+          app.afterAll([(ctx) => void ctx.response.addHeaders({ 'X-Request-Id': 'abc123' })]);
+          await app.listen();
+
+          const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/nowhere'));
+          expect(response).toStartWith('HTTP/1.1 404');
+          expect(response).toContain('X-Request-Id: abc123');
+        });
+      });
     });
 
     describe('Malformed Requests', () => {

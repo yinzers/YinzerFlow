@@ -718,7 +718,7 @@ export class YinzerFlow extends SetupImpl {
     // answered with the app's onError response as a real HTTP response, never a silently dropped socket.
     try {
       // Global hooks and the global limiter decide before anything else does, exactly as for an HTTP request to this path
-      if (!(await requestHandler._handleUpgrade(context, canonicalPath, match?.params ?? null)) || !match) {
+      if (!(await requestHandler._handleUpgrade(context, canonicalPath, () => match)) || !match) {
         this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
         return;
       }

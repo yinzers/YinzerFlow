@@ -150,8 +150,9 @@ export interface Setup extends HttpMethodHandlers {
    * rate limiting, authentication checks, or request preprocessing that should
    * happen regardless of whether a matching route exists.
    *
-   * **Execution Order**: beforeRouting → routing (params filled) → built-in rate limiter → not-found handler if unmatched →
-   * beforeAll → beforeRoute → handler → afterRoute → afterAll. State set here is visible to the rate limiter's `keyGenerator`.
+   * **Execution Order**: beforeRouting → routing (params filled on a match) → built-in rate limiter → beforeAll →
+   * not-found handler if unmatched, or beforeRoute → handler → afterRoute → afterAll (also on a 404). State set here is
+   * visible to the rate limiter's `keyGenerator`.
    *
    * **WebSocket upgrades**: these hooks also run on an upgrade request to an `app.ws()` route, matched against the same
    * canonical path. Returning a value, or setting a status other than 200, refuses the upgrade with that HTTP response.
@@ -200,16 +201,19 @@ export interface Setup extends HttpMethodHandlers {
   /**
    * Registers global hooks that run before all route handlers.
    *
-   * These hooks execute for every matched request before any route-specific hooks
+   * These hooks execute for every request before any route-specific hooks
    * or the route handler itself. They're perfect for setting up global
-   * state, authentication, logging, or request preprocessing. Unmatched routes
-   * skip them and go straight to the not-found handler; use `beforeRouting` for
-   * anything that must see every request.
+   * state, authentication, logging, or request preprocessing.
+   *
+   * **Unmatched routes (since 0.10.0)**: these hooks run before the not-found handler, so an auth hook answers 401 on
+   * a made-up path exactly as on a real one, and a hook that returns a value means the not-found handler never runs.
+   * Don't assume a matched route: on an unmatched path `ctx.request.params` is empty. Before 0.10.0 unmatched routes
+   * skipped these hooks.
    *
    * **WebSocket upgrades**: these hooks also run on an upgrade request to an `app.ws()` route, after the rate limiter
    * and before the route's `upgrade` handler, with the same `routesToInclude` / `routesToExclude` matching. Returning a
    * value, or setting a status other than 200, refuses the upgrade with that HTTP response (a 401 from an auth hook
-   * reaches the client). `afterAll` hooks don't run on upgrades.
+   * reaches the client). `afterAll` hooks run only on the 404 an unmatched upgrade gets, never on an accepted one.
    *
    * @param handlers - Array of hook functions to execute
    * @param options - Optional configuration for hook execution scope
@@ -249,9 +253,9 @@ export interface Setup extends HttpMethodHandlers {
   /**
    * Registers global hooks that run after all route handlers.
    *
-   * These hooks execute for every matched request after the route handler completes
-   * (unmatched routes skip them and go straight to the not-found handler)
-   * and after any route-specific after hooks. They're perfect for response
+   * These hooks execute for every request after the route handler completes
+   * and after any route-specific after hooks, and since 0.10.0 also after the
+   * not-found handler on an unmatched route. They're perfect for response
    * modification, logging, cleanup, or adding response headers.
    *
    * @param handlers - Array of hook functions to execute

@@ -213,7 +213,9 @@ YinzerFlow provides a comprehensive hooks system for middleware, authentication,
 
 ### Global Hooks
 
-Global hooks run for every request that matches a route and are perfect for authentication, logging, and response modification. `beforeAll` and `afterAll` do not run for unmatched routes: a request with no matching route goes straight to the not-found handler. Use `beforeRouting` for anything that must see every request, including 404s. The built-in rate limiter runs in its own stage right after `beforeRouting` and route matching, so it also sees every request.
+Global hooks run for every request and are perfect for authentication, logging, and response modification. That includes requests to paths no route matches: `beforeAll` runs before the not-found handler and `afterAll` runs on its response, the way Express, Fastify and Hono order them. The built-in rate limiter runs in its own stage right after `beforeRouting` and route matching, so it also sees every request.
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> before 0.10.0 an unmatched route skipped `beforeAll` and `afterAll` and went straight to the not-found handler. An auth hook therefore answered 401 on real routes and 404 on made-up ones, which let an unauthenticated client map which routes exist. Now an auth `beforeAll` hook answers 401 on both, and a hook that returns a value means the not-found handler never runs. Hooks must not assume a matched route: on an unmatched path `ctx.request.params` is empty, and a hook that reads a param has to handle it missing.
 
 ```typescript
 // Global authentication hook
@@ -314,18 +316,18 @@ Hooks execute in a specific order for predictable behavior:
 1. **Global beforeRouting hooks** (in registration order; CORS runs here when enabled). Runs for every request.
 2. **Route matching**: route params are filled in; nothing is answered yet
 3. **Built-in rate limiter** (when enabled). Runs for every request, matched or not, and can read `ctx.request.params` and any state set in `beforeRouting`. It answers 429 when the limit is exceeded
-4. **Not-found handler** if no route matched (the remaining steps are skipped)
-5. **Global beforeAll hooks** (in registration order)
+4. **Global beforeAll hooks** (in registration order). Runs for every request, matched or not
+5. **Not-found handler** if no route matched; steps 6 to 10 are skipped and step 11 runs on its response
 6. **Group beforeHooks** (parent groups first, then child groups)
 7. **Route-specific beforeHooks** (in registration order)
 8. **Route handler**
 9. **Route-specific afterHooks** (in registration order)
 10. **Group afterHooks** (child groups first, then parent groups)
-11. **Global afterAll hooks** (in registration order)
+11. **Global afterAll hooks** (in registration order), on 404 responses too
 
 Requests whose path is malformed (dot segments, encoded slashes, invalid encoding) are answered with 400 before step 1.
 
-<span style="color: #f39c12">**🌐 WebSocket upgrades (since 0.9.1):**</span> an upgrade request to an `app.ws()` route runs steps 1 to 5 exactly as an HTTP request to that path would: the same `beforeRouting` hooks, the built-in rate limiter, the not-found handler when no WebSocket route matches, then the same `beforeAll` hooks, with `routesToInclude` / `routesToExclude` matched against the same canonical path. Hooks get a normal `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress` and `ctx.state` work unchanged. A hook that returns a value, or sets a status other than 200, refuses the upgrade with that status and body as a plain HTTP response, so a 401 from an auth hook reaches the client. Steps 6 to 11 don't run: a WebSocket route has no route hooks, and an accepted upgrade has no HTTP response. In 0.9.0 upgrades skipped every global hook. See [WebSockets](./websockets.md#global-http-hooks-on-upgrade).
+<span style="color: #f39c12">**🌐 WebSocket upgrades (since 0.10.0):**</span> an upgrade request to an `app.ws()` route runs steps 1 to 5 exactly as an HTTP request to that path would, through the same code: the same `beforeRouting` hooks, the built-in rate limiter, the same `beforeAll` hooks, then the not-found handler (and `afterAll` on its response) when no WebSocket route matches, with `routesToInclude` / `routesToExclude` matched against the same canonical path. Hooks get a normal `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress` and `ctx.state` work unchanged. A hook that returns a value, or sets a status other than 200, refuses the upgrade with that status and body as a plain HTTP response, so a 401 from an auth hook reaches the client. Steps 6 to 11 don't run on an accepted upgrade: a WebSocket route has no route hooks, and an accepted upgrade has no HTTP response. Before 0.10.0 upgrades skipped every global hook. See [WebSockets](./websockets.md#global-http-hooks-on-upgrade).
 
 <span style="color: #e74c3c">**⚠️ beforeRouting is not rate limited:**</span> step 1 runs before the built-in limiter (step 3). A `beforeRouting` hook that answers early, such as a 401 for a bad token, is never counted, so brute-force attempts rejected there are never throttled, and any database lookup it makes runs for every request. Keep `beforeRouting` to cheap work that doesn't answer on its own. For brute-force-sensitive auth (login, password reset, OTP), add a route-level `rateLimitHook` to that route, which counts every attempt before the handler runs.
 

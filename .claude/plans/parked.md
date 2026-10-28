@@ -130,7 +130,7 @@ before touching the area an entry names.
 ## unthrottled-early-rejects — malformed-path and malformed-handshake 400s skip the limiter
 
 - **What**: requests rejected by `canonicalizeRequestPath` get a 400 before any stage runs, so the global limiter
-  never counts them. WebSocket upgrades now run the limiter (0.9.1), but the same holds for an upgrade refused
+  never counts them. WebSocket upgrades now run the limiter (0.10.0), but the same holds for an upgrade refused
   before the stages: a malformed handshake or a malformed path gets its 400 uncounted.
 - **Why deferred**: review round 3 minor. Both rejections are cheap and happen before any user code runs; counting
   them means moving the limiter ahead of canonicalization and keying on a path it just rejected, which is a design

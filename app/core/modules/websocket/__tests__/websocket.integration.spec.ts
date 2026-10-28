@@ -339,7 +339,7 @@ describe('WebSocket Integration', () => {
     });
   });
 
-  // Bug (0.9.0): a throw in the upgrade handler (or, since 0.9.1, in a global hook on the upgrade) dropped the socket with
+  // Bug (0.9.0): a throw in the upgrade handler (or, since 0.10.0, in a global hook on the upgrade) dropped the socket with
   // no HTTP response, and a malformed upgrade header was logged at ERROR with a stack and the raw client bytes.
   // Tier: Medium (error states a client handles differently: 500 vs 400).
   describe('upgrade errors', () => {

@@ -2,7 +2,7 @@ import type { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.ts';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
-import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
+import type { InternalGlobalStagesResult, InternalStageRoute } from '@typedefs/internal/InternalRequestHandlerImpl.js';
 import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.js';
 import { httpStatusCode } from '@constants/http.ts';
 import { canonicalizeRequestPath } from '@core/execution/utils/canonicalizeRequestPath.ts';
@@ -36,56 +36,42 @@ export class RequestHandlerImpl {
         return void 0;
       }
 
-      // 1. Run beforeRouting hooks (includes CORS if enabled) - stop if any hook returns a value
-      if (await this._handleBeforeRoutingHooks(context, canonicalPath)) {
+      // 1-4. beforeRouting, route lookup, the global rate limiter, beforeAll: every request runs them, matched or not
+      const stages = await this._runGlobalBeforeStages({
+        context,
+        canonicalPath,
+        findRoute: () => this.setup._routeRegistry._findRoute(context.request.method, canonicalPath),
+        refuseOnStatus: false,
+      });
+      if (stages.answered) return void 0;
+
+      // 5. No route matched: the not-found handler answers, then afterAll runs on its response
+      if (!stages.route) {
+        await this._respondNotFound(context, canonicalPath);
         return void 0;
       }
 
-      // 2. Match the route, fill params, run the global rate limiter, answer 404 when nothing matched
-      const matchedRoute = await this._resolveRoute(context, canonicalPath);
-      if (!matchedRoute) return void 0;
-
-      const { handler, options } = matchedRoute;
+      const { handler, options } = stages.route;
       const { beforeHooks = [], afterHooks = [] } = options;
 
-      // 3. Run beforeAll hooks - stop if any hook returns a value
-      if (await this._handleBeforeAllHooks(context, canonicalPath)) {
-        return void 0;
-      }
-
-      // 4. Run beforeGroup hooks and beforeRoute hooks - stop if any hook returns a value
+      // 6. Run beforeGroup hooks and beforeRoute hooks - stop if any hook returns a value
       // * The before group hooks and beforeRoute hooks are in the same array and ordered on route registration.
       if (await this._handleBeforeHooks(context, beforeHooks)) {
         return void 0;
       }
 
-      // 5. Execute route handler
+      // 7. Execute route handler
       const routeResponse = await handler(context);
 
-      // 6. Set body BEFORE after-hooks so it's preserved even if a hook throws
+      // 8. Set body BEFORE after-hooks so it's preserved even if a hook throws
       context._response._setBody(routeResponse);
 
-      // 7. Run afterRoute hooks and afterGroup hooks
+      // 9. Run afterRoute hooks and afterGroup hooks
       // * The after group hooks and afterRoute hooks are in the same array and ordered on route registration.
       for (const hook of afterHooks) await hook(context);
 
-      // 8. Run afterAll hooks
-      const afterAllHooks = this.setup._hooks._afterAll;
-      for (const hook of afterAllHooks) {
-        if (!this._shouldRunHook(hook.options, canonicalPath)) {
-          continue;
-        }
-        await hook.handler(context);
-      }
-
-      // 9. If this was a HEAD request, remove the body.
-      // Waiting until after hooks since they might modify the response, headers, etc.
-      if (context.request.method === 'HEAD') {
-        context._response._setBody(null);
-      }
-
-      // 10. Add default framework headers and parse the body into a string
-      context._response._parseResponseIntoString();
+      // 10. afterAll hooks, then the HEAD body strip and the final response string
+      await this._finishResponse(context, canonicalPath);
 
       return void 0;
     } catch (error) {
@@ -95,28 +81,59 @@ export class RequestHandlerImpl {
   }
 
   /**
-   * Run the global request stages on a WebSocket upgrade request, with the same hooks, order and canonical-path
-   * matching as an HTTP request: beforeRouting, then the global rate limiter (after the ws route's params are filled),
-   * then 404 when no ws route matched, then beforeAll. Route-level hooks and afterAll don't run: an upgrade has no HTTP
-   * route and, when accepted, no HTTP response.
+   * Run the global request stages on a WebSocket upgrade request through the same pipeline as an HTTP request
+   * (`_runGlobalBeforeStages`): beforeRouting, ws route lookup, the global rate limiter, beforeAll, then the
+   * not-found handler and afterAll when no ws route matched. Route-level hooks don't exist for ws routes, and an
+   * accepted upgrade has no HTTP response for afterAll to change.
    *
    * A hook refuses the upgrade by returning a value (as for HTTP) or by setting a status code other than 200 without
    * returning one; there is no route handler left to carry that status, so it becomes the answer.
    *
    * @returns true when the upgrade may proceed; false when `context` holds the HTTP response to send instead
    */
-  async _handleUpgrade(context: InternalContextImpl, canonicalPath: string, wsRouteParams: Record<string, string> | null): Promise<boolean> {
-    if ((await this._handleBeforeRoutingHooks(context, canonicalPath)) || this._answeredByStatus(context)) return false;
-
-    if (wsRouteParams) Object.assign(context.request.params as unknown as Record<string, string>, wsRouteParams);
-    if (await this._handleGlobalRateLimit(context)) return false;
-
-    if (!wsRouteParams) {
-      await this._respondNotFound(context);
+  async _handleUpgrade(context: InternalContextImpl, canonicalPath: string, findWsRoute: () => InternalStageRoute | undefined): Promise<boolean> {
+    const stages = await this._runGlobalBeforeStages({ context, canonicalPath, findRoute: findWsRoute, refuseOnStatus: true });
+    if (stages.answered) return false;
+    if (!stages.route) {
+      await this._respondNotFound(context, canonicalPath);
       return false;
     }
+    return true;
+  }
 
-    return !((await this._handleBeforeAllHooks(context, canonicalPath)) || this._answeredByStatus(context));
+  /**
+   * The global stages every request runs before a route handler, matched or not, shared by HTTP requests and WebSocket
+   * upgrades so the two can never drift: beforeRouting, route lookup (params filled on a match, left empty otherwise),
+   * the global rate limiter, then beforeAll, each hook matched against the canonical path. The lookup runs after
+   * beforeRouting, as it always has. `refuseOnStatus` makes a non-200 status set by a hook an answer (upgrades only).
+   */
+  async _runGlobalBeforeStages<TRoute extends InternalStageRoute>({
+    context,
+    canonicalPath,
+    findRoute,
+    refuseOnStatus,
+  }: {
+    context: InternalContextImpl;
+    canonicalPath: string;
+    findRoute: () => TRoute | undefined;
+    refuseOnStatus: boolean;
+  }): Promise<InternalGlobalStagesResult<TRoute>> {
+    if ((await this._handleBeforeRoutingHooks(context, canonicalPath)) || (refuseOnStatus && this._answeredByStatus(context))) {
+      return { answered: true };
+    }
+
+    const route = findRoute();
+    if (route) Object.assign(context.request.params as unknown as Record<string, string>, route.params);
+
+    // The limiter sits after the lookup so keyGenerator sees params and beforeRouting state, and before beforeAll and
+    // the 404 so unmatched paths are throttled too (with empty params)
+    if (await this._handleGlobalRateLimit(context)) return { answered: true };
+
+    if ((await this._handleBeforeAllHooks(context, canonicalPath)) || (refuseOnStatus && this._answeredByStatus(context))) {
+      return { answered: true };
+    }
+
+    return { answered: false, route };
   }
 
   /** On an upgrade, a hook that set a non-200 status without returning a body refused it: build that response. */
@@ -186,28 +203,6 @@ export class RequestHandlerImpl {
     return false;
   }
 
-  /**
-   * Routing stage: match the route and fill params, then run the global rate limiter, then answer 404 if
-   * nothing matched. The limiter sits between the two on purpose: after params and beforeRouting state exist
-   * (so keyGenerator can key on them) and before the 404 (so unmatched paths are throttled too, with empty
-   * params). Returns the matched route, or null when a response (429 or 404) has already been set.
-   */
-  async _resolveRoute(context: InternalContextImpl, canonicalPath: string): Promise<InternalRouteRegistry | null> {
-    const matchedRoute = this.setup._routeRegistry._findRoute(context.request.method, canonicalPath);
-    if (matchedRoute) {
-      Object.assign(context.request.params as unknown as Record<string, string>, matchedRoute.params);
-    }
-
-    if (await this._handleGlobalRateLimit(context)) return null;
-
-    if (!matchedRoute) {
-      await this._respondNotFound(context);
-      return null;
-    }
-
-    return matchedRoute;
-  }
-
   /** Run the framework's global rate limiter, if enabled. Returns true when it answered (429). */
   async _handleGlobalRateLimit(context: InternalContextImpl): Promise<boolean> {
     const rateLimitHook = this.setup._globalRateLimitHook;
@@ -215,10 +210,27 @@ export class RequestHandlerImpl {
     return this._applyHookResponse(await rateLimitHook(context), context);
   }
 
-  async _respondNotFound(context: InternalContextImpl): Promise<void> {
+  /** The not-found handler's response, finished like any other: afterAll hooks run on it. */
+  async _respondNotFound(context: InternalContextImpl, canonicalPath: string): Promise<void> {
     const notFoundResponse = await this.setup._hooks._onNotFound(context);
     context._response._setBody(notFoundResponse);
-    context._response._parseResponseIntoString(); // Needed so the YinzerFlow can send the response as a string
+    await this._finishResponse(context, canonicalPath);
+  }
+
+  /** Run afterAll hooks, drop the body of a HEAD response, and build the response string YinzerFlow sends. */
+  async _finishResponse(context: InternalContextImpl, canonicalPath: string): Promise<void> {
+    for (const hook of this.setup._hooks._afterAll) {
+      if (!this._shouldRunHook(hook.options, canonicalPath)) continue;
+      await hook.handler(context);
+    }
+
+    // Waiting until after hooks since they might modify the response, headers, etc.
+    if (context.request.method === 'HEAD') {
+      context._response._setBody(null);
+    }
+
+    // Add default framework headers and parse the body into a string
+    context._response._parseResponseIntoString();
   }
 
   async _handleBeforeAllHooks(context: InternalContextImpl, canonicalPath: string): Promise<boolean> {

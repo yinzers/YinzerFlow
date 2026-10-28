@@ -30,7 +30,7 @@ Enable or disable rate limiting globally or per-route.
 
 <span style="color: #e74c3c">**⚠️ Warning:**</span> Disabling rate limiting removes DoS protection from your API.
 
-<span style="color: #f39c12">**⚠️ Behavior change in 0.9.1:**</span> the global limiter now counts WebSocket upgrade requests too, against the same per-client budget as HTTP requests, and answers an upgrade flood with 429 before the handshake. Messages on an open connection are limited separately by `websocket.messageRateLimit`. In 0.9.0 upgrades were never counted.
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> the global limiter now counts WebSocket upgrade requests too, against the same per-client budget as HTTP requests, and answers an upgrade flood with 429 before the handshake. Messages on an open connection are limited separately by `websocket.messageRateLimit`. Before 0.10.0 upgrades were never counted.
 
 <span style="color: #f39c12">**⚠️ Behavior change in 0.9.0:**</span> Before 0.9.0 the global limiter was only installed when you passed `rateLimit: { enabled: true }`, so an app with no `rateLimit` options had no rate limiting despite the documented default. From 0.9.0 an app that passes no `rateLimit` options gets the default limiter (1000 requests per minute per IP). If you relied on the old behavior, for example behind a gateway that already limits, set `rateLimit: { enabled: false }`.
 
