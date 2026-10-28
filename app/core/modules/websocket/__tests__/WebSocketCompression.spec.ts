@@ -3,12 +3,7 @@
   @typescript-eslint/no-non-null-assertion
 */
 import { describe, expect, it } from 'bun:test';
-import {
-  _buildCompressionResponse,
-  _compressPayload,
-  _decompressPayload,
-  _parseCompressionOffer,
-} from '../WebSocketCompression.ts';
+import { _buildCompressionResponse, _compressPayload, _decompressPayload, _parseCompressionOffer } from '../WebSocketCompression.ts';
 import { _encodeFrame, _parseFrame } from '../WebSocketFrame.ts';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { WebSocketChannelManager } from '../WebSocketChannelManager.ts';
@@ -127,9 +122,7 @@ describe('WebSocket Compression', () => {
     });
 
     it('should pick first valid offer from multiple', () => {
-      const result = _parseCompressionOffer(
-        'x-custom, permessage-deflate; client_max_window_bits',
-      );
+      const result = _parseCompressionOffer('x-custom, permessage-deflate; client_max_window_bits');
       expect(result).not.toBeNull();
       expect(result!.clientMaxWindowBitsOffered).toBe(true);
     });
@@ -138,7 +131,13 @@ describe('WebSocket Compression', () => {
   describe('_buildCompressionResponse', () => {
     it('should always include no-context-takeover', () => {
       const response = _buildCompressionResponse(
-        { serverNoContextTakeover: false, clientNoContextTakeover: false, serverMaxWindowBits: undefined, clientMaxWindowBitsOffered: false, clientMaxWindowBits: undefined },
+        {
+          serverNoContextTakeover: false,
+          clientNoContextTakeover: false,
+          serverMaxWindowBits: undefined,
+          clientMaxWindowBitsOffered: false,
+          clientMaxWindowBits: undefined,
+        },
         { serverMaxWindowBits: 15, clientMaxWindowBits: 15 },
       );
       expect(response).toContain('server_no_context_takeover');
@@ -147,7 +146,13 @@ describe('WebSocket Compression', () => {
 
     it('should include server_max_window_bits when less than 15', () => {
       const response = _buildCompressionResponse(
-        { serverNoContextTakeover: false, clientNoContextTakeover: false, serverMaxWindowBits: undefined, clientMaxWindowBitsOffered: false, clientMaxWindowBits: undefined },
+        {
+          serverNoContextTakeover: false,
+          clientNoContextTakeover: false,
+          serverMaxWindowBits: undefined,
+          clientMaxWindowBitsOffered: false,
+          clientMaxWindowBits: undefined,
+        },
         { serverMaxWindowBits: 11, clientMaxWindowBits: 15 },
       );
       expect(response).toContain('server_max_window_bits=11');
@@ -155,7 +160,13 @@ describe('WebSocket Compression', () => {
 
     it('should omit server_max_window_bits when 15', () => {
       const response = _buildCompressionResponse(
-        { serverNoContextTakeover: false, clientNoContextTakeover: false, serverMaxWindowBits: undefined, clientMaxWindowBitsOffered: false, clientMaxWindowBits: undefined },
+        {
+          serverNoContextTakeover: false,
+          clientNoContextTakeover: false,
+          serverMaxWindowBits: undefined,
+          clientMaxWindowBitsOffered: false,
+          clientMaxWindowBits: undefined,
+        },
         { serverMaxWindowBits: 15, clientMaxWindowBits: 15 },
       );
       expect(response).not.toContain('server_max_window_bits');

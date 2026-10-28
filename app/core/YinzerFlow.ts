@@ -751,7 +751,10 @@ export class YinzerFlow extends SetupImpl {
   }
 
   // eslint-disable-next-line complexity
-  private _mergeWsConnectionOptions(routeOpts?: WebSocketRouteOptions, compressionNegotiated = false): {
+  private _mergeWsConnectionOptions(
+    routeOpts?: WebSocketRouteOptions,
+    compressionNegotiated = false,
+  ): {
     maxPayloadLength: number;
     idleTimeout: number;
     backpressure: { strategy: 'buffer' | 'drop'; limit: number };

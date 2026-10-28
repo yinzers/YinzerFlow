@@ -2,7 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import { parseBody } from '../parseBody.ts';
 import type { ParseBodyOptions } from '../parseBody.ts';
 import { contentType } from '@constants/http.ts';
-import type { InternalBodyParserOptions as BodyParserConfiguration, InternalJsonParserOptions as JsonParserConfiguration, InternalUrlEncodedOptions as UrlEncodedConfiguration } from '@typedefs/internal/InternalConfiguration.d.ts';
+import type {
+  InternalBodyParserOptions as BodyParserConfiguration,
+  InternalJsonParserOptions as JsonParserConfiguration,
+  InternalUrlEncodedOptions as UrlEncodedConfiguration,
+} from '@typedefs/internal/InternalConfiguration.d.ts';
 
 /**
  * Create test body parser configuration with sensible defaults

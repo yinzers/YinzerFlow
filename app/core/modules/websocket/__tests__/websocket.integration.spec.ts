@@ -238,7 +238,7 @@ describe('WebSocket Integration', () => {
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
       app.ws<{ room: string }>('/chat/:room', {
         upgrade(req) {
-          const {room} = req.params;
+          const { room } = req.params;
           if (!room) return false;
           return { room };
         },

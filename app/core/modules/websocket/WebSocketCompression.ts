@@ -34,7 +34,9 @@ export const _decompressPayload = (payload: Buffer, windowBits: number): Buffer 
  * Parse the client's Sec-WebSocket-Extensions header value for permessage-deflate offers.
  * Returns the first valid permessage-deflate offer's parameters, or null if none found.
  */
-export const _parseCompressionOffer = (headerValue: string): {
+export const _parseCompressionOffer = (
+  headerValue: string,
+): {
   serverNoContextTakeover: boolean;
   clientNoContextTakeover: boolean;
   serverMaxWindowBits: number | undefined;

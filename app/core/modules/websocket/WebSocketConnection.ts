@@ -386,7 +386,7 @@ export class WebSocketConnection<T = unknown> {
     const now = Date.now();
     const elapsed = (now - this._rateLimitLastRefill) / 1000;
     const refillRate = rl.maxMessages / rl.window;
-    this._rateLimitTokens = Math.min(this._rateLimitTokens + (elapsed * refillRate), rl.maxMessages);
+    this._rateLimitTokens = Math.min(this._rateLimitTokens + elapsed * refillRate, rl.maxMessages);
     this._rateLimitLastRefill = now;
 
     if (this._rateLimitTokens < 1) return false;

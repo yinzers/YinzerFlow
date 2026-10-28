@@ -34,10 +34,7 @@ describe('WebSocket Message Rate Limiting', () => {
   describe('when disabled', () => {
     it('should allow unlimited messages', () => {
       const messages: Array<string> = [];
-      const { socket } = createConnection(
-        { enabled: false, maxMessages: 2, window: 10 },
-        { message: (_ws, data) => messages.push(data as string) },
-      );
+      const { socket } = createConnection({ enabled: false, maxMessages: 2, window: 10 }, { message: (_ws, data) => messages.push(data as string) });
 
       for (let i = 0; i < 10; i++) {
         sendTextMessage(socket, `msg-${i}`);
@@ -50,10 +47,7 @@ describe('WebSocket Message Rate Limiting', () => {
   describe('when enabled', () => {
     it('should allow messages within the limit', () => {
       const messages: Array<string> = [];
-      const { socket } = createConnection(
-        { enabled: true, maxMessages: 5, window: 10 },
-        { message: (_ws, data) => messages.push(data as string) },
-      );
+      const { socket } = createConnection({ enabled: true, maxMessages: 5, window: 10 }, { message: (_ws, data) => messages.push(data as string) });
 
       for (let i = 0; i < 5; i++) {
         sendTextMessage(socket, `msg-${i}`);
@@ -64,10 +58,7 @@ describe('WebSocket Message Rate Limiting', () => {
 
     it('should close connection with 1008 when limit exceeded', () => {
       const messages: Array<string> = [];
-      const { conn, socket } = createConnection(
-        { enabled: true, maxMessages: 3, window: 60 },
-        { message: (_ws, data) => messages.push(data as string) },
-      );
+      const { conn, socket } = createConnection({ enabled: true, maxMessages: 3, window: 60 }, { message: (_ws, data) => messages.push(data as string) });
 
       for (let i = 0; i < 5; i++) {
         sendTextMessage(socket, `msg-${i}`);
@@ -87,10 +78,7 @@ describe('WebSocket Message Rate Limiting', () => {
 
     it('should refill tokens over time', async () => {
       const messages: Array<string> = [];
-      const { conn, socket } = createConnection(
-        { enabled: true, maxMessages: 2, window: 1 },
-        { message: (_ws, data) => messages.push(data as string) },
-      );
+      const { conn, socket } = createConnection({ enabled: true, maxMessages: 2, window: 1 }, { message: (_ws, data) => messages.push(data as string) });
 
       // Send 2 messages (exhausts tokens)
       sendTextMessage(socket, 'msg-1');
@@ -108,10 +96,7 @@ describe('WebSocket Message Rate Limiting', () => {
 
     it('should handle burst followed by steady rate', async () => {
       const messages: Array<string> = [];
-      const { conn, socket } = createConnection(
-        { enabled: true, maxMessages: 3, window: 1 },
-        { message: (_ws, data) => messages.push(data as string) },
-      );
+      const { conn, socket } = createConnection({ enabled: true, maxMessages: 3, window: 1 }, { message: (_ws, data) => messages.push(data as string) });
 
       // Burst: send all 3 at once
       sendTextMessage(socket, 'burst-1');
@@ -129,9 +114,7 @@ describe('WebSocket Message Rate Limiting', () => {
     });
 
     it('should not rate limit control frames (ping/pong)', () => {
-      const { conn, socket } = createConnection(
-        { enabled: true, maxMessages: 1, window: 60 },
-      );
+      const { conn, socket } = createConnection({ enabled: true, maxMessages: 1, window: 60 });
 
       // Exhaust the single token
       sendTextMessage(socket, 'msg-1');
@@ -151,10 +134,7 @@ describe('WebSocket Message Rate Limiting', () => {
 
     it('should close connection when tokens fully exhausted', () => {
       const messages: Array<string> = [];
-      const { conn, socket } = createConnection(
-        { enabled: true, maxMessages: 1, window: 60 },
-        { message: (_ws, data) => messages.push(data as string) },
-      );
+      const { conn, socket } = createConnection({ enabled: true, maxMessages: 1, window: 60 }, { message: (_ws, data) => messages.push(data as string) });
 
       sendTextMessage(socket, 'allowed');
       expect(messages.length).toBe(1);
