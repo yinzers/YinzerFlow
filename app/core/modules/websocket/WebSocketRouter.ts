@@ -1,4 +1,5 @@
 import { normalizePath } from '@core/setup/utils/normalizeStringPatterns.ts';
+import { compilePathPattern } from '@core/setup/utils/compileRoutePatter.ts';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 interface WsRoute {
@@ -28,20 +29,11 @@ export class WebSocketRouter {
     const isParameterized = normalizedPath.includes(':');
 
     if (isParameterized) {
-      const paramNames: Array<string> = [];
-      const pattern = normalizedPath
-        .replace(/:\w+/g, (match) => {
-          paramNames.push(match.slice(1));
-          return '([^/]+)';
-        })
-        .replace(/\//g, '\\/');
-
       this._parameterizedRoutes.push({
         path: normalizedPath,
         handlers,
         options,
-        pattern: new RegExp(`^${pattern}$`),
-        paramNames,
+        ...compilePathPattern(normalizedPath),
       });
     } else {
       this._exactRoutes.set(normalizedPath, { path: normalizedPath, handlers, options });

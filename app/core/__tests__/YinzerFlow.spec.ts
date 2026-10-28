@@ -453,7 +453,8 @@ describe('YinzerFlow', () => {
     });
 
     // Bug: hooks matched the raw path (query, slashes, encoding) while the router matched a lenient
-    // form, so an include-listed auth hook was skipped and `/public/*` exclusion let traversal reach `/secret`. Tier: High (authz bypass).
+    // form, so an include-listed auth hook was skipped and `/public/*` exclusion let traversal reach `/secret`; and unescaped
+    // route regexes let `/v1/0/items/5` hit `/v1.0/items/:id`, a path no literal hook pattern recognises. Tier: High (authz bypass).
     describe('Hook matching on the canonical path', () => {
       const adminHookRuns = '"route":"admin","adminHook":true';
       const pathCases: Array<[path: string, status: number, expectedBody: string]> = [
@@ -469,6 +470,8 @@ describe('YinzerFlow', () => {
         ['/public/%2e%2e/secret', 400, '400 Bad Request'],
         ['/admin%2f', 400, '400 Bad Request'],
         ['/admin%zz', 400, '400 Bad Request'],
+        ['/v1.0/items/5', 200, '"route":"versioned","id":"5"'],
+        ['/v1/0/items/5', 404, '404 Not Found'],
       ];
 
       it.each(pathCases)('GET %s answers %d with the hook decision the router agrees with', async (path, status, expectedBody) => {
@@ -491,6 +494,7 @@ describe('YinzerFlow', () => {
         app.get('/admin', (ctx) => ({ route: 'admin', adminHook: ctx.state.adminHook === true }));
         app.get('/public/file', (ctx) => ({ route: 'public-file', authHook: ctx.state.authHook === true }));
         app.get('/secret', () => ({ route: 'secret-reached' }));
+        app.get('/v1.0/items/:id', (ctx) => ({ route: 'versioned', id: ctx.request.params.id }));
 
         await app.listen();
 
