@@ -114,6 +114,17 @@ const _validateRateLimitConfig = (config: RateLimitOptions): void => {
       throw new Error('rateLimit.window must be a time string (e.g., "15m") or milliseconds as a number');
     }
   }
+  _validateMemoryStoreConfig(config.store);
+};
+
+/**
+ * Validate the in-memory store's entry cap, the bound that keeps per-client memory finite
+ */
+const _validateMemoryStoreConfig = (store: RateLimitOptions['store']): void => {
+  if (store?.type !== 'memory' || store.maxEntries === undefined) return;
+  if (typeof store.maxEntries !== 'number' || !Number.isInteger(store.maxEntries) || store.maxEntries < 1) {
+    throw new Error(`rateLimit.store.maxEntries must be a positive integer. Received: ${String(store.maxEntries)}`);
+  }
 };
 
 /**

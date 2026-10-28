@@ -309,6 +309,9 @@ Options: `StoreConfig`
 - 🟢 **In-memory** (default): Fast, single-instance only
 - 🔄 **Redis**: Distributed, works across multiple instances
 
+**Memory Store Options:**
+- `maxEntries`: Maximum clients tracked at once (default: `100000`, roughly 20 MB). Entries expire one window after a client's last request and are swept periodically. If more distinct clients than this arrive within one window, the least recently seen client's count is dropped and starts fresh; limiting is never skipped for new clients.
+
 **Redis Store Options:**
 - `client`: Redis client instance (required)
 - `keyPrefix`: Key prefix for rate limit keys (default: `'rate_limit:'`)
@@ -661,7 +664,7 @@ YinzerFlow implements several security measures to prevent abuse while maintaini
 ### 🛡️ Memory Efficiency
 
 - **Problem**: Storing rate limit data for every client can cause memory exhaustion in high-traffic scenarios.
-- **YinzerFlow Solution**: Sliding window counter uses only ~24 bytes per client, and windows automatically expire without explicit cleanup loops.
+- **YinzerFlow Solution**: The in-memory store is bounded. Each client's entry expires one window after its last request and is removed lazily on read and by a periodic sweep (an unref'd timer, stopped on `close()`), and the store never holds more than `store.maxEntries` clients (default `100000`), evicting the least recently seen client at the cap. Address rotation (for example cycling through an IPv6 /64) can no longer grow memory without limit.
 
 ### 🛡️ Standard Headers
 
@@ -839,16 +842,18 @@ app.post('/api/auth/login',
 
 **Symptom:** Memory usage grows over time with many clients.
 
-**Cause:** Rate limit data is stored in memory per client.
+**Cause:** Rate limit data is stored in memory per client, for up to one window after each client's last request.
 
-<span style="color: #2ecc71">**✅ Expected:**</span> This is normal behavior. Sliding window counter uses only ~24 bytes per client.
+<span style="color: #2ecc71">**✅ Expected:**</span> Memory grows with the number of distinct clients per window and stops at `store.maxEntries` (default `100000`, roughly 20 MB). If the log shows `[RATE LIMIT] In-memory store reached its cap`, you have more distinct clients per window than the cap.
 
-<span style="color: #3498db">**💡 Tip:**</span> For distributed systems with millions of clients, use Redis-based storage for distributed rate limiting.
+<span style="color: #3498db">**💡 Tip:**</span> Raise the cap for a large single instance, or use the Redis store for distributed deployments.
 
 ```typescript
-// Current memory usage is minimal:
-// 💾 1 million clients = ~24 MB of memory
-// ✅ This is acceptable for most applications
+const app = new YinzerFlow({
+  rateLimit: {
+    store: { type: 'memory', maxEntries: 500_000 }, // roughly 100 MB at the cap
+  },
+});
 ```
 
 ### Redis connection errors

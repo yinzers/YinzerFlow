@@ -12,6 +12,14 @@ export type RedisClient = Redis | ReturnType<typeof createClient>;
 
 export interface MemoryStoreConfig extends BaseStoreConfig {
   type: 'memory';
+  /**
+   * Maximum number of clients tracked at once @default 100000
+   *
+   * Entries expire one window after a client's last request and are swept periodically. If more distinct
+   * clients than this arrive within one window, the least recently seen client's count is dropped (it starts
+   * fresh); limiting is never skipped. Raise it, or use the Redis store, for very large client populations.
+   */
+  maxEntries?: number;
 }
 
 /**

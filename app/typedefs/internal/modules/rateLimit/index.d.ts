@@ -97,3 +97,30 @@ export interface InternalRateLimitStore<T> {
   delete: (key: string) => Promise<void> | void;
   destroy: () => Promise<void> | void;
 }
+
+/**
+ * Options for the bounded in-memory store
+ */
+export interface InternalInMemoryStoreOptions {
+  /**
+   * Milliseconds an entry lives after its last write (the rate-limit window). Past this the
+   * strategy would reset the entry anyway, so removing it changes no limiting decision.
+   */
+  ttlMs: number;
+
+  /**
+   * Hard cap on stored entries. At the cap the least-recently-written entry is evicted.
+   */
+  maxEntries: number;
+}
+
+/**
+ * In-memory store with expiry and a size cap. `sweep` and `size` are exposed for the periodic
+ * cleanup timer and for diagnostics.
+ */
+export interface InternalInMemoryRateLimitStore<T> extends InternalRateLimitStore<T> {
+  /** Remove every expired entry. O(expired entries). */
+  sweep: () => void;
+  /** Number of entries currently held. */
+  size: () => number;
+}
