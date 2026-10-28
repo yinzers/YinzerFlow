@@ -224,8 +224,27 @@ app.ws('/chat/:room', {
 | `open(ws)` | After handshake | Subscribe to channels, send welcome message |
 | `message(ws, data, isBinary)` | On each message | Business logic, pub/sub |
 | `close(ws, code, reason)` | On disconnect | Cleanup (unsubscribe is automatic) |
-| `error(ws, error)` | On socket error | Logging, alerting |
+| `error(ws, error)` | On a socket error, or when another handler throws | Logging, alerting |
 | `drain(ws)` | When backpressure clears | Resume sending |
+
+### Handler Errors
+
+A handler that throws (or returns a rejected promise) never takes the connection down. The message that caused it is consumed, later messages keep arriving, and the error goes to the route's `error(ws, error)` handler, the way `onError` owns HTTP errors. A route without an `error` handler gets the error logged once at error level. The same applies to `open`, `close` and `drain`, with or without `wsBeforeMessage` hooks registered.
+
+```typescript
+app.ws('/jobs', {
+  message(ws, data) {
+    const job = JSON.parse(String(data)); // a bad payload throws here
+    ws.send(`queued ${job.id}`);
+  },
+  error(ws, error) {
+    // Called for socket errors and for errors thrown by the handlers above; the connection stays open
+    ws.send(JSON.stringify({ error: error.message }));
+  },
+});
+```
+
+<span style="color: #3498db">**💡 Tip:**</span> Call `ws.close(code, reason)` from `error` when a failure should end the connection.
 
 ### Per-Socket Typed Data
 

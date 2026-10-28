@@ -29,6 +29,7 @@ import { _buildCompressionResponse, _parseCompressionOffer } from '@core/modules
 import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
 import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
 import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
+import { _wrapWebSocketHandlers } from '@core/modules/websocket/WebSocketHandlerPipeline.ts';
 import { wsCloseCode } from '@constants/websocket.ts';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
@@ -753,7 +754,7 @@ export class YinzerFlow extends SetupImpl {
     compressionNegotiated = false,
   ): void {
     const connectionOptions = this._mergeWsConnectionOptions(routeOptions, compressionNegotiated);
-    const wrappedHandlers = this._wrapWsHandlers(handlers);
+    const wrappedHandlers = _wrapWebSocketHandlers(handlers, this._hooks, this._log);
     const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
 
     this._wsChannelManager ??= new WebSocketChannelManager();
@@ -775,7 +776,7 @@ export class YinzerFlow extends SetupImpl {
     };
 
     this._log.debug(`WebSocket connection established from ${clientAddress} on ${path}`);
-    handlers.open?.(connection as never);
+    wrappedHandlers.open?.(connection as never);
   }
 
   // eslint-disable-next-line complexity
@@ -846,42 +847,6 @@ export class YinzerFlow extends SetupImpl {
 
     // Don't let the sweep timer keep the process alive during shutdown
     this._wsHeartbeatTimer.unref();
-  }
-
-  /**
-   * Wrap WebSocket handlers with wsBeforeMessage/wsAfterMessage hooks.
-   */
-  private _wrapWsHandlers(handlers: WebSocketHandlers): WebSocketHandlers {
-    const hasBeforeHooks = this._hooks._wsBeforeMessage.size > 0;
-    const hasAfterHooks = this._hooks._wsAfterMessage.size > 0;
-
-    if (!hasBeforeHooks && !hasAfterHooks) {
-      return handlers;
-    }
-
-    return {
-      ...handlers,
-      message: (ws, messageData, isBinary): void => {
-        // Fire-and-forget async handler to match void return type signature
-        void (async (): Promise<void> => {
-          for (const hook of this._hooks._wsBeforeMessage) {
-            const result = hook.handler(ws, messageData, isBinary);
-            if (result && typeof result === 'object' && 'catch' in result) {
-              await result;
-            }
-          }
-          handlers.message?.(ws, messageData, isBinary);
-          for (const hook of this._hooks._wsAfterMessage) {
-            const hookResult = hook.handler(ws, messageData, isBinary);
-            if (hookResult && typeof hookResult === 'object' && 'catch' in hookResult) {
-              await hookResult;
-            }
-          }
-        })().catch((error: unknown) => {
-          this._log.error('Error in WebSocket message handler hooks:', error);
-        });
-      },
-    };
   }
 
   /**

@@ -123,7 +123,10 @@ export interface WebSocketHandlers<T = unknown> {
   message?: (ws: WebSocket<T>, data: Buffer | string, isBinary: boolean) => void;
   /** Called when the connection is closed (after close handshake or on error). */
   close?: (ws: WebSocket<T>, code: number, reason: string) => void;
-  /** Called when a socket error occurs. */
+  /**
+   * Called when a socket error occurs, and when `open`, `message`, `close` or `drain` throws or rejects. A handler
+   * error leaves the connection open and the message consumed; without this handler it is logged once at error level.
+   */
   error?: (ws: WebSocket<T>, error: Error) => void;
   /** Called when a backpressured socket's write buffer drains. */
   drain?: (ws: WebSocket<T>) => void;

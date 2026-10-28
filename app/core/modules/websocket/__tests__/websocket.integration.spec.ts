@@ -81,6 +81,15 @@ const readFrame = async (socket: net.Socket): Promise<{ opcode: number; payload:
     setTimeout(() => reject(new Error('Read timeout')), 2000);
   });
 
+/** Resolve once `condition` holds, or reject after `timeoutMs`; polls instead of sleeping a fixed time. */
+const waitFor = async (condition: () => boolean, timeoutMs = 2000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error('waitFor timed out');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+};
+
 describe('WebSocket Integration', () => {
   let app: YinzerFlow;
 
@@ -192,6 +201,38 @@ describe('WebSocket Integration', () => {
       const frame = await readPromise;
 
       expect(frame.payload.toString()).toBe('user-42');
+      socket.destroy();
+    });
+  });
+
+  // Bug (0.9.0): with no wsBeforeMessage hook a throwing message handler escaped the read loop before the receive buffer
+  // advanced, so the failing frame was parsed again on every later read and the client's later messages never arrived.
+  // Tier: Medium (user flow: one bad message must not wedge a connection).
+  describe('throwing message handler', () => {
+    it.each([
+      ['without', false],
+      ['with', true],
+    ])('should consume the failing frame and deliver later messages (%s a wsBeforeMessage hook)', async (_label, withHook) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, logging: { level: 'off' } });
+      if (withHook) app.wsBeforeMessage([() => {}]);
+      const seen: Array<string> = [];
+      app.ws('/ws', {
+        message(_ws, data) {
+          seen.push(String(data));
+          if (String(data) === '1') throw new Error('handler blew up on 1');
+        },
+      });
+      await app.listen();
+
+      const { socket } = await connectWs(testPort);
+      for (const text of ['1', '2', '3']) {
+        socket.write(buildClientFrame(wsOpcode.text, Buffer.from(text)));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await waitFor(() => seen.length >= 3).catch(() => {});
+
+      expect(seen).toEqual(['1', '2', '3']);
       socket.destroy();
     });
   });

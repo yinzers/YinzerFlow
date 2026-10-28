@@ -194,14 +194,14 @@ export class WebSocketConnection<T = unknown> {
     // Append chunk to receive buffer
     this._receiveBuffer = this._receiveBuffer.length === 0 ? Buffer.from(chunk) : Buffer.concat([this._receiveBuffer, chunk]);
 
-    // Parse all complete frames in the buffer
-    let offset = 0;
-    while (offset < this._receiveBuffer.length) {
-      const result = _parseFrame(this._receiveBuffer, offset);
+    // Parse all complete frames in the buffer. Each frame leaves the buffer BEFORE it is acted on, so nothing a handler
+    // does (a throw included) can leave it behind to be parsed and delivered again on the next read.
+    while (this._receiveBuffer.length > 0) {
+      const result = _parseFrame(this._receiveBuffer, 0);
       if (result === null) break;
 
       const { frame, bytesConsumed } = result;
-      offset += bytesConsumed;
+      this._receiveBuffer = this._receiveBuffer.subarray(bytesConsumed);
 
       // RFC 6455 §5.1: server MUST close if client frame is not masked
       if (!frame.masked) {
@@ -221,9 +221,6 @@ export class WebSocketConnection<T = unknown> {
 
       if (this._readyState === wsReadyState.closed) return;
     }
-
-    // Keep unconsumed bytes for next chunk
-    this._receiveBuffer = offset > 0 ? this._receiveBuffer.subarray(offset) : this._receiveBuffer;
   }
 
   private _onSocketClose(): void {
