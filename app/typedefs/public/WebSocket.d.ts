@@ -115,6 +115,8 @@ export interface WebSocketHandlers<T = unknown> {
    * Called before the handshake completes. Return per-socket data to accept,
    * or `false` to reject the connection with a 403 response.
    * If omitted, the connection is accepted with `undefined` as data.
+   * Runs after the global `beforeRouting` / `beforeAll` hooks and the global rate limiter. A throw (or rejection) here
+   * is answered through the app's `onError` handler as an HTTP response (500 by default) before any handshake.
    */
   upgrade?: (request: WebSocketUpgradeRequest) => Promise<T | false> | T | false;
   /** Called when the connection is established and ready. */

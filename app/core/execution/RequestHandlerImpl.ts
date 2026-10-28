@@ -90,7 +90,7 @@ export class RequestHandlerImpl {
       return void 0;
     } catch (error) {
       // Use the error handler from setup
-      await this.handleError(context, error);
+      await this._handleError(context, error);
     }
   }
 
@@ -128,9 +128,10 @@ export class RequestHandlerImpl {
 
   /**
    * Handle errors using the user-defined or default error handler
-   * The error handler returns a response object that we apply to the context
+   * The error handler returns a response object that we apply to the context.
+   * Also the error path for a throw during a WebSocket upgrade (YinzerFlow._answerUpgradeError).
    */
-  private async handleError(context: InternalContextImpl, error: unknown): Promise<void> {
+  async _handleError(context: InternalContextImpl, error: unknown): Promise<void> {
     try {
       // Get the error handler (user-defined or default)
       const errorHandler = this.setup._hooks._onError;

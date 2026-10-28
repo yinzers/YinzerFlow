@@ -339,6 +339,61 @@ describe('WebSocket Integration', () => {
     });
   });
 
+  // Bug (0.9.0): a throw in the upgrade handler (or, since 0.9.1, in a global hook on the upgrade) dropped the socket with
+  // no HTTP response, and a malformed upgrade header was logged at ERROR with a stack and the raw client bytes.
+  // Tier: Medium (error states a client handles differently: 500 vs 400).
+  describe('upgrade errors', () => {
+    it.each([
+      ['the upgrade handler', 'handler'],
+      ['a beforeAll hook', 'hook'],
+    ])('should answer 500 through onError when %s throws', async (_label, thrower) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, logging: { level: 'off' } });
+      if (thrower === 'hook') {
+        app.beforeAll([
+          () => {
+            throw new Error('hook blew up');
+          },
+        ]);
+      }
+      app.ws('/ws', {
+        upgrade() {
+          if (thrower === 'handler') throw new Error('upgrade blew up');
+          return {};
+        },
+      });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort);
+      expect(response).toStartWith('HTTP/1.1 500');
+      expect(response).toContain('Internal Server Error');
+      socket.destroy();
+    });
+
+    it('should answer 400 to a malformed upgrade header and log the name at debug, quoted, never at error', async () => {
+      const logged: { debug: Array<string>; error: Array<string> } = { debug: [], error: [] };
+      const sink =
+        (level: 'debug' | 'error') =>
+        (...args: Array<unknown>) =>
+          void logged[level].push(args.map(String).join(' '));
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({
+        port: testPort,
+        host: '127.0.0.1',
+        gracefulShutdownTimeout: 0,
+        logging: { level: 'debug', logger: { info: () => {}, warn: () => {}, error: sink('error'), debug: sink('debug') } },
+      });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, undefined, 'X-\u001b[31mEvil Name: 1\r\n');
+      expect(response).toStartWith('HTTP/1.1 400');
+      expect(logged.error).toEqual([]);
+      expect(logged.debug.some((line) => line.includes('"Invalid header name: X-\\u001b[31mEvil Name"'))).toBe(true);
+      socket.destroy();
+    });
+  });
+
   describe('upgrade rejection', () => {
     it('should return 403 when upgrade handler returns false', async () => {
       const { testPort } = createTestApp();

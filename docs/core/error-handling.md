@@ -39,7 +39,7 @@ Options: `automatic`
 
 ### Custom Error Handler — @default <span style="color: #2ecc71">`built-in`</span>
 
-Register a custom error handler for all routes.
+Register a custom error handler for all routes. It also answers a throw from a global hook or a route's `upgrade` handler during a WebSocket upgrade: the client gets your handler's response as a plain HTTP response (500 if your handler leaves the status at 200) and the socket is closed.
 
 ```typescript
 app.onError((ctx, error) => {

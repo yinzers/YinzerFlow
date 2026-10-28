@@ -246,6 +246,8 @@ app.ws('/jobs', {
 
 <span style="color: #3498db">**💡 Tip:**</span> Call `ws.close(code, reason)` from `error` when a failure should end the connection.
 
+Before the handshake there is no `ws` yet, so a throw from a global hook or from `upgrade(req)` goes to the app's `onError` handler instead, exactly like an HTTP error. The client gets that response as a plain HTTP response (500 by default, and 500 if `onError` leaves the status at 200), and the socket is closed. An upgrade request whose headers fail parsing (an invalid header name, too many or too long headers) gets a 400 and one debug-level log line with the reason JSON-quoted and truncated.
+
 ### Per-Socket Typed Data
 
 The `upgrade` handler's return value becomes `ws.data` — fully typed via generics:
@@ -517,6 +519,8 @@ await app.listen();
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | 401 (or another status) on upgrade | A global `beforeRouting` / `beforeAll` hook refused it | Send the credentials the hook expects, or exclude the path with `routesToExclude` |
+| 500 on upgrade | A global hook or the `upgrade` handler threw | Check the error your `onError` handler (or the default error log) received |
+| 400 on upgrade with "Malformed request headers" | A header name or value the HTTP parser rejects | Fix the client's headers; the reason is logged at debug level |
 | 403 on upgrade | Origin not in `allowedOrigins` | Add origin or set `allowedOrigins: []` |
 | 429 on upgrade | Too many connections from IP, or the global rate limiter | Increase `maxConnectionsPerIp`, or `rateLimit.max` |
 | Connection drops silently | Idle timeout | Increase `idleTimeout` or send periodic pings |

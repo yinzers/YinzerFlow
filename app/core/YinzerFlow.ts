@@ -29,6 +29,7 @@ import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChanne
 import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
 import { _wrapWebSocketHandlers } from '@core/modules/websocket/WebSocketHandlerPipeline.ts';
 import { wsCloseCode } from '@constants/websocket.ts';
+import { httpStatusCode } from '@constants/http.ts';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 /**
@@ -690,10 +691,8 @@ export class YinzerFlow extends SetupImpl {
     const headerEndIndex = buffer.indexOf('\r\n\r\n');
     const headersStr = buffer.subarray(0, headerEndIndex).toString();
 
-    // The same request object HTTP hooks get: headers through the shared parser, ipAddress resolved through the
-    // trusted-proxy walk, an empty state. The per-IP cap, the upgrade handler's remoteAddress and connection tracking
-    // all use this one resolved address.
-    const context = new ContextImpl(buffer, this, peerAddress);
+    const context = this._buildUpgradeContext(buffer, socket, peerAddress);
+    if (!context) return;
     const clientAddress = context.request.ipAddress;
 
     const validation = _validateHandshake(headersStr);
@@ -709,36 +708,44 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
-    // Global hooks and the global limiter decide before anything else does, exactly as for an HTTP request to this path
-    const match = this._wsRouter._match(canonicalPath);
-    if (!(await requestHandler._handleUpgrade(context, canonicalPath, match?.params ?? null)) || !match) {
-      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
-      return;
-    }
-
     // Security checks (lazy allocation)
     this._wsSecurity ??= new WebSocketSecurity();
     const wsConfig = this._configuration.websocket;
+    const match = this._wsRouter._match(canonicalPath);
+    let data: unknown = undefined;
 
-    if (!this._wsSecurity.validateOrigin(validation.origin, wsConfig.allowedOrigins)) {
-      this._sendHttpError(socket, 403, 'Origin not allowed');
+    // Everything that runs app code (global hooks, the upgrade handler) sits in one try: a throw anywhere in it is
+    // answered with the app's onError response as a real HTTP response, never a silently dropped socket.
+    try {
+      // Global hooks and the global limiter decide before anything else does, exactly as for an HTTP request to this path
+      if (!(await requestHandler._handleUpgrade(context, canonicalPath, match?.params ?? null)) || !match) {
+        this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
+        return;
+      }
+
+      if (!this._wsSecurity.validateOrigin(validation.origin, wsConfig.allowedOrigins)) {
+        this._sendHttpError(socket, 403, 'Origin not allowed');
+        return;
+      }
+
+      if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
+        this._sendHttpError(socket, 429, 'Too many WebSocket connections from this IP');
+        return;
+      }
+
+      const upgradeRequest = {
+        headers: context.request.headers as Record<string, string>,
+        path: validation.path,
+        query: validation.query,
+        params: match.params,
+        remoteAddress: clientAddress,
+      };
+      data = match.handlers.upgrade ? await match.handlers.upgrade(upgradeRequest) : undefined;
+    } catch (error) {
+      await this._answerUpgradeError({ context, socket, startTime, requestBytes: buffer.length, requestHandler, error });
       return;
     }
 
-    if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
-      this._sendHttpError(socket, 429, 'Too many WebSocket connections from this IP');
-      return;
-    }
-
-    const upgradeRequest = {
-      headers: context.request.headers as Record<string, string>,
-      path: validation.path,
-      query: validation.query,
-      params: match.params,
-      remoteAddress: clientAddress,
-    };
-
-    const data = match.handlers.upgrade ? await match.handlers.upgrade(upgradeRequest) : undefined;
     if (data === false) {
       this._sendHttpError(socket, 403, 'WebSocket upgrade rejected');
       return;
@@ -748,7 +755,7 @@ export class YinzerFlow extends SetupImpl {
     let compressionNegotiated = false;
     let extensionResponse: string | undefined = undefined;
     if (wsConfig.compression.enabled) {
-      const extHeader = upgradeRequest.headers['sec-websocket-extensions'];
+      const extHeader = context.request.headers['sec-websocket-extensions'];
       if (extHeader) {
         const offer = _parseCompressionOffer(extHeader);
         if (offer) {
@@ -768,6 +775,50 @@ export class YinzerFlow extends SetupImpl {
 
     this._wsSecurity.trackConnect(clientAddress);
     this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, validation.path, compressionNegotiated);
+  }
+
+  /**
+   * Build the hook context for an upgrade request. A request whose headers the shared parser rejects (an invalid
+   * header name, too many or too long headers) is answered 400 and logged at debug with the parser's reason
+   * JSON-quoted and truncated, so client-chosen bytes (ANSI escapes included) can't reach the log raw.
+   * Returns null when the request was answered.
+   */
+  private _buildUpgradeContext(buffer: Buffer, socket: Socket, peerAddress: string): ContextImpl | null {
+    try {
+      return new ContextImpl(buffer, this, peerAddress);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this._log.debug(`Malformed WebSocket upgrade request from ${peerAddress}: ${JSON.stringify(reason.slice(0, 200))}`);
+      this._sendHttpError(socket, 400, 'Malformed request headers');
+      return null;
+    }
+  }
+
+  /**
+   * Answer a throw from a global hook or the upgrade handler through the app's onError handler, as HTTP does, then
+   * close the socket. An onError that leaves the status at 200 still gets 500: an upgrade can't succeed with a 2xx.
+   */
+  private async _answerUpgradeError({
+    context,
+    socket,
+    startTime,
+    requestBytes,
+    requestHandler,
+    error,
+  }: {
+    context: ContextImpl;
+    socket: Socket;
+    startTime: number;
+    requestBytes: number;
+    requestHandler: RequestHandlerImpl;
+    error: unknown;
+  }): Promise<void> {
+    await requestHandler._handleError(context, error);
+    if (context._response._statusCode === httpStatusCode.ok) {
+      context.response.setStatusCode(httpStatusCode.internalServerError);
+      context._response._parseResponseIntoString();
+    }
+    this._sendContextResponse({ context, socket, startTime, requestBytes });
   }
 
   // eslint-disable-next-line max-params
