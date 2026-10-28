@@ -509,6 +509,28 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
+    // Bug (0.10.0 review): the upgrade re-parsed the request line on \s+ while hooks saw the HTTP parser's split on ' ',
+    // so `GET\t/ws` gave hooks the path "HTTP/1.1" while the ws router matched /ws. Tier: High (hook path must equal route path).
+    it('should answer 400 to an upgrade whose request line is not single-space separated', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const response = await new Promise<string>((resolve, reject) => {
+        const socket = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
+          socket.write(buildUpgradeRequest('/ws').replace('GET /ws', 'GET\t/ws'));
+        });
+        socket.once('data', (chunk) => {
+          resolve(chunk.toString());
+          socket.destroy();
+        });
+        socket.on('error', reject);
+      });
+
+      expect(response).toStartWith('HTTP/1.1 400');
+    });
+
     it('should return 404 for non-existent WS route', async () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });

@@ -343,6 +343,12 @@ export interface InternalContentDisposition {
  */
 export interface InternalRequestImpl extends Request {
   /**
+   * Whether the request line matched RFC 9112 (`METHOD SP target SP HTTP/1.x`). When false, the request is answered 400
+   * before any hook runs (RequestHandlerImpl.handle, and the WebSocket upgrade path).
+   */
+  readonly _isRequestLineValid: boolean;
+
+  /**
    * The original raw request data as received from the client.
    *
    * Provides access to the unprocessed request data for custom parsing

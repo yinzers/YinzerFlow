@@ -722,6 +722,12 @@ YinzerFlow implements several security measures for core concepts:
 - **Problem**: State data could leak between requests, allowing one user to access another user's data
 - **YinzerFlow Solution**: Each request gets its own isolated state object that's automatically cleaned up
 
+### 🛡️ Strict Request Line (RFC 9112)
+- **Problem**: A lenient request-line parser lets two parsers read one request differently (a tab-separated line gave hooks one path and the router another), and echoing the client's version token let a bare line feed write a header into the response
+- **YinzerFlow Solution**: One parser reads the request line for HTTP requests and WebSocket upgrades alike, and accepts only `METHOD SP target SP HTTP/1.0` or `HTTP/1.1`. Anything else (tabs or repeated spaces, trailing bytes, another version) gets a 400 before any hook runs. The response status line is always `HTTP/1.1`, never the client's token.
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> request lines must use single spaces and HTTP/1.0 or HTTP/1.1. Before 0.10.0 other shapes were read leniently (and an unrecognized version was echoed back in the status line); now they get 400.
+
 ### 🛡️ RFC 7230 Header Compliance
 - **Problem**: Invalid header names can bypass security filters and cause parsing inconsistencies
 - **YinzerFlow Solution**: Strict validation against RFC 7230 specification - only valid header characters are allowed

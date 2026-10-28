@@ -689,21 +689,27 @@ export class YinzerFlow extends SetupImpl {
     requestHandler: RequestHandlerImpl;
   }): Promise<void> {
     const startTime = Date.now();
-    const headerEndIndex = buffer.indexOf('\r\n\r\n');
-    const headersStr = buffer.subarray(0, headerEndIndex).toString();
 
     const context = this._buildUpgradeContext(buffer, socket, peerAddress);
     if (!context) return;
     const clientAddress = context.request.ipAddress;
 
-    const validation = _validateHandshake(headersStr);
+    // One request-line parser for hooks, routing and the handshake: the shared HTTP parser's
+    if (!context._request._isRequestLineValid) {
+      requestHandler._rejectMalformedRequestLine(context);
+      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
+      return;
+    }
+
+    const validation = _validateHandshake({ method: context.request.method, protocol: context.request.protocol, headers: context.request.headers });
     if (!validation.valid) {
       this._sendHttpError(socket, 400, validation.reason);
       return;
     }
 
-    // Same canonical form, and the same rejections, as HTTP routing
-    const canonicalPath = canonicalizeRequestPath(validation.path);
+    // Same canonical form, and the same rejections, as HTTP routing (canonicalizeRequestPath drops the query string)
+    const canonicalPath = canonicalizeRequestPath(context.request.path);
+    const rawPath = context.request.path.split('?', 1)[0] ?? '/';
     if (canonicalPath === null) {
       this._sendHttpError(socket, 400, 'Malformed request path');
       return;
@@ -731,8 +737,8 @@ export class YinzerFlow extends SetupImpl {
 
       const upgradeRequest = {
         headers: context.request.headers as Record<string, string>,
-        path: validation.path,
-        query: validation.query,
+        path: rawPath,
+        query: context.request.query as Record<string, string>,
         params: match.params,
         remoteAddress: clientAddress,
         state: context.state,
@@ -792,7 +798,7 @@ export class YinzerFlow extends SetupImpl {
     socket.removeAllListeners();
 
     this._wsSecurity.trackConnect(clientAddress);
-    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, validation.path, compressionNegotiated);
+    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, rawPath, compressionNegotiated);
   }
 
   /**

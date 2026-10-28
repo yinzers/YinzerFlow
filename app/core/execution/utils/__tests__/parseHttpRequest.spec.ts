@@ -118,13 +118,25 @@ describe('parseHttpRequest', () => {
 
       expect(result.protocol).toBe('HTTP/1.1');
     });
+  });
 
-    it('should handle HTTP/2', () => {
-      const rawRequest = 'GET /test HTTP/2\r\nHost: example.com\r\n\r\n';
-
-      const result = parseHttpRequest(rawRequest);
-
-      expect(result.protocol).toBe('HTTP/2');
+  // Bug (0.10.0 review): the request line was split on ' ' with a limit of 3, and the WebSocket upgrade re-parsed it on
+  // \s+, so the two disagreed (`GET\t/ws` gave hooks the path "HTTP/1.1" while the ws router matched /ws), and a bare LF
+  // after the version rode into `protocol`, which the response status line echoed, injecting a header.
+  // Tier: High (parser of untrusted input; each row is one boundary of the RFC 9112 grammar).
+  describe('request-line grammar (RFC 9112: METHOD SP target SP HTTP/1.x)', () => {
+    it.each([
+      ['GET /test HTTP/1.1', true],
+      ['GET /test HTTP/1.0', true],
+      ['GET\t/test HTTP/1.1', false],
+      ['GET  /test HTTP/1.1', false],
+      ['GET /test HTTP/1.1 ', false],
+      ['GET /test HTTP/2', false],
+      ['GET /test', false],
+      ['GET /test HTTP/1.1\nSet-Cookie: pwn=1', false],
+      ['', false],
+    ])('%j is valid: %p', (requestLine, isValid) => {
+      expect(parseHttpRequest(`${requestLine}\r\nHost: example.com\r\n\r\n`).isRequestLineValid).toBe(isValid);
     });
   });
 
@@ -214,6 +226,7 @@ describe('parseHttpRequest', () => {
 
       const result = parseHttpRequest(rawRequest);
 
+      expect(result.isRequestLineValid).toBe(false);
       expect(result.method).toBe('GET');
       expect(result.path).toBe('/');
       expect(result.protocol).toBe('HTTP/1.1');

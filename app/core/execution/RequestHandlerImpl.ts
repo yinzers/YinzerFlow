@@ -30,6 +30,11 @@ export class RequestHandlerImpl {
     try {
       // 0. Derive the one path that routing AND hook matching both use, so they can never disagree.
       // Traversal, encoded slashes and malformed encoding are rejected here, before any hook runs.
+      if (!context._request._isRequestLineValid) {
+        this._rejectMalformedRequestLine(context);
+        return void 0;
+      }
+
       const canonicalPath = canonicalizeRequestPath(context.request.path);
       if (canonicalPath === null) {
         this._rejectMalformedPath(context);
@@ -185,6 +190,16 @@ export class RequestHandlerImpl {
     context._response._setBody({
       success: false,
       message: '400 Bad Request: request path contains a dot segment, an encoded slash or backslash, a NUL, or invalid percent-encoding',
+    });
+    context._response._parseResponseIntoString();
+  }
+
+  /** Answer a request line that isn't `METHOD SP target SP HTTP/1.x` with 400, before any hook runs. */
+  _rejectMalformedRequestLine(context: InternalContextImpl): void {
+    context.response.setStatusCode(httpStatusCode.badRequest);
+    context._response._setBody({
+      success: false,
+      message: '400 Bad Request: the request line must be METHOD, one space, the target, one space, then HTTP/1.0 or HTTP/1.1',
     });
     context._response._parseResponseIntoString();
   }

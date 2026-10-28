@@ -647,6 +647,18 @@ describe('YinzerFlow', () => {
         // Should get some response (likely error or default handling)
         expect(response).toBeTruthy();
       });
+
+      // Bug (0.10.0 review): the status line echoed the client's protocol token, so a bare LF after the version put a
+      // client-chosen header into the response. Tier: High (response splitting from untrusted input).
+      it('should answer 400 to a request line with an injected header, and never echo it', async () => {
+        app.get('/', createTestHandler({ ok: true }));
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, 'GET / HTTP/1.1\nSet-Cookie: pwn=1\r\nHost: localhost\r\n\r\n');
+
+        expect(response).toStartWith('HTTP/1.1 400');
+        expect(response).not.toContain('pwn');
+      });
     });
   });
 

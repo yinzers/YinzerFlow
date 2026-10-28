@@ -3,52 +3,45 @@ import { httpMethod } from '@constants/http.ts';
 import { divideString } from '@core/utils/string.ts';
 
 /**
- * Parse raw HTTP request string into its components that are needed for the request builder
+ * RFC 9112 §3 request line: method, one SP, request-target, one SP, HTTP/1.0 or HTTP/1.1, and nothing else. No `m` flag,
+ * so `$` is the end of the line divideString cut: a bare LF (or any other byte) after the version fails the match.
+ */
+const requestLinePattern = /^(?<method>\S+) (?<target>\S+) (?<protocol>HTTP\/1\.[01])$/;
+
+/**
+ * Parse raw HTTP request string into its components that are needed for the request builder.
+ *
+ * This is the one request-line parser: HTTP requests and WebSocket upgrades both read method, target and protocol
+ * from it. A line that doesn't match the RFC 9112 grammar (tabs or repeated spaces as separators, trailing bytes,
+ * a version other than HTTP/1.0 or 1.1, a missing part) gets `isRequestLineValid: false`, and the caller answers 400;
+ * the other fields then hold safe fallbacks (method GET, protocol HTTP/1.1) and are never echoed.
+ * A well-formed line with a method YinzerFlow doesn't route is still read as GET, as before.
  *
  * @example
  * ```ts
  * parseHttpRequest('GET /path?key1=value1&key2=value2 HTTP/1.1\r\nHost: example.com\r\n\r\n');
- * // Returns { method: 'GET', path: '/path?key1=value1&key2=value2', protocol: 'HTTP/1.1', headersRaw: 'Host: example.com\r\n', rawBody: '' }
+ * // Returns { method: 'GET', path: '/path?key1=value1&key2=value2', protocol: 'HTTP/1.1', headersRaw: 'Host: example.com',
+ * //           rawBody: '', isRequestLineValid: true }
  * ```
  */
-export const parseHttpRequest = (request: string): { method: InternalHttpMethod; path: string; protocol: string; headersRaw: string; rawBody: string } => {
-  /**
-   * The request is a string that contains the following information:
-   * - The first line contains the request method, path, and protocol
-   * - The headers are separated from the body by two newlines
-   */
-
-  // Handle empty or malformed requests gracefully
-  if (!request || !request.trim()) {
-    return {
-      method: 'GET' as InternalHttpMethod,
-      path: '/',
-      protocol: 'HTTP/1.1',
-      headersRaw: '',
-      rawBody: '',
-    };
-  }
-
+export const parseHttpRequest = (
+  request: string,
+): { method: InternalHttpMethod; path: string; protocol: string; headersRaw: string; rawBody: string; isRequestLineValid: boolean } => {
   const [firstLine, rest] = divideString(request, '\r\n');
-  const [method, path, protocol] = firstLine.split(' ', 3);
   const [headersRaw, rawBody] = divideString(rest, '\r\n\r\n');
+  const groups = requestLinePattern.exec(firstLine)?.groups;
 
-  // Validate method and provide fallback
-  if (!method || !Object.values(httpMethod).includes(method as InternalHttpMethod)) {
-    return {
-      method: 'GET' as InternalHttpMethod,
-      path: path ?? '/',
-      protocol: protocol ?? 'HTTP/1.1',
-      headersRaw,
-      rawBody,
-    };
+  if (!groups?.method || !groups.target || !groups.protocol) {
+    return { method: httpMethod.get, path: firstLine.split(' ')[1] ?? '/', protocol: 'HTTP/1.1', headersRaw, rawBody, isRequestLineValid: false };
   }
 
+  const isKnownMethod = Object.values(httpMethod).includes(groups.method as InternalHttpMethod);
   return {
-    method: method as InternalHttpMethod,
-    path: path ?? '/',
-    protocol: protocol ?? 'HTTP/1.1',
+    method: isKnownMethod ? (groups.method as InternalHttpMethod) : httpMethod.get,
+    path: groups.target,
+    protocol: groups.protocol,
     headersRaw,
     rawBody,
+    isRequestLineValid: true,
   };
 };

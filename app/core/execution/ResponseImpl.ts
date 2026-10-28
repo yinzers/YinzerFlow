@@ -41,7 +41,9 @@ export class ResponseImpl implements InternalResponseImpl {
   }
 
   _parseResponseIntoString(): void {
-    const statusLine = `${this._request.protocol} ${this._statusCode} ${this._status}`;
+    // Always our own version, never the client's protocol token: echoing it let a crafted request line write into the
+    // response head. HTTP/1.0 clients accept an HTTP/1.1 status line (RFC 9110 §6.2).
+    const statusLine = `HTTP/1.1 ${this._statusCode} ${this._status}`;
     const encoding = determineEncoding(this._headers['content-type'], this._body);
     const body = formatBodyIntoString(this._body, { encoding });
 

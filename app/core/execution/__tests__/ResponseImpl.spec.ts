@@ -313,15 +313,16 @@ describe('ResponseImpl', () => {
         expect(response._stringBody).toContain('\r\n\r\n'); // CRLF header/body separator
       });
 
-      it('should handle different protocols', () => {
-        const httpRequest = createTestRequest('GET / HTTP/2\r\nHost: localhost\r\n\r\n');
+      // The status line is always HTTP/1.1, never the client's token (echoing it allowed header injection, 0.10.0)
+      it('should write HTTP/1.1 in the status line whatever version the client sent', () => {
+        const httpRequest = createTestRequest('GET / HTTP/1.0\r\nHost: localhost\r\n\r\n');
         const httpResponse = new ResponseImpl(httpRequest);
 
         httpResponse.setStatusCode(httpStatusCode.ok);
         httpResponse._setBody('test');
 
         httpResponse._parseResponseIntoString();
-        expect(httpResponse._stringBody).toContain('HTTP/2 200 OK');
+        expect(httpResponse._stringBody).toStartWith('HTTP/1.1 200 OK');
       });
     });
   });

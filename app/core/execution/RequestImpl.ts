@@ -23,6 +23,7 @@ export class RequestImpl implements InternalRequestImpl {
   params: Record<string, string>;
   ipAddress: string;
   rawBody: Buffer | string;
+  readonly _isRequestLineValid: boolean;
   cookies = new Map<string, string>();
   signedCookies = new Map<string, string>();
 
@@ -30,8 +31,9 @@ export class RequestImpl implements InternalRequestImpl {
     this._rawRequest = rawRequest;
     this._setup = setup;
 
-    const { method, path, protocol, headers, body, query, params, rawBody } = this._parseRequestIntoObject();
+    const { method, path, protocol, headers, body, query, params, rawBody, _isRequestLineValid } = this._parseRequestIntoObject();
 
+    this._isRequestLineValid = _isRequestLineValid;
     this.method = method;
     this.path = path;
     this.protocol = protocol;
@@ -45,10 +47,10 @@ export class RequestImpl implements InternalRequestImpl {
     this.ipAddress = parseIpAddress(this._setup, headers, clientAddress ?? '');
   }
 
-  private _parseRequestIntoObject(): Omit<Request, 'cookies' | 'ipAddress' | 'signedCookies'> {
+  private _parseRequestIntoObject(): Omit<Request, 'cookies' | 'ipAddress' | 'signedCookies'> & Pick<InternalRequestImpl, '_isRequestLineValid'> {
     const request = this._rawRequest.toString();
 
-    const { method, path, protocol, headersRaw, rawBody } = parseHttpRequest(request);
+    const { method, path, protocol, headersRaw, rawBody, isRequestLineValid } = parseHttpRequest(request);
 
     const headers = parseRequestHeaders(headersRaw);
 
@@ -71,6 +73,7 @@ export class RequestImpl implements InternalRequestImpl {
       query: parseQuery(path),
       params: {}, // Route params will be set in RequestHandlerImpl when route is matched
       rawBody,
+      _isRequestLineValid: isRequestLineValid,
     };
   }
 }

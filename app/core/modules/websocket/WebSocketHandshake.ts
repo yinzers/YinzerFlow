@@ -5,8 +5,6 @@ interface HandshakeValid {
   valid: true;
   key: string;
   origin: string | undefined;
-  path: string;
-  query: Record<string, string>;
   protocols: Array<string>;
 }
 
@@ -27,51 +25,6 @@ export const _isWebSocketUpgrade = (headersStr: string): boolean => {
 };
 
 /**
- * Parse the request line to extract path and query parameters.
- */
-const _parseRequestLine = (requestLine: string): { path: string; query: Record<string, string> } | null => {
-  const requestMatch = /^GET\s+(?<path>\S+)\s+HTTP\/1\.1$/i.exec(requestLine);
-  if (!requestMatch?.groups?.path) {
-    return null;
-  }
-
-  const fullPath = requestMatch.groups.path;
-  const queryIndex = fullPath.indexOf('?');
-  const path = queryIndex >= 0 ? fullPath.substring(0, queryIndex) : fullPath;
-  const query: Record<string, string> = {};
-
-  if (queryIndex >= 0) {
-    const queryStr = fullPath.substring(queryIndex + 1);
-    for (const pair of queryStr.split('&')) {
-      const eqIndex = pair.indexOf('=');
-      if (eqIndex >= 0) {
-        query[decodeURIComponent(pair.substring(0, eqIndex))] = decodeURIComponent(pair.substring(eqIndex + 1));
-      } else {
-        query[decodeURIComponent(pair)] = '';
-      }
-    }
-  }
-
-  return { path, query };
-};
-
-/**
- * Parse HTTP headers into a case-insensitive map.
- */
-const _parseHeaders = (lines: Array<string>): Map<string, string> => {
-  const headers = new Map<string, string>();
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    const colonIndex = line.indexOf(':');
-    if (colonIndex < 0) continue;
-    const [key = '', ...rest] = line.split(':');
-    headers.set(key.trim().toLowerCase(), rest.join(':').trim());
-  }
-  return headers;
-};
-
-/**
  * Validate the Sec-WebSocket-Key header.
  */
 const _validateSecWebSocketKey = (key: string): { valid: false; reason: string } | { valid: true } => {
@@ -88,32 +41,31 @@ const _validateSecWebSocketKey = (key: string): { valid: false; reason: string }
 };
 
 /**
- * Validate a WebSocket upgrade request per RFC 6455 §4.2.1.
+ * Validate a WebSocket upgrade request per RFC 6455 §4.2.1, on the method, protocol and headers the shared HTTP parser
+ * produced (parseHttpRequest + parseRequestHeaders). The path and query come from the same parsed request, so hooks,
+ * routing and the handshake all read one request line.
  *
  * Checks:
+ * - Method is GET and protocol is HTTP/1.1
  * - Sec-WebSocket-Key present and valid (base64, 16 bytes decoded)
  * - Sec-WebSocket-Version is 13
- * - Extracts origin, path, query string, and sub-protocol list
+ * - Extracts origin and sub-protocol list
  */
-export const _validateHandshake = (headersStr: string): HandshakeResult => {
-  const lines = headersStr.split('\r\n');
-  const [requestLine] = lines;
-  if (!requestLine) {
-    return { valid: false, reason: 'Empty request' };
-  }
-
-  // Parse request line: "GET /path?query HTTP/1.1"
-  const pathQueryResult = _parseRequestLine(requestLine);
-  if (!pathQueryResult) {
+export const _validateHandshake = ({
+  method,
+  protocol,
+  headers,
+}: {
+  method: string;
+  protocol: string;
+  headers: Partial<Record<string, string>>;
+}): HandshakeResult => {
+  if (method !== 'GET' || protocol !== 'HTTP/1.1') {
     return { valid: false, reason: 'Invalid request line — must be GET with HTTP/1.1' };
   }
-  const { path, query } = pathQueryResult;
-
-  // Parse headers into a map (case-insensitive keys)
-  const headers = _parseHeaders(lines);
 
   // Sec-WebSocket-Key: required, base64-encoded 16 bytes
-  const key = headers.get('sec-websocket-key');
+  const key = headers['sec-websocket-key'];
   if (!key) {
     return { valid: false, reason: 'Missing Sec-WebSocket-Key header' };
   }
@@ -123,13 +75,13 @@ export const _validateHandshake = (headersStr: string): HandshakeResult => {
   }
 
   // Sec-WebSocket-Version: must be 13
-  const version = headers.get('sec-websocket-version');
+  const version = headers['sec-websocket-version'];
   if (version !== '13') {
     return { valid: false, reason: `Unsupported Sec-WebSocket-Version: ${version ?? 'missing'}` };
   }
 
-  const origin = headers.get('origin');
-  const protocolHeader = headers.get('sec-websocket-protocol');
+  const { origin } = headers;
+  const protocolHeader = headers['sec-websocket-protocol'];
   const protocols =
     protocolHeader ?
       protocolHeader
@@ -138,7 +90,7 @@ export const _validateHandshake = (headersStr: string): HandshakeResult => {
         .filter(Boolean)
     : [];
 
-  return { valid: true, key, origin, path, query, protocols };
+  return { valid: true, key, origin, protocols };
 };
 
 /**

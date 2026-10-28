@@ -62,14 +62,16 @@ import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGe
  */
 export interface Request<T extends HandlerCallbackGenerics = HandlerCallbackGenerics> {
   /**
-   * The HTTP protocol version (e.g., "HTTP/1.1").
+   * The HTTP protocol version from the request line: `"HTTP/1.1"` or `"HTTP/1.0"`. A request line with any other
+   * version (or not in the form `METHOD SP target SP HTTP/1.x`) is answered 400 before hooks run, so handlers only see
+   * these two. Responses always use `HTTP/1.1` in the status line.
    *
    * @example
    * ```typescript
    * const handler: HandlerCallback = async (ctx) => {
-   *   if (ctx.request.protocol === 'HTTP/2.0') {
-   *     // Use HTTP/2 specific features
-   *     ctx.response.addHeaders({ 'X-HTTP-Version': '2.0' });
+   *   if (ctx.request.protocol === 'HTTP/1.0') {
+   *     // HTTP/1.0 clients don't keep connections alive by default
+   *     ctx.response.addHeaders({ Connection: 'close' });
    *   }
    *
    *   return { protocol: ctx.request.protocol };

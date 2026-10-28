@@ -250,3 +250,15 @@ before touching the area an entry names.
 - **Cost later**: trivial; one warning in `_warnWebSocketConfig` and one in `app.ws()` route registration.
 - **Trigger**: the next change to `WebSocketConfig.ts` validation or to `app.ws()` option handling, or a report of
   listen-only clients dropping.
+
+## unknown-method-read-as-get — a well-formed request with an unrouted method is handled as GET
+
+- **What**: `parseHttpRequest` (app/core/execution/utils/parseHttpRequest.ts) maps any method that isn't in
+  `httpMethod` to `GET`, so `PROPFIND /admin HTTP/1.1` runs the `GET /admin` route, and a WebSocket upgrade sent with
+  method `FOO` is handshaken as if it were `GET`. RFC 9110 §9.1 says an unrecognized method gets 501.
+- **Why deferred**: found while making the request line strict in 0.10.0; the strict grammar fix was about framing,
+  and answering 501 for unknown methods changes what every non-standard client (WebDAV, custom verbs) gets, which
+  wants its own changelog line.
+- **Cost later**: low; return a flag for an unknown method and answer 501 next to `_rejectMalformedRequestLine`.
+- **Trigger**: the next change to `parseHttpRequest`'s method handling or `httpMethod`, or a report of a custom
+  method reaching a GET route.

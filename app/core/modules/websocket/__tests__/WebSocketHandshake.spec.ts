@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '../WebSocketHandshake.ts';
+import { parseHttpRequest } from '@core/execution/utils/parseHttpRequest.ts';
+import { parseRequestHeaders } from '@core/execution/utils/parseRequestHeaders.ts';
+
+/** Validate a raw request head the way the upgrade path does: through the shared HTTP request-line and header parsers. */
+const validate = (rawHead: string): ReturnType<typeof _validateHandshake> => {
+  const { method, protocol, headersRaw } = parseHttpRequest(`${rawHead}\r\n\r\n`);
+  return _validateHandshake({ method, protocol, headers: parseRequestHeaders(headersRaw) });
+};
 
 const validUpgradeHeaders = [
   'GET /chat?room=lobby HTTP/1.1',
@@ -48,21 +56,19 @@ describe('_isWebSocketUpgrade', () => {
 
 describe('_validateHandshake', () => {
   it('should validate a correct upgrade request', () => {
-    const result = _validateHandshake(validUpgradeHeaders);
+    const result = validate(validUpgradeHeaders);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
 
     expect(result.key).toBe('dGhlIHNhbXBsZSBub25jZQ==');
     expect(result.origin).toBe('http://example.com');
-    expect(result.path).toBe('/chat');
-    expect(result.query).toEqual({ room: 'lobby' });
     expect(result.protocols).toEqual(['chat', 'superchat']);
   });
 
   it('should fail when Sec-WebSocket-Key is missing', () => {
     const headers = ['GET / HTTP/1.1', 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(false);
     if (result.valid) return;
     expect(result.reason).toContain('Sec-WebSocket-Key');
@@ -73,7 +79,7 @@ describe('_validateHandshake', () => {
       '\r\n',
     );
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(false);
     if (result.valid) return;
     expect(result.reason).toContain('16 bytes');
@@ -88,7 +94,7 @@ describe('_validateHandshake', () => {
       'Sec-WebSocket-Version: 8',
     ].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(false);
     if (result.valid) return;
     expect(result.reason).toContain('Version');
@@ -97,7 +103,7 @@ describe('_validateHandshake', () => {
   it('should fail when Sec-WebSocket-Version is missing', () => {
     const headers = ['GET / HTTP/1.1', 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=='].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(false);
   });
 
@@ -110,36 +116,14 @@ describe('_validateHandshake', () => {
       'sec-websocket-version: 13',
     ].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(true);
-  });
-
-  it('should extract path without query string', () => {
-    const headers = ['GET /simple-path HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
-
-    const result = _validateHandshake(headers);
-    expect(result.valid).toBe(true);
-    if (!result.valid) return;
-    expect(result.path).toBe('/simple-path');
-    expect(result.query).toEqual({});
-  });
-
-  it('should parse multiple query parameters', () => {
-    const headers = ['GET /ws?user=alice&token=abc123&mode=fast HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join(
-      '\r\n',
-    );
-
-    const result = _validateHandshake(headers);
-    expect(result.valid).toBe(true);
-    if (!result.valid) return;
-    expect(result.path).toBe('/ws');
-    expect(result.query).toEqual({ user: 'alice', token: 'abc123', mode: 'fast' });
   });
 
   it('should return empty protocols when header is absent', () => {
     const headers = ['GET / HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.protocols).toEqual([]);
@@ -148,21 +132,21 @@ describe('_validateHandshake', () => {
   it('should return undefined origin when header is absent', () => {
     const headers = ['GET / HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.origin).toBeUndefined();
   });
 
   it('should fail on empty input', () => {
-    const result = _validateHandshake('');
+    const result = validate('');
     expect(result.valid).toBe(false);
   });
 
   it('should fail on non-GET request', () => {
     const headers = ['POST / HTTP/1.1', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'].join('\r\n');
 
-    const result = _validateHandshake(headers);
+    const result = validate(headers);
     expect(result.valid).toBe(false);
   });
 });
