@@ -45,6 +45,14 @@ describe('WebSocketConnection', () => {
       expect(frame.subarray(2).toString()).toBe('Hello');
     });
 
+    // Review note (0.10.0): a socket destroyed before its close event fired made send() report 'buffered' for a frame
+    // that can never leave, and publish counted it
+    it('should report dropped when the socket is destroyed but its close event has not fired yet', () => {
+      const { conn, socket } = createConnection();
+      socket.destroyed = true; // destroy() without the close event, as between socket.destroy() and 'close'
+      expect(conn.send('too late')).toBe('dropped');
+    });
+
     it('should write a binary frame for Buffer data', () => {
       const { conn, socket } = createConnection();
       conn.send(Buffer.from([0x01, 0x02, 0x03]));

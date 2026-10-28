@@ -399,6 +399,9 @@ export class WebSocketConnection<T = unknown> {
 
   /** Write a frame under the backpressure strategy and report what happened to it. */
   private _writeFrame(frame: Buffer): InternalWsSendStatus {
+    // Destroyed but its close event not yet delivered: readyState is still open, but nothing written now can leave
+    if (this._socket.destroyed) return wsSendStatus.dropped;
+
     const wasBackpressured = this._backpressured;
     if (wasBackpressured) {
       if (this._options.backpressure.strategy === 'drop') {
