@@ -249,12 +249,19 @@ export interface InternalUrlEncodedOptions {
  */
 export interface InternalIpSecurityOptions {
   /**
-   * List of trusted proxy IP addresses that are allowed to set forwarded headers
-   * Only these IPs can provide X-Forwarded-For and similar headers
-   * Use '*' to trust any proxy (less secure but useful for complex/unknown infrastructure)
+   * Proxies whose client-IP headers are believed, as exact IPs or CIDR ranges (IPv4 and IPv6)
+   *
+   * Client-IP headers are read only when the socket peer is in this list; from any other peer
+   * `request.ipAddress` is the socket address. X-Forwarded-For from a trusted peer is walked right to left past
+   * trusted proxies, and the first untrusted hop is the client. Behind a proxy or load balancer that isn't on
+   * localhost, add its address or network here, or every user resolves to the proxy's IP and shares one
+   * rate-limit bucket. Entries are parsed at startup; a malformed one throws. IPv4-mapped peers match IPv4 entries.
+   *
+   * `'*'` trusts every peer and every hop: spoofable, since any client can then set its own IP. Use it only when
+   * the network in front already strips or overwrites these headers.
    * @default ['127.0.0.1', '::1']
-   * @example ['127.0.0.1', '::1', '192.168.1.10'] // Specific proxies
-   * @example ['*'] // Trust any proxy (enables spoofing detection without proxy validation)
+   * @example ['127.0.0.1', '::1', '10.0.0.0/8', 'fd00::/8'] // Kubernetes / cloud load balancer
+   * @example ['192.168.1.10'] // One specific load balancer
    */
   trustedProxies: Array<string>;
 
@@ -266,8 +273,9 @@ export interface InternalIpSecurityOptions {
   allowPrivateIps: boolean;
 
   /**
-   * Header preference order for IP extraction
-   * YinzerFlow will check headers in this order and use the first valid one
+   * Header preference order for IP extraction, consulted only when the socket peer is a trusted proxy
+   * YinzerFlow checks headers in this order and uses the first that yields a valid client IP: X-Forwarded-For
+   * walked right to left past trusted proxies, the others (single-value) by their last entry
    * @default ['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip', 'x-client-ip', 'true-client-ip']
    */
   headerPreference: Array<string>;

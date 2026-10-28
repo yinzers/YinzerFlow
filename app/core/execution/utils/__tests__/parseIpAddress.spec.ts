@@ -1,130 +1,91 @@
 import { describe, expect, it } from 'bun:test';
-import { detectSpoofingPatterns, isPrivateIp, isTrustedProxy, isValidIpAddress, parseIpAddress, parseIpAddressSecure } from '../parseIpAddress.ts';
+import { detectSpoofingPatterns, isPrivateIp, isTrustedProxy, isValidIpAddress, parseIpAddressSecure } from '../parseIpAddress.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import type { InternalIpSecurityOptions } from '@typedefs/internal/InternalConfiguration.js';
+import type { ServerOptions } from '@typedefs/public/Configuration.js';
 
-describe('parseIpAddress', () => {
-  describe('Basic IP extraction', () => {
-    it('should return single IP from x-forwarded-for header', () => {
-      const setup = new SetupImpl();
-      const headers = { 'x-forwarded-for': '203.0.113.1' };
+// Bug: client-IP headers were trusted without consulting the socket peer: a single-entry X-Forwarded-For was
+// accepted unchecked, a chain was trusted when its attacker-written last entry was a proxy, and X-Real-IP and
+// friends had no check at all, so any client could pick its own IP (and rate-limit bucket). Tier: High (authz-adjacent
+// identity of untrusted input).
+describe('parseIpAddressSecure (client IP from the socket peer and trusted proxies)', () => {
+  const untrustedPeer = '192.168.80.2';
+  const cases: Array<[description: string, ipSecurity: ServerOptions['ipSecurity'], headers: Record<string, string>, peer: string, expected: string]> = [
+    ['untrusted peer, single-entry X-Forwarded-For', undefined, { 'x-forwarded-for': '203.0.113.9' }, untrustedPeer, untrustedPeer],
+    ['untrusted peer, X-Real-IP', undefined, { 'x-real-ip': '203.0.113.9' }, untrustedPeer, untrustedPeer],
+    ['untrusted peer, CF-Connecting-IP', undefined, { 'cf-connecting-ip': '203.0.113.9' }, untrustedPeer, untrustedPeer],
+    ['untrusted peer, X-Client-IP', undefined, { 'x-client-ip': '203.0.113.9' }, untrustedPeer, untrustedPeer],
+    ['untrusted peer, True-Client-IP', undefined, { 'true-client-ip': '203.0.113.9' }, untrustedPeer, untrustedPeer],
+    ['untrusted peer, spoofed "<random>, 127.0.0.1" chain', undefined, { 'x-forwarded-for': '203.0.113.9, 127.0.0.1' }, untrustedPeer, untrustedPeer],
+    ['untrusted peer, no headers', undefined, {}, untrustedPeer, untrustedPeer],
+    ['trusted peer, single-entry X-Forwarded-For', undefined, { 'x-forwarded-for': '203.0.113.9' }, '127.0.0.1', '203.0.113.9'],
+    ['trusted peer, single-value X-Real-IP', undefined, { 'x-real-ip': '203.0.113.9' }, '127.0.0.1', '203.0.113.9'],
+    [
+      'trusted peer, multi-hop chain: first untrusted hop from the right',
+      { trustedProxies: ['127.0.0.1', '10.0.0.0/8'] },
+      { 'x-forwarded-for': '198.51.100.7, 203.0.113.9, 10.1.2.3' },
+      '127.0.0.1',
+      '203.0.113.9',
+    ],
+    [
+      'trusted peer, every hop trusted: leftmost entry',
+      { trustedProxies: ['127.0.0.1', '10.0.0.0/8'] },
+      { 'x-forwarded-for': '10.0.0.5, 10.0.0.6' },
+      '127.0.0.1',
+      '10.0.0.5',
+    ],
+    ['trusted peer, malformed hop: header ignored, socket address used', undefined, { 'x-forwarded-for': 'nope, 203.0.113.9' }, '127.0.0.1', '127.0.0.1'],
+    ['IPv4-mapped peer matches an IPv4 trusted proxy', undefined, { 'x-forwarded-for': '203.0.113.9' }, '::ffff:127.0.0.1', '203.0.113.9'],
+    ['IPv4-mapped untrusted peer is reported as IPv4', undefined, { 'x-forwarded-for': '203.0.113.9' }, `::ffff:${untrustedPeer}`, untrustedPeer],
+    ['IPv6 peer in a trusted fd00::/8 range', { trustedProxies: ['fd00::/8'] }, { 'x-forwarded-for': '2001:DB8::1' }, 'fd12:3456::1', '2001:db8::1'],
+    [
+      "'*' trusts every peer and hop (leftmost entry, spoofable)",
+      { trustedProxies: ['*'] },
+      { 'x-forwarded-for': '203.0.113.9, 198.51.100.1' },
+      untrustedPeer,
+      '203.0.113.9',
+    ],
+  ];
 
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('203.0.113.1');
-    });
-
-    it('should extract client IP from trusted proxy chain', () => {
-      const setup = new SetupImpl({
-        ipSecurity: { trustedProxies: ['127.0.0.1'] },
-      });
-      const headers = { 'x-forwarded-for': '203.0.113.1, 127.0.0.1' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('203.0.113.1');
-    });
-
-    it('should fall back to other headers when x-forwarded-for is missing', () => {
-      const setup = new SetupImpl();
-      const headers = { 'x-real-ip': '203.0.113.1' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('203.0.113.1');
-    });
-
-    it('should return empty string when no IP headers are present', () => {
-      const setup = new SetupImpl();
-      const headers = { host: 'example.com' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('');
-    });
-
-    it('should return empty string for invalid IP formats', () => {
-      const setup = new SetupImpl();
-      const headers = { 'x-forwarded-for': 'not.an.ip' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('');
-    });
+  it.each(cases)('%s', (_description, ipSecurity, headers, peer, expected) => {
+    const setup = new SetupImpl(ipSecurity ? { ipSecurity } : undefined);
+    expect(parseIpAddressSecure(setup, headers, peer).ip).toBe(expected);
   });
+});
 
-  describe('Trusted proxy validation', () => {
-    it('should reject untrusted proxy chains', () => {
-      const setup = new SetupImpl({
-        ipSecurity: { trustedProxies: ['192.168.1.1'] },
-      });
-      const headers = { 'x-forwarded-for': '203.0.113.1, 198.51.100.1' }; // Untrusted proxy
+// Bug: trustedProxies only matched exact strings, so a proxy fleet behind a CIDR could not be trusted and an
+// IPv4-mapped or respelled peer didn't match its own entry. Tier: High (range boundaries decide trust).
+describe('isTrustedProxy CIDR membership', () => {
+  const cases: Array<[range: string, address: string, expected: boolean]> = [
+    ['10.0.0.0/8', '10.0.0.0', true],
+    ['10.0.0.0/8', '10.255.255.255', true],
+    ['10.0.0.0/8', '11.0.0.0', false],
+    ['10.0.0.0/8', '9.255.255.255', false],
+    ['192.168.1.0/31', '192.168.1.1', true],
+    ['192.168.1.0/31', '192.168.1.2', false],
+    ['203.0.113.7/32', '203.0.113.7', true],
+    ['203.0.113.7/32', '203.0.113.8', false],
+    ['0.0.0.0/0', '198.51.100.1', true],
+    ['0.0.0.0/0', '2001:db8::1', false],
+    ['10.0.0.0/8', '::ffff:10.1.2.3', true],
+    ['fd00::/8', 'fd00::', true],
+    ['fd00::/8', 'fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', true],
+    ['fd00::/8', 'fe00::', false],
+    ['fd00::/8', 'fc00::', false],
+    ['2001:db8::/32', '2001:db8:ffff::1', true],
+    ['2001:db8::/32', '2001:db9::', false],
+    ['::1', '0:0:0:0:0:0:0:1', true],
+  ];
 
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('');
-    });
-
-    it('should work with wildcard trusted proxies', () => {
-      const setup = new SetupImpl({
-        ipSecurity: { trustedProxies: ['*'] },
-      });
-      const headers = { 'x-forwarded-for': '203.0.113.1, 198.51.100.1' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('203.0.113.1');
-    });
+  it.each(cases)('%s contains %s: %p', (range, address, expected) => {
+    expect(isTrustedProxy(address, [range])).toBe(expected);
   });
+});
 
-  describe('IPv6 addresses', () => {
-    it('should handle IPv6 addresses correctly', () => {
-      const setup = new SetupImpl({
-        ipSecurity: { trustedProxies: ['::1'] },
-      });
-      const headers = { 'x-forwarded-for': '2001:db8::1, ::1' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('2001:db8::1');
-    });
-
-    it('should handle single IPv6 address', () => {
-      const setup = new SetupImpl();
-      const headers = { 'x-real-ip': '2001:db8::1' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('2001:db8::1');
-    });
-  });
-
-  describe('Security protections', () => {
-    it('should reject chains that exceed maxChainLength', () => {
-      const setup = new SetupImpl({
-        ipSecurity: {
-          trustedProxies: ['*'],
-          maxChainLength: 3,
-        },
-      });
-      const longChain = Array.from({ length: 5 }, (_, i) => `192.168.1.${i + 1}`).join(', ');
-      const headers = { 'x-forwarded-for': longChain };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('');
-    });
-
-    it('should reject chains with duplicate IPs', () => {
-      const setup = new SetupImpl({
-        ipSecurity: { trustedProxies: ['*'] },
-      });
-      const headers = { 'x-forwarded-for': '203.0.113.1, 203.0.113.1' };
-
-      const result = parseIpAddress(setup, headers);
-
-      expect(result).toBe('');
-    });
+// Bug: a malformed trustedProxies entry was silently never matched instead of failing at startup. Tier: High (config validation of a trust boundary).
+describe('trustedProxies validation', () => {
+  it.each([['10.0.0.0/33'], ['10.0.0.0/-1'], ['10.0.0/8'], ['fd00::/129'], ['not-an-ip'], [''], ['1.2.3.4/']])('throws at config for %p', (entry) => {
+    expect(() => new SetupImpl({ ipSecurity: { trustedProxies: [entry] } })).toThrow('ipSecurity.trustedProxies[0] is not a valid IP address or CIDR range');
   });
 });
 
@@ -242,36 +203,6 @@ describe('IP Validation Utilities', () => {
     });
   });
 
-  describe('isTrustedProxy', () => {
-    it('should identify trusted proxies', () => {
-      const trustedProxies = ['127.0.0.1', '192.168.1.10', '::1'];
-
-      expect(isTrustedProxy('127.0.0.1', trustedProxies)).toBe(true);
-      expect(isTrustedProxy('192.168.1.10', trustedProxies)).toBe(true);
-      expect(isTrustedProxy('::1', trustedProxies)).toBe(true);
-    });
-
-    it('should reject untrusted IPs', () => {
-      const trustedProxies = ['127.0.0.1'];
-
-      expect(isTrustedProxy('192.168.1.1', trustedProxies)).toBe(false);
-      expect(isTrustedProxy('8.8.8.8', trustedProxies)).toBe(false);
-    });
-
-    it('should handle wildcard (*) to trust any proxy', () => {
-      expect(isTrustedProxy('203.0.113.1', ['*'])).toBe(true);
-      expect(isTrustedProxy('192.168.1.1', ['*'])).toBe(true);
-      expect(isTrustedProxy('127.0.0.1', ['*'])).toBe(true);
-      expect(isTrustedProxy('2001:db8::1', ['*'])).toBe(true);
-    });
-
-    it('should handle empty inputs', () => {
-      expect(isTrustedProxy('', ['127.0.0.1'])).toBe(false);
-      expect(isTrustedProxy('127.0.0.1', [])).toBe(false);
-      expect(isTrustedProxy('', ['*'])).toBe(false);
-    });
-  });
-
   describe('detectSpoofingPatterns', () => {
     const mockConfig: InternalIpSecurityOptions = {
       trustedProxies: ['127.0.0.1'],
@@ -316,233 +247,6 @@ describe('IP Validation Utilities', () => {
     it('should skip single IP chains', () => {
       const singleIp = ['192.168.1.1'];
       expect(detectSpoofingPatterns(singleIp, mockConfig)).toBe(false);
-    });
-  });
-});
-
-describe('parseIpAddressSecure', () => {
-  const setup = new SetupImpl();
-
-  describe('Header preference order', () => {
-    it('should prefer x-forwarded-for over other headers', () => {
-      const headers = {
-        'x-forwarded-for': '203.0.113.1',
-        'x-real-ip': '198.51.100.1',
-        'cf-connecting-ip': '192.0.2.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        trustedProxies: ['127.0.0.1'],
-        detectSpoofing: false,
-      });
-
-      expect(result.ip).toBe('203.0.113.1');
-      expect(result.source).toBe('x-forwarded-for');
-    });
-
-    it('should fallback to next header if first is missing', () => {
-      const headers = {
-        'x-real-ip': '198.51.100.1',
-        'cf-connecting-ip': '192.0.2.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.ip).toBe('198.51.100.1');
-      expect(result.source).toBe('x-real-ip');
-    });
-
-    it('should handle Cloudflare headers', () => {
-      const headers = {
-        'cf-connecting-ip': '203.0.113.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.ip).toBe('203.0.113.1');
-      expect(result.source).toBe('cf-connecting-ip');
-    });
-  });
-
-  describe('Trusted proxy validation', () => {
-    it('should require trusted proxy for x-forwarded-for chains', () => {
-      const headers = {
-        'x-forwarded-for': '203.0.113.1, 192.168.1.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        trustedProxies: ['192.168.1.1'],
-      });
-
-      expect(result.ip).toBe('203.0.113.1');
-      expect(result.trusted).toBe(true);
-    });
-
-    it('should reject untrusted forwarded headers', () => {
-      const headers = {
-        'x-forwarded-for': '203.0.113.1, 192.168.1.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        trustedProxies: ['127.0.0.1'], // Different from actual proxy
-      });
-
-      expect(result.ip).toBe('');
-      expect(result.isValid).toBe(false);
-    });
-
-    it('should accept any proxy with wildcard (*)', () => {
-      const headers = {
-        'x-forwarded-for': '203.0.113.1, 198.51.100.10', // Any proxy IP
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        trustedProxies: ['*'], // Trust any proxy
-      });
-
-      expect(result.ip).toBe('203.0.113.1');
-      expect(result.isValid).toBe(true);
-      expect(result.trusted).toBe(true);
-      expect(result.source).toBe('x-forwarded-for');
-    });
-  });
-
-  describe('Spoofing detection', () => {
-    it('should skip suspicious IP chains', () => {
-      const headers = {
-        'x-forwarded-for': '192.168.1.1, 192.168.1.1', // Duplicate IPs
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        detectSpoofing: true,
-        trustedProxies: ['127.0.0.1'],
-      });
-
-      expect(result.ip).toBe('');
-      expect(result.isValid).toBe(false);
-    });
-
-    it('should allow chains when spoofing detection is disabled', () => {
-      const headers = {
-        'x-forwarded-for': '192.168.1.1, 192.168.1.1', // Duplicate IPs
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        detectSpoofing: false,
-        trustedProxies: ['192.168.1.1'],
-      });
-
-      expect(result.ip).toBe('192.168.1.1');
-      expect(result.isValid).toBe(true);
-    });
-  });
-
-  describe('Private IP handling', () => {
-    it('should allow private IPs by default', () => {
-      const headers = {
-        'x-real-ip': '192.168.1.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.ip).toBe('192.168.1.1');
-      expect(result.isPrivate).toBe(true);
-      expect(result.isValid).toBe(true);
-    });
-
-    it('should reject private IPs when disabled', () => {
-      const headers = {
-        'x-real-ip': '192.168.1.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        allowPrivateIps: false,
-      });
-
-      expect(result.ip).toBe('');
-      expect(result.isValid).toBe(false);
-    });
-  });
-
-  describe('Error handling', () => {
-    it('should handle invalid IP addresses gracefully', () => {
-      const headers = {
-        'x-forwarded-for': 'not.an.ip',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.ip).toBe('');
-      expect(result.source).toBe('socket');
-      expect(result.trusted).toBe(false);
-      expect(result.isValid).toBe(false);
-    });
-
-    it('should reject untrusted proxy chains when no trusted proxies configured', () => {
-      const headers = {
-        'x-forwarded-for': '203.0.113.1, 192.168.1.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        trustedProxies: [], // No trusted proxies configured
-      });
-
-      expect(result.ip).toBe('');
-      expect(result.isValid).toBe(false);
-      expect(result.source).toBe('socket');
-      expect(result.trusted).toBe(false);
-    });
-  });
-
-  describe('IPv6 support', () => {
-    it('should handle IPv6 addresses correctly', () => {
-      const headers = {
-        'x-real-ip': '2001:db8::1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.ip).toBe('2001:db8::1');
-      expect(result.isValid).toBe(true);
-      expect(result.isPrivate).toBe(false);
-    });
-
-    it('should detect private IPv6 addresses', () => {
-      const headers = {
-        'x-real-ip': '::1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.ip).toBe('::1');
-      expect(result.isValid).toBe(true);
-      expect(result.isPrivate).toBe(true);
-    });
-  });
-
-  describe('Configuration handling', () => {
-    it('should use default configuration when none provided', () => {
-      const headers = {
-        'x-real-ip': '203.0.113.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers);
-
-      expect(result.isValid).toBe(true);
-      expect(result.trusted).toBe(true); // x-real-ip is trusted by default
-    });
-
-    it('should merge provided config with defaults', () => {
-      const headers = {
-        'custom-ip': '203.0.113.1',
-      };
-
-      const result = parseIpAddressSecure(setup, headers, {
-        headerPreference: ['custom-ip'],
-      });
-
-      expect(result.ip).toBe('203.0.113.1');
-      expect(result.source).toBe('custom-ip');
     });
   });
 });

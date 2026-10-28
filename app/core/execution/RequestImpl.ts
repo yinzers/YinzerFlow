@@ -30,9 +30,6 @@ export class RequestImpl implements InternalRequestImpl {
     this._rawRequest = rawRequest;
     this._setup = setup;
 
-    // Set initial IP address from socket, will be updated if headers provide better info
-    this.ipAddress = clientAddress ?? '';
-
     const { method, path, protocol, headers, body, query, params, rawBody } = this._parseRequestIntoObject();
 
     this.method = method;
@@ -44,11 +41,8 @@ export class RequestImpl implements InternalRequestImpl {
     this.params = params ?? {};
     this.rawBody = rawBody;
 
-    // Update IP address if parsing from headers provides something
-    const parsedIpAddress = parseIpAddress(this._setup, headers);
-    if (parsedIpAddress) {
-      this.ipAddress = parsedIpAddress;
-    }
+    // The socket address, unless the socket peer is a trusted proxy whose forwarded headers name the client
+    this.ipAddress = parseIpAddress(this._setup, headers, clientAddress ?? '');
   }
 
   private _parseRequestIntoObject(): Omit<Request, 'cookies' | 'ipAddress' | 'signedCookies'> {

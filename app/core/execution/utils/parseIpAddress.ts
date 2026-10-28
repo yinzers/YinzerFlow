@@ -1,5 +1,6 @@
 import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
-import type { InternalIpAddressResult } from '@typedefs/internal/InternalIpAddress.js';
+import type { InternalIpAddressResult, InternalTrustedProxyMatcher } from '@typedefs/internal/InternalIpAddress.js';
+import { canonicalIpText, isIpInRange, parseIp, parseIpRange } from '@core/utils/ipAddress.ts';
 import type { InternalIpSecurityOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.ts';
 
@@ -61,17 +62,49 @@ export const isPrivateIp = (ip: string): boolean => {
   return PRIVATE_IP_RANGES.some((range) => range.test(cleanIp));
 };
 
+const _trustedProxyCache = new WeakMap<Array<string>, InternalTrustedProxyMatcher>();
+
 /**
- * Checks if an IP is in the trusted proxy list
- * Supports '*' wildcard to trust any proxy
+ * Compile `ipSecurity.trustedProxies` into a matcher: exact IPs and CIDR ranges (IPv4 and IPv6, such as
+ * `10.0.0.0/8` or `fd00::/8`), or `'*'` to trust every peer. Run at config time, where a malformed entry throws,
+ * and cached per array, so requests never re-parse it.
+ *
+ * @throws Error naming the malformed entry
+ */
+export const compileTrustedProxies = (trustedProxies: Array<string>): InternalTrustedProxyMatcher => {
+  const cached = _trustedProxyCache.get(trustedProxies);
+  if (cached) return cached;
+
+  const matcher: InternalTrustedProxyMatcher = { trustsAll: false, ranges: [] };
+  for (const [index, entry] of trustedProxies.entries()) {
+    if (entry === '*') {
+      matcher.trustsAll = true;
+      continue;
+    }
+    const range = typeof entry === 'string' ? parseIpRange(entry.trim()) : null;
+    if (!range) {
+      throw new Error(
+        `ipSecurity.trustedProxies[${index}] is not a valid IP address or CIDR range: ${JSON.stringify(entry)}. ` +
+          "Use an address ('10.0.0.5', '::1'), a CIDR range ('10.0.0.0/8', 'fd00::/8'), or '*'.",
+      );
+    }
+    matcher.ranges.push(range);
+  }
+
+  _trustedProxyCache.set(trustedProxies, matcher);
+  return matcher;
+};
+
+/** True when the address (as hextets) is a trusted proxy. */
+const _isTrustedHop = (hextets: Array<number>, matcher: InternalTrustedProxyMatcher): boolean =>
+  matcher.trustsAll || matcher.ranges.some((range) => isIpInRange(hextets, range));
+
+/**
+ * Checks if an IP address text is a trusted proxy (exact IP, CIDR range, or `'*'`)
  */
 export const isTrustedProxy = (ip: string, trustedProxies: Array<string>): boolean => {
-  if (!ip || !trustedProxies.length) return false;
-
-  // Support '*' wildcard to trust any proxy
-  if (trustedProxies.includes('*')) return true;
-
-  return trustedProxies.includes(ip);
+  const hextets = parseIp(ip);
+  return hextets !== null && _isTrustedHop(hextets, compileTrustedProxies(trustedProxies));
 };
 
 /**
@@ -99,129 +132,89 @@ export const detectSpoofingPatterns = (chain: Array<string>, config: InternalIpS
 };
 
 /**
- * Validates X-Forwarded-For proxy chain
+ * Client from an X-Forwarded-For chain sent by a trusted peer. The peer is the rightmost hop; walk the chain
+ * right to left skipping trusted proxies, and the first untrusted hop is the client. If every hop is trusted,
+ * the leftmost entry is. A malformed hop or a suspicious chain makes the header unusable (null): nothing left
+ * of it can be trusted.
  */
-const _validateXForwardedForChain = (ipChain: Array<string>, config: InternalIpSecurityOptions): boolean => {
-  if (ipChain.length <= 1) return true;
+const _clientFromForwardedChain = (headerValue: string, matcher: InternalTrustedProxyMatcher, config: InternalIpSecurityOptions): string | null => {
+  const chain = headerValue
+    .split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  if (chain.length === 0 || detectSpoofingPatterns(chain, config)) return null;
 
-  const lastIp = ipChain[ipChain.length - 1];
-  return Boolean(lastIp && isTrustedProxy(lastIp, config.trustedProxies));
-};
-
-/**
- * Extracts client IP from IP chain based on header type
- */
-const _extractClientIp = (ipChain: Array<string>, headerName: string): string | undefined => {
-  if (headerName === 'x-forwarded-for') {
-    return ipChain[0]; // Client IP is first in X-Forwarded-For
+  let leftmost: string | null = null;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const hop = parseIp(chain[i] ?? '');
+    if (!hop) return null;
+    if (!_isTrustedHop(hop, matcher)) return canonicalIpText(hop);
+    leftmost = canonicalIpText(hop);
   }
-  return ipChain[ipChain.length - 1]; // For other headers, take the last value
+  return leftmost;
+};
+
+/** Client from a single-value header (X-Real-IP and the rest), set by a trusted peer: its last entry. */
+const _clientFromSingleValue = (headerValue: string): string | null => {
+  const entries = headerValue
+    .split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  const hextets = parseIp(entries[entries.length - 1] ?? '');
+  return hextets ? canonicalIpText(hextets) : null;
+};
+
+/** The socket peer as the result: canonical text when it parses, the raw text otherwise. */
+const _socketResult = (peerAddress: string, peer: Array<number> | null): InternalIpAddressResult => {
+  const ip = peer ? canonicalIpText(peer) : peerAddress;
+  return { ip, isValid: peer !== null, isPrivate: isPrivateIp(ip), source: 'socket', trusted: false };
 };
 
 /**
- * Creates a valid IP result object
- */
-const _createValidIpResult = (options: {
-  clientIp: string;
-  headerName: string;
-  ipChain: Array<string>;
-  config: InternalIpSecurityOptions;
-}): InternalIpAddressResult => {
-  const { clientIp, headerName, ipChain, config } = options;
-  const isPrivate = isPrivateIp(clientIp);
-  const trusted = headerName === 'x-forwarded-for' ? isTrustedProxy(ipChain[ipChain.length - 1] ?? '', config.trustedProxies) : true;
-
-  return {
-    ip: clientIp,
-    isValid: true,
-    isPrivate,
-    source: headerName,
-    trusted,
-  };
-};
-
-/**
- * Creates an invalid IP result object
- */
-const _createInvalidIpResult = (): InternalIpAddressResult => ({
-  ip: '',
-  isValid: false,
-  isPrivate: false,
-  source: 'socket',
-  trusted: false,
-});
-
-/**
- * Extracts and validates IP addresses from headers with security checks
- */
-const _extractIpFromHeaders = (headers: Partial<Record<InternalHttpHeaders, string>>, config: InternalIpSecurityOptions): InternalIpAddressResult => {
-  // Try each header in preference order
-  for (const headerName of config.headerPreference) {
-    const headerValue = headers[headerName];
-    if (!headerValue) continue;
-
-    // Handle comma-separated IP chains
-    const ipChain = headerValue
-      .split(',')
-      .map((ip) => ip.trim())
-      .filter(Boolean);
-    if (ipChain.length === 0) continue;
-
-    // Detect spoofing patterns
-    if (detectSpoofingPatterns(ipChain, config)) continue;
-
-    // For X-Forwarded-For, validate the proxy chain
-    if (headerName === 'x-forwarded-for' && !_validateXForwardedForChain(ipChain, config)) {
-      continue;
-    }
-
-    // Extract the client IP
-    const clientIp = _extractClientIp(ipChain, headerName);
-    if (!clientIp || !isValidIpAddress(clientIp)) continue;
-
-    // Check if private IPs are allowed
-    const isPrivate = isPrivateIp(clientIp);
-    if (isPrivate && !config.allowPrivateIps) continue;
-
-    return _createValidIpResult({ clientIp, headerName, ipChain, config });
-  }
-
-  return _createInvalidIpResult();
-};
-
-/**
- * Advanced IP parsing with comprehensive security validation
- * Uses server-level IP security configuration with optional overrides
+ * Resolve the client IP for a request, with the standard trusted-proxy model (as in express `trust proxy` and
+ * Fastify `trustProxy`).
+ *
+ * ## Security Considerations
+ *
+ * Client-IP headers are written by whoever sends the request, so they are read only when the socket peer is
+ * in `ipSecurity.trustedProxies`. From any other peer the result is the socket address whatever headers
+ * arrive: a client can't pick its own rate-limit bucket or appear as someone else. X-Forwarded-For from a
+ * trusted peer is walked right to left past trusted proxies (see `_clientFromForwardedChain`), never read from
+ * its attacker-writable left end. `'*'` trusts every peer and every hop, which is spoofable by design.
+ *
+ * @param setup - Server setup (its `ipSecurity` configuration)
+ * @param headers - Parsed request headers
+ * @param peerAddress - The socket's remote address
  */
 export const parseIpAddressSecure = (
   setup: InternalSetupImpl,
   headers: Partial<Record<InternalHttpHeaders, string>>,
-  configOverride: Partial<InternalIpSecurityOptions> = {},
+  peerAddress: string,
 ): InternalIpAddressResult => {
-  const serverConfig = setup._configuration.ipSecurity;
-  const finalConfig = { ...serverConfig, ...configOverride };
+  const config = setup._configuration.ipSecurity;
+  const matcher = compileTrustedProxies(config.trustedProxies);
+  const peer = parseIp(peerAddress);
+  const socketResult = _socketResult(peerAddress, peer);
+  if (!peer || !_isTrustedHop(peer, matcher)) return socketResult;
 
-  // Try to extract IP from headers first
-  const headerResult = _extractIpFromHeaders(headers, finalConfig);
-  if (headerResult.isValid) {
-    return headerResult;
+  for (const headerName of config.headerPreference) {
+    const headerValue = headers[headerName];
+    if (!headerValue) continue;
+
+    const clientIp = headerName === 'x-forwarded-for' ? _clientFromForwardedChain(headerValue, matcher, config) : _clientFromSingleValue(headerValue);
+    if (!clientIp) continue;
+
+    const isPrivate = isPrivateIp(clientIp);
+    if (isPrivate && !config.allowPrivateIps) continue;
+
+    return { ip: clientIp, isValid: true, isPrivate, source: headerName, trusted: true };
   }
 
-  // No valid IP found from headers
-  return {
-    ip: '',
-    isValid: false,
-    isPrivate: false,
-    source: 'socket',
-    trusted: false,
-  };
+  return socketResult;
 };
 
 /**
- * Simple IP parsing function that returns just the IP address string
- * Provides backward compatibility for existing code
+ * Resolve the client IP address string for a request (see `parseIpAddressSecure`)
  */
-export const parseIpAddress = (setup: InternalSetupImpl, headers: Partial<Record<InternalHttpHeaders, string>>): string => {
-  const result = parseIpAddressSecure(setup, headers);
-  return result.ip;
-};
+export const parseIpAddress = (setup: InternalSetupImpl, headers: Partial<Record<InternalHttpHeaders, string>>, peerAddress: string): string =>
+  parseIpAddressSecure(setup, headers, peerAddress).ip;

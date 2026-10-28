@@ -4,11 +4,13 @@ import type { Socket } from 'net';
 
 import { RequestHandlerImpl } from '@core/execution/RequestHandlerImpl.ts';
 import { canonicalizeRequestPath } from '@core/execution/utils/canonicalizeRequestPath.ts';
+import { parseIpAddress } from '@core/execution/utils/parseIpAddress.ts';
 import { ContextImpl } from '@core/execution/ContextImpl.ts';
 import { SetupImpl } from '@core/setup/SetupImpl.ts';
 import { createLogger, loggerBrand } from '@core/utils/log.ts';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
+import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
 import type { InternalRouteRegistry } from '@typedefs/internal/InternalRouteRegistryImpl.js';
 import { accessLogBaseConfig, getStatusEmoji } from '@core/utils/accessLog.ts';
 import { _createGlobalRateLimitHook, _rateLimiterOfHook, _withStoreNamespace } from '@core/modules/rateLimit/rateLimithooks.ts';
@@ -351,7 +353,7 @@ export class YinzerFlow extends SetupImpl {
       // Access log — one nginx-style line per request (C1: per-instance, H4: separate guard)
       if (this._accessLogEnabled) {
         this._accessLog?.info(
-          `${getStatusEmoji(context._response._statusCode)} ${clientAddress} "${safeMethod} ${safePath} ${context.request.protocol}" ${context._response._statusCode} ${responseBytes}bytes "${_sanitizeLogField(context.request.headers.referer ?? '-')}" "${_sanitizeLogField(context.request.headers['user-agent'] ?? '-')}" ${processingTime}ms`,
+          `${getStatusEmoji(context._response._statusCode)} ${_sanitizeLogField(context.request.ipAddress)} "${safeMethod} ${safePath} ${context.request.protocol}" ${context._response._statusCode} ${responseBytes}bytes "${_sanitizeLogField(context.request.headers.referer ?? '-')}" "${_sanitizeLogField(context.request.headers['user-agent'] ?? '-')}" ${processingTime}ms`,
         );
       }
 
@@ -655,9 +657,14 @@ export class YinzerFlow extends SetupImpl {
   }
 
   // eslint-disable-next-line max-statements
-  private async _handleWebSocketUpgradeAsync(buffer: Buffer, socket: Socket, clientAddress: string): Promise<void> {
+  private async _handleWebSocketUpgradeAsync(buffer: Buffer, socket: Socket, peerAddress: string): Promise<void> {
     const headerEndIndex = buffer.indexOf('\r\n\r\n');
     const headersStr = buffer.subarray(0, headerEndIndex).toString();
+
+    // Resolve the client the same way HTTP requests do: the socket peer unless it is a trusted proxy. The per-IP
+    // connection cap, the upgrade handler's remoteAddress and connection tracking all use this one value.
+    const headersMap = this._parseHeadersMap(headersStr);
+    const clientAddress = parseIpAddress(this, headersMap as Partial<Record<InternalHttpHeaders, string>>, peerAddress);
 
     const validation = _validateHandshake(headersStr);
     if (!validation.valid) {
@@ -693,7 +700,7 @@ export class YinzerFlow extends SetupImpl {
     }
 
     const upgradeRequest = {
-      headers: this._parseHeadersMap(headersStr),
+      headers: headersMap,
       path: validation.path,
       query: validation.query,
       params: match.params,

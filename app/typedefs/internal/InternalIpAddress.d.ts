@@ -169,3 +169,20 @@ export interface InternalIpAddressResult {
    */
   trusted: boolean;
 }
+
+/**
+ * One address range as 8 16-bit hextets (IPv4 in its IPv4-mapped IPv6 form) plus how many leading bits must
+ * match: an exact IPv6 address is /128, an exact IPv4 address /128 (mapped /32), `10.0.0.0/8` is mapped /104.
+ */
+export interface InternalIpRange {
+  hextets: Array<number>;
+  prefixLength: number;
+}
+
+/**
+ * `ipSecurity.trustedProxies` compiled once at config time: `'*'` (trust every peer) or a list of ranges.
+ */
+export interface InternalTrustedProxyMatcher {
+  trustsAll: boolean;
+  ranges: Array<InternalIpRange>;
+}

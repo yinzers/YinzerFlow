@@ -1,6 +1,4 @@
-const _hextetCount = 8;
-const _hextetBits = 16;
-const _hextetSize = 0x10000;
+import { formatIpv6, mappedIpv4Text, maskHextets, parseIpv6 } from '@core/utils/ipAddress.ts';
 
 /**
  * Rate-limit key for a client IP address.
@@ -27,117 +25,12 @@ const _hextetSize = 0x10000;
  * ```
  */
 export const rateLimitIpKey = (ipAddress: string, ipv6Subnet: number | false): string => {
-  const hextets = _parseIpv6(ipAddress);
+  const hextets = parseIpv6(ipAddress);
   if (!hextets) return ipAddress;
 
-  const mappedIpv4 = _mappedIpv4(hextets);
+  const mappedIpv4 = mappedIpv4Text(hextets);
   if (mappedIpv4) return mappedIpv4;
 
-  if (ipv6Subnet === false) return _formatIpv6(hextets);
-  return `${_formatIpv6(_maskHextets(hextets, ipv6Subnet))}/${ipv6Subnet}`;
-};
-
-/** Parse IPv6 text into 8 hextets, or null when it isn't IPv6. Accepts brackets, a zone id and a dotted-quad tail. */
-const _parseIpv6 = (ipAddress: string): Array<number> | null => {
-  let text = ipAddress.trim();
-  if (text.startsWith('[') && text.endsWith(']')) text = text.slice(1, -1);
-  const zoneIndex = text.indexOf('%');
-  if (zoneIndex !== -1) text = text.slice(0, zoneIndex);
-  if (!text.includes(':')) return null;
-
-  const halves = text.split('::');
-  if (halves.length > 2) return null;
-
-  // A dotted-quad tail is only valid as the very last group of the whole address
-  const hasCompression = halves.length === 2;
-  const head = _parseGroups(halves[0] ?? '', !hasCompression);
-  const tail = hasCompression ? _parseGroups(halves[1] ?? '', true) : [];
-  if (!head || !tail) return null;
-
-  if (halves.length === 1) return head.length === _hextetCount ? head : null;
-  const missing = _hextetCount - head.length - tail.length;
-  if (missing < 1) return null;
-  return [...head, ...new Array<number>(missing).fill(0), ...tail];
-};
-
-/**
- * Parse colon-separated groups. When `allowIpv4Tail` is set, a final dotted-quad group becomes two hextets;
- * anywhere else a dotted quad is invalid. Null on any invalid group.
- */
-const _parseGroups = (part: string, allowIpv4Tail: boolean): Array<number> | null => {
-  if (part === '') return [];
-  const groups = part.split(':');
-  const hextets: Array<number> = [];
-
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i] ?? '';
-    if (allowIpv4Tail && i === groups.length - 1 && group.includes('.')) {
-      const ipv4 = _parseDottedQuad(group);
-      if (!ipv4) return null;
-      hextets.push(...ipv4);
-    } else if (/^[0-9a-f]{1,4}$/i.test(group)) {
-      hextets.push(parseInt(group, 16));
-    } else {
-      return null;
-    }
-  }
-  return hextets;
-};
-
-/** `1.2.3.4` -> [0x0102, 0x0304], or null when not a valid dotted quad. */
-const _parseDottedQuad = (text: string): [number, number] | null => {
-  const octets = text.split('.');
-  if (octets.length !== 4) return null;
-  const values: Array<number> = [];
-  for (const octet of octets) {
-    if (!/^\d{1,3}$/.test(octet)) return null;
-    const value = Number(octet);
-    if (value > 255) return null;
-    values.push(value);
-  }
-  const [a = 0, b = 0, c = 0, d = 0] = values;
-  const highByte = a * 256;
-  const lowByte = c * 256;
-  return [highByte + b, lowByte + d];
-};
-
-/** `::ffff:a.b.c.d` (IPv4-mapped) -> `a.b.c.d`, otherwise null. */
-const _mappedIpv4 = (hextets: Array<number>): string | null => {
-  for (let i = 0; i < 5; i++) if (hextets[i] !== 0) return null;
-  if (hextets[5] !== 0xffff) return null;
-  const high = hextets[6] ?? 0;
-  const low = hextets[7] ?? 0;
-  return `${Math.floor(high / 256)}.${high % 256}.${Math.floor(low / 256)}.${low % 256}`;
-};
-
-/** Zero every bit after the first `prefixLength` bits. */
-const _maskHextets = (hextets: Array<number>, prefixLength: number): Array<number> =>
-  hextets.map((hextet, index) => {
-    const bitsBefore = index * _hextetBits;
-    const keptBits = Math.min(_hextetBits, Math.max(0, prefixLength - bitsBefore));
-    if (keptBits === _hextetBits) return hextet;
-    const dropped = 2 ** (_hextetBits - keptBits);
-    return hextet - (hextet % dropped);
-  });
-
-/** RFC 5952 text: lowercase, no leading zeros, the longest run of two or more zero hextets as `::`. */
-const _formatIpv6 = (hextets: Array<number>): string => {
-  let bestStart = -1;
-  let bestLength = 0;
-  let runStart = -1;
-  for (let i = 0; i <= hextets.length; i++) {
-    if (i < hextets.length && hextets[i] === 0) {
-      if (runStart === -1) runStart = i;
-    } else if (runStart !== -1) {
-      if (i - runStart > bestLength) {
-        bestStart = runStart;
-        bestLength = i - runStart;
-      }
-      runStart = -1;
-    }
-  }
-
-  const groups = hextets.map((hextet) => (hextet % _hextetSize).toString(16));
-  if (bestLength < 2) return groups.join(':');
-  return `${groups.slice(0, bestStart).join(':')}::${groups.slice(bestStart + bestLength).join(':')}`;
+  if (ipv6Subnet === false) return formatIpv6(hextets);
+  return `${formatIpv6(maskHextets(hextets, ipv6Subnet))}/${ipv6Subnet}`;
 };

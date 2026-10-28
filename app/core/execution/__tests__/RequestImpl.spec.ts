@@ -55,7 +55,7 @@ describe('RequestImpl', () => {
       const setupWithProxy = new SetupImpl({
         ipSecurity: { trustedProxies: ['127.0.0.1'] },
       });
-      const request = new RequestImpl(rawRequest, setupWithProxy);
+      const request = new RequestImpl(rawRequest, setupWithProxy, '127.0.0.1'); // peer is the trusted proxy
 
       expect(request.ipAddress).toBe('203.0.113.1');
     });
@@ -64,7 +64,7 @@ describe('RequestImpl', () => {
       const rawRequest = createRawRequest('GET /test HTTP/1.1\r\nHost: example.com\r\nX-Forwarded-For: 203.0.113.1\r\n\r\n');
 
       const setup = new SetupImpl();
-      const request = new RequestImpl(rawRequest, setup);
+      const request = new RequestImpl(rawRequest, setup, '127.0.0.1'); // localhost peer is trusted by default
 
       expect(request.ipAddress).toBe('203.0.113.1');
     });

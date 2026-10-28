@@ -338,6 +338,35 @@ describe('Per-route rateLimitHook', () => {
   });
 });
 
+// Bug (live): from an untrusted peer, a blocked client got a fresh bucket on every request by sending a random
+// X-Forwarded-For, a random X-Real-IP, or "X-Forwarded-For: <random>, 127.0.0.1". Tier: High (rate-limit bypass).
+describe('Client-IP headers from an untrusted peer', () => {
+  let spoofApp: YinzerFlow | undefined;
+
+  afterEach(async () => {
+    if (spoofApp?.status().isListening) await spoofApp.close();
+  });
+
+  it('should keep a blocked client blocked while it rotates spoofed client-IP headers', async () => {
+    let testPort: number;
+    // Only 10.0.0.0/8 is trusted, so the test's localhost peer is an untrusted client
+    ({ app: spoofApp, testPort } = createTestApp({ ipSecurity: { trustedProxies: ['10.0.0.0/8'] }, rateLimit: { max: 2, window: '1m' } }));
+    await spoofApp.listen();
+
+    const spoofHeaders: Array<Record<string, string>> = [
+      { 'x-forwarded-for': '198.51.100.1' },
+      { 'x-forwarded-for': '198.51.100.2' },
+      { 'x-real-ip': '198.51.100.3' },
+      { 'x-forwarded-for': '198.51.100.4, 127.0.0.1' },
+      { 'true-client-ip': '198.51.100.5' },
+    ];
+    const statuses: Array<number> = [];
+    for (const headers of spoofHeaders) statuses.push((await fetch(`http://127.0.0.1:${testPort}/test`, { headers })).status);
+
+    expect(statuses).toEqual([200, 200, 429, 429, 429]);
+  });
+});
+
 // Bug: binding a limiter per route registration split one hook's budget: GET and its automatic HEAD, or two routes
 // sharing one hook, each got their own count, so the handler ran past the limit. Tier: Medium (feature).
 describe('One budget per rateLimitHook', () => {
