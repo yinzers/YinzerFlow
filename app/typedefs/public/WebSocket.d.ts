@@ -65,7 +65,14 @@ export interface WebSocket<T = unknown> {
 export interface WebSocketUpgradeRequest {
   /** HTTP headers from the upgrade request (lowercased keys). */
   headers: Record<string, string>;
-  /** URL path of the upgrade request. */
+  /**
+   * URL path of the upgrade request exactly as sent, with the query string removed (`//ws/admin` stays `//ws/admin`).
+   *
+   * Route matching does not use this raw value: it uses the canonical path (decoded once, repeated and trailing
+   * slashes collapsed), and upgrades whose path contains `.` / `..` segments, encoded slashes (`%2f`, `%5c`),
+   * a backslash, a NUL or invalid percent-encoding are rejected with 400 before this handler runs. Don't make
+   * access decisions by comparing this raw string; use `params` from the matched route instead.
+   */
   path: string;
   /** Parsed query string parameters. */
   query: Record<string, string>;

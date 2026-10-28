@@ -44,17 +44,20 @@ before touching the area an entry names.
 - **Trigger**: the next change to `parseHttpRequest.ts` or `compileRoutePatter.ts`, or a report of
   slow or stalled requests with long URLs.
 
-## canonical-path-public-field — handlers only see the raw request-target
+## canonical-path-public-field — handlers and WebSocket upgrades only see the raw path
 
 - **What**: routing and hook matching use the canonical path, but `ctx.request.path` is the raw
   request-target (query included, undecoded). A user hook that does its own
   `ctx.request.path.startsWith('/admin')` check is bypassed by `GET //admin` or `GET /%61dmin`, which
-  the router still serves from `/admin`. A read-only canonical field (or the matched route pattern)
-  would give handlers the value routing used.
+  the router still serves from `/admin`. The WebSocket `upgrade` handler has the same gap from the same
+  cause: `WebSocketUpgradeRequest.path` (and the connection's path) is the raw path, so `//ws/admin`
+  upgrades with `params.room === 'admin'` but `req.path === '//ws/admin'`. A read-only canonical field
+  (or the matched route pattern) on both would give handlers the value routing used.
 - **Why deferred**: 0.9.0 deliberately kept `request.path` raw and added no public field (docs never
-  promised canonical; the access log and an existing test rely on the raw value). A new public field
-  is API surface that wants a name and a decision from Patrick. The trap is documented on
-  `Request.path` TSDoc and in docs/core/core-concepts.md.
+  promised canonical; the access log and an existing test rely on the raw value), and the WebSocket
+  upgrade follows the same decision. A new public field is API surface that wants a name and a decision
+  from Patrick. The trap is documented on `Request.path` and `WebSocketUpgradeRequest.path` TSDoc and in
+  docs/core/core-concepts.md.
 - **Cost later**: low; additive field, nothing to rewrite.
-- **Trigger**: a user report of a path check in a handler or custom hook being bypassed, or the next
-  change to `RequestImpl`'s public fields.
+- **Trigger**: a user report of a path check in a handler, custom hook or WebSocket `upgrade` handler
+  being bypassed, or the next change to `RequestImpl`'s or `WebSocketUpgradeRequest`'s public fields.
