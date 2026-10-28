@@ -61,7 +61,9 @@ Maximum concurrent WebSocket connections from a single IP address.
 
 ### websocket.allowedOrigins — @default <span style="color: #2ecc71">`[]`</span> (allow all)
 
-List of allowed origins for upgrade requests. Empty array allows all origins (including missing origin headers from non-browser clients).
+List of allowed origins for upgrade requests, matched case-insensitively and exactly. An empty array allows every origin. With a list set, an upgrade whose `Origin` isn't on it gets 403; one with no `Origin` header at all is governed by `allowMissingOrigin` below.
+
+<span style="color: #e74c3c">**🚨 Required for cookie-authenticated WebSockets:**</span> if your upgrade is authenticated by a cookie (a session cookie read in a `beforeAll` hook or in `upgrade`), you must set `allowedOrigins`. Browsers send the user's cookies on a cross-site WebSocket upgrade and, unlike `fetch`, WebSockets are not covered by CORS, so with the default empty list any page the user visits can open a socket that is logged in as them (cross-site WebSocket hijacking). Token auth sent in a header or the first message isn't exposed this way, because another site can't read or attach the token.
 
 ```typescript
 const app = new YinzerFlow({
@@ -69,6 +71,20 @@ const app = new YinzerFlow({
     allowedOrigins: ['https://app.example.com', 'https://admin.example.com'],
   },
 });
+```
+
+### websocket.allowMissingOrigin — @default <span style="color: #2ecc71">`true`</span>
+
+With an `allowedOrigins` list set, whether an upgrade that carries no `Origin` header is allowed. Browsers always send `Origin` on a WebSocket upgrade, so a missing one means a non-browser client (another server, a CLI, a native mobile app), and cross-site hijacking needs a browser. Set `false` to require an allowed `Origin` from every client. No effect while `allowedOrigins` is empty.
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> before 0.10.0 a list rejected every upgrade without an `Origin` header with 403, which locked non-browser clients out. Set `allowMissingOrigin: false` to keep that behavior.
+
+```typescript
+// Browser app plus server-to-server clients (default)
+const app = new YinzerFlow({ websocket: { allowedOrigins: ['https://app.example.com'] } });
+
+// Browser-only endpoint: every client must present an allowed Origin
+const strict = new YinzerFlow({ websocket: { allowedOrigins: ['https://app.example.com'], allowMissingOrigin: false } });
 ```
 
 ### websocket.backpressure.strategy — @default <span style="color: #2ecc71">`'buffer'`</span>
@@ -550,7 +566,8 @@ await app.listen();
 
 ### 🛡️ Origin Validation
 - **Problem**: Unauthorized origins connecting to WebSocket endpoints
-- **YinzerFlow Solution**: `websocket.allowedOrigins` validates the Origin header during upgrade. Case-insensitive matching. Empty list = allow all (for server-to-server or development).
+- **YinzerFlow Solution**: `websocket.allowedOrigins` validates the Origin header during upgrade. Case-insensitive matching. Empty list = allow all (for server-to-server or development). A missing `Origin` (a non-browser client) passes unless `allowMissingOrigin` is `false`.
+- <span style="color: #e74c3c">**🚨 Cookie auth:**</span> an app that authenticates upgrades with cookies must set `allowedOrigins`. WebSockets are not covered by CORS, and a browser sends cookies on a cross-site upgrade, so without a list any website can open a socket logged in as your user.
 
 ### 🛡️ Global Hooks and Rate Limiting on Upgrade
 - **Problem**: Upgrades that bypass the app's auth hooks or rate limiter open a second, unguarded door into the app
@@ -571,7 +588,7 @@ await app.listen();
 | 401 (or another status) on upgrade | A global `beforeRouting` / `beforeAll` hook refused it | Send the credentials the hook expects, or exclude the path with `routesToExclude` |
 | 500 on upgrade | A global hook or the `upgrade` handler threw | Check the error your `onError` handler (or the default error log) received |
 | 400 on upgrade with "Malformed request headers" | A header name or value the HTTP parser rejects | Fix the client's headers; the reason is logged at debug level |
-| 403 on upgrade | Origin not in `allowedOrigins`, or `upgrade` returned `false` | Add origin or set `allowedOrigins: []`; return `rejectUpgrade(status)` for a different status |
+| 403 on upgrade | Origin not in `allowedOrigins` (or no Origin with `allowMissingOrigin: false`), or `upgrade` returned `false` | Add origin or set `allowedOrigins: []`; return `rejectUpgrade(status)` for a different status |
 | 429 on upgrade | Too many connections from IP, or the global rate limiter | Increase `maxConnectionsPerIp`, or `rateLimit.max` |
 | Connection drops silently | Idle timeout with no traffic: heartbeat disabled, or `idleTimeout` at or below `heartbeat.interval` | Keep the heartbeat on with `heartbeat.interval` below `idleTimeout`, or raise `idleTimeout` |
 | Connection closed with "Heartbeat timeout" | Client didn't respond to ping | Check client network; increase `heartbeat.interval` |

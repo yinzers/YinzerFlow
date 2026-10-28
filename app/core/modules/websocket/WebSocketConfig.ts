@@ -10,6 +10,7 @@ export const DEFAULT_WEBSOCKET_CONFIG: InternalWebSocketOptions = {
   idleTimeout: 120, // seconds
   maxConnectionsPerIp: 50,
   allowedOrigins: [],
+  allowMissingOrigin: true,
   backpressure: {
     strategy: 'buffer',
     limit: 1_048_576, // 1MB

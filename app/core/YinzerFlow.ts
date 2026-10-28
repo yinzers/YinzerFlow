@@ -724,7 +724,7 @@ export class YinzerFlow extends SetupImpl {
         return;
       }
 
-      if (!this._wsSecurity.validateOrigin(validation.origin, wsConfig.allowedOrigins)) {
+      if (!this._wsSecurity.validateOrigin(validation.origin, wsConfig.allowedOrigins, wsConfig.allowMissingOrigin)) {
         this._sendHttpError(socket, 403, 'Origin not allowed');
         return;
       }

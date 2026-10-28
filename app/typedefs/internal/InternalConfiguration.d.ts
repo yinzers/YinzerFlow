@@ -394,8 +394,21 @@ export interface InternalWebSocketOptions {
   idleTimeout: number;
   /** Maximum concurrent WebSocket connections per IP. @default 50 */
   maxConnectionsPerIp: number;
-  /** Allowed origins for upgrade requests. Empty = allow all. @default [] */
+  /**
+   * Allowed origins for upgrade requests (case-insensitive exact match). Empty = allow all. @default []
+   *
+   * 🛡️ An app that authenticates WebSocket upgrades with cookies MUST set this: a browser sends the user's cookies on
+   * a cross-site upgrade, so without an origin list any page the user visits can open an authenticated socket
+   * (cross-site WebSocket hijacking).
+   */
   allowedOrigins: Array<string>;
+  /**
+   * With an `allowedOrigins` list set, whether an upgrade with no `Origin` header is allowed. Browsers always send
+   * `Origin` on a WebSocket upgrade, so a missing one means a non-browser client (a server, CLI or mobile app), which
+   * cross-site hijacking can't use. Set `false` to require an allowed `Origin` from everyone. No effect when
+   * `allowedOrigins` is empty. @default true
+   */
+  allowMissingOrigin: boolean;
   /** Backpressure handling when clients can't keep up. */
   backpressure: {
     /** 'buffer' (queue up to limit, safe default) or 'drop' (discard, for real-time data). @default 'buffer' */

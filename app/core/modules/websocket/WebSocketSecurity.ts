@@ -7,11 +7,12 @@ export class WebSocketSecurity {
   /**
    * Validate the Origin header against the allowed origins list.
    * Empty allowedOrigins = allow all (including missing origin).
-   * Non-empty list = case-insensitive exact match required.
+   * Non-empty list = case-insensitive exact match required, except that a missing Origin (a non-browser client)
+   * passes when `allowMissingOrigin` is true.
    */
-  validateOrigin(origin: string | undefined, allowedOrigins: Array<string>): boolean {
+  validateOrigin(origin: string | undefined, allowedOrigins: Array<string>, allowMissingOrigin: boolean): boolean {
     if (allowedOrigins.length === 0) return true;
-    if (!origin) return false;
+    if (!origin) return allowMissingOrigin;
 
     const lowerOrigin = origin.toLowerCase();
     return allowedOrigins.some((allowed) => allowed.toLowerCase() === lowerOrigin);

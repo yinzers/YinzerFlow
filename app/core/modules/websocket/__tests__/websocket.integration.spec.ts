@@ -429,6 +429,29 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
+    // Bug (0.9.x): with an allowedOrigins list, an upgrade with no Origin header got 403, which locked out every
+    // non-browser client. Cross-site WebSocket hijacking needs a browser, and browsers always send Origin.
+    // Tier: High (origin check is the CSWSH defence; each row is one boundary of it).
+    it.each([
+      ['a missing Origin is allowed by default', {}, undefined, '101 Switching Protocols'],
+      ['a missing Origin is refused with allowMissingOrigin: false', { allowMissingOrigin: false }, undefined, 'HTTP/1.1 403'],
+      ['a wrong Origin is refused', {}, 'https://evil.example', 'HTTP/1.1 403'],
+    ])('origin check with an allowedOrigins list: %s', async (_label, extra, origin, expected) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({
+        port: testPort,
+        host: '127.0.0.1',
+        gracefulShutdownTimeout: 0,
+        websocket: { allowedOrigins: ['https://app.example'], ...extra },
+      });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, origin);
+      expect(response).toContain(expected);
+      socket.destroy();
+    });
+
     it('should return 404 for non-existent WS route', async () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
