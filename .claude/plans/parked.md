@@ -92,3 +92,26 @@ before touching the area an entry names.
 - **Cost later**: low to medium; one shared normalizer with a "registration" mode that throws, plus
   re-running the route and hook tests.
 - **Trigger**: the next change to either `normalizePath` or `canonicalizeRequestPath`.
+
+## rate-limit-skip-options-unimplemented — skipSuccessfulRequests / skipFailedRequests do nothing
+
+- **What**: `RateLimitConfig` accepts and stores `skipSuccessfulRequests` and `skipFailedRequests`
+  (docs/modules/rate-limiting.md documents both), but nothing in the strategy or the hooks reads
+  them: every request counts. Honouring them means counting after the response status is known
+  (an afterAll-stage decrement or a deferred increment), which the before-stage limiter can't do.
+- **Why deferred**: found during the 0.9.0 review round, outside its items; it needs a design for a
+  post-response hook that also covers 404s now that the limiter runs in beforeRouting (cc0917e).
+- **Cost later**: medium. A deferred-count path touches the strategy, both stores and the hook stage.
+- **Trigger**: the next change to `SlidingWindowCounterStrategy` or the rate-limit hooks, or a user
+  report that either option has no effect. Until then the docs overstate the feature.
+
+## rate-limit-doc-api-drift — per-route examples use APIs that don't exist
+
+- **What**: rate-limiting.md (6 places), rateLimithooks.ts TSDoc (5) and RateLimit.d.ts (1) attach
+  per-route limits with `{ beforeRoute: [...] }` as the second argument and call `skipRateLimit()`.
+  Route options are the third argument with `beforeHooks`, and `skipRateLimit` is not exported or
+  implemented, so "per-route only, skip global" has no working recipe.
+- **Why deferred**: found during the 0.9.0 review round; `skipRateLimit` needs a decision on whether
+  to build it (a per-route opt-out of the global limiter) or delete the recipe.
+- **Cost later**: low; doc edits plus, if built, a small hook and a test.
+- **Trigger**: the next edit to rate-limiting.md or rateLimithooks.ts, or a user copying the example.
