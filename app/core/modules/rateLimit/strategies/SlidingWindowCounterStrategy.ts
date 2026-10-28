@@ -91,7 +91,8 @@ export class SlidingWindowCounterStrategy implements InternalRateLimitStrategy {
     }
 
     // Save updated entry
-    await store.set(key, entry);
+    // A client that has used its window is pinned: evicting it at the cap would hand it a fresh count
+    await store.set(key, entry, { pinned: entry.currentWindowCount >= this._config.max });
 
     // Calculate remaining requests
     const remaining = Math.max(0, Math.floor(this._config.max - estimatedCount - (allowed ? 1 : 0)));

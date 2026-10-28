@@ -49,4 +49,19 @@ describe('In-memory rate-limit store bound', () => {
     expect(await store.get('c')).toBeUndefined();
     expect(await store.get('e')).toBe(1);
   });
+
+  // Bug: at the cap the oldest entry was evicted even when that client was blocked, so a filler run of new
+  // addresses reset a blocked client's count and let it straight back in. Tier: High.
+  it('keeps a pinned (blocked) client through a filler run that fills the cap', async () => {
+    setSystemTime(startTime);
+    const maxEntries = 3;
+    store = createInMemoryStore<number>({ ttlMs: windowMs, maxEntries });
+    await store.set('blocked', 99, { pinned: true });
+
+    for (let i = 0; i < 10; i++) await store.set(`filler-${i}`, 1);
+
+    expect(store.size()).toBe(maxEntries);
+    expect(await store.get('blocked')).toBe(99);
+    expect(await store.get('filler-9')).toBe(1);
+  });
 });

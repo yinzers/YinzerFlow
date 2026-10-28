@@ -93,9 +93,22 @@ export interface InternalSlidingWindowCounterEntry {
  */
 export interface InternalRateLimitStore<T> {
   get: (key: string) => Promise<T | undefined> | T | undefined;
-  set: (key: string, value: T) => Promise<void> | void;
+  /**
+   * Store a value. `options.pinned` marks a client that has used up its window: the in-memory store evicts
+   * pinned entries only after every unpinned one, so hitting the cap can't reset a blocked client's count.
+   * Stores without eviction (Redis) ignore it.
+   */
+  set: (key: string, value: T, options?: InternalRateLimitStoreSetOptions) => Promise<void> | void;
   delete: (key: string) => Promise<void> | void;
   destroy: () => Promise<void> | void;
+}
+
+/**
+ * Per-write hints for a rate-limit store
+ */
+export interface InternalRateLimitStoreSetOptions {
+  /** The client has reached its limit for the current window; keep it over unblocked clients at the cap. */
+  pinned?: boolean;
 }
 
 /**
