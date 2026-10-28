@@ -110,9 +110,12 @@ describe('isTrustedProxy CIDR membership', () => {
 
 // Bug: a malformed trustedProxies entry was silently never matched instead of failing at startup. Tier: High (config validation of a trust boundary).
 describe('trustedProxies validation', () => {
-  it.each([['10.0.0.0/33'], ['10.0.0.0/-1'], ['10.0.0/8'], ['fd00::/129'], ['not-an-ip'], [''], ['1.2.3.4/']])('throws at config for %p', (entry) => {
-    expect(() => new SetupImpl({ ipSecurity: { trustedProxies: [entry] } })).toThrow('ipSecurity.trustedProxies[0] is not a valid IP address or CIDR range');
-  });
+  it.each([['10.0.0.0/33'], ['10.0.0.0/-1'], ['10.0.0/8'], ['fd00::/129'], ['not-an-ip'], [''], ['1.2.3.4/'], ['010.0.0.0/8']])(
+    'throws at config for %p',
+    (entry) => {
+      expect(() => new SetupImpl({ ipSecurity: { trustedProxies: [entry] } })).toThrow('ipSecurity.trustedProxies[0] is not a valid IP address or CIDR range');
+    },
+  );
 });
 
 describe('IP Validation Utilities', () => {

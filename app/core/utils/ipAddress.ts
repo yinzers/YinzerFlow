@@ -66,7 +66,8 @@ export const parseDottedQuad = (text: string): [number, number] | null => {
   if (octets.length !== 4) return null;
   const values: Array<number> = [];
   for (const octet of octets) {
-    if (!/^\d{1,3}$/.test(octet)) return null;
+    // Leading zeros are rejected (as net.isIP does): `010` reads as octal 8 to some tools and 10 to others
+    if (!/^\d{1,3}$/.test(octet) || (octet.length > 1 && octet.startsWith('0'))) return null;
     const value = Number(octet);
     if (value > 255) return null;
     values.push(value);
