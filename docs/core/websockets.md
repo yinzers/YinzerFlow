@@ -376,7 +376,29 @@ app.ws('/ws/feed', { message(ws, data) { ws.send(data); } }); // protected by th
 app.ws('/ws/public/ticker', { open(ws) { ws.subscribe('ticker'); } }); // excluded
 ```
 
-<span style="color: #3498db">**💡 Tip:**</span> `ctx.state` set by these hooks lives for the upgrade request only; it is not copied onto `ws.data`. Use the route's `upgrade(req)` handler to attach per-socket data.
+The route's `upgrade(req)` handler receives that same `ctx.state` object as `req.state`, so a value an auth hook stored (a user id, a tenant) doesn't have to be worked out twice. State lives for the upgrade request only; return what the connection needs from `upgrade()` to keep it on `ws.data`:
+
+```typescript
+app.beforeAll([
+  async (ctx) => {
+    const user = await validateToken(ctx.request.headers.authorization);
+    if (!user) {
+      ctx.response.setStatusCode(401);
+      return { error: 'Unauthorized' };
+    }
+    ctx.state.userId = user.id;
+  },
+]);
+
+app.ws<{ userId: string }>('/ws/feed', {
+  upgrade(req) {
+    return { userId: String(req.state.userId) }; // carried from the hook into ws.data
+  },
+  message(ws) {
+    ws.send(`hello ${ws.data.userId}`);
+  },
+});
+```
 
 ### WS Message Hooks
 

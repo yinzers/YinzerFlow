@@ -323,6 +323,35 @@ describe('WebSocket Integration', () => {
       guarded.socket.destroy();
     });
 
+    // Bug (0.10.0 review): state the global hooks set on an upgrade (an auth hook's user) never reached the ws route, so
+    // apps had to re-verify the token in upgrade(). Tier: Medium (hook-to-upgrade handoff contract).
+    it('should hand the hooks ctx.state to upgrade() as req.state, so it can carry it into ws.data', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.beforeAll([
+        (ctx) => {
+          ctx.state.userId = 'user-7';
+        },
+      ]);
+      app.ws<{ userId: string }>('/ws', {
+        upgrade(req) {
+          return { userId: String(req.state.userId) };
+        },
+        message(ws) {
+          ws.send(ws.data.userId);
+        },
+      });
+      await app.listen();
+
+      const { socket } = await connectWs(testPort);
+      const readPromise = readFrame(socket);
+      socket.write(buildClientFrame(wsOpcode.text, Buffer.from('who am i')));
+      const frame = await readPromise;
+
+      expect(frame.payload.toString()).toBe('user-7');
+      socket.destroy();
+    });
+
     it('should answer 429 from the global rate limiter on an upgrade flood', async () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, rateLimit: { max: 2, window: '1m' } });

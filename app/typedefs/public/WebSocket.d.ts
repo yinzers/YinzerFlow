@@ -96,6 +96,22 @@ export interface WebSocketUpgradeRequest {
   params: Record<string, string>;
   /** Remote IP address of the client. */
   remoteAddress: string;
+  /**
+   * The `ctx.state` object the global `beforeRouting` / `beforeAll` hooks wrote to on this upgrade (the same object,
+   * not a copy). It lives for the upgrade request only: return what the connection needs from `upgrade()` to keep it
+   * on `ws.data`.
+   *
+   * @example
+   * ```typescript
+   * app.beforeAll([async (ctx) => { ctx.state.userId = await verify(ctx.request.headers.authorization); }]);
+   * app.ws<{ userId: string }>('/feed', {
+   *   upgrade(req) {
+   *     return { userId: String(req.state.userId) };
+   *   },
+   * });
+   * ```
+   */
+  state: Record<string, unknown>;
 }
 
 /**

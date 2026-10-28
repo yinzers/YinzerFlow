@@ -740,6 +740,7 @@ export class YinzerFlow extends SetupImpl {
         query: validation.query,
         params: match.params,
         remoteAddress: clientAddress,
+        state: context.state,
       };
       data = match.handlers.upgrade ? await match.handlers.upgrade(upgradeRequest) : undefined;
     } catch (error) {

@@ -61,7 +61,8 @@ before touching the area an entry names.
   docs/core/core-concepts.md.
 - **Cost later**: low; additive field, nothing to rewrite.
 - **Trigger**: a user report of a path check in a handler, custom hook or WebSocket `upgrade` handler
-  being bypassed, or the next change to `RequestImpl`'s or `WebSocketUpgradeRequest`'s public fields.
+  being bypassed, or the next change to `RequestImpl`'s or `WebSocketUpgradeRequest`'s path fields. Adding
+  `WebSocketUpgradeRequest.state` in 0.10.0 was ruled not to fire this: it doesn't touch the path decision.
 
 ## canonical-400-cors-headers — the malformed-path 400 carries no CORS headers
 
