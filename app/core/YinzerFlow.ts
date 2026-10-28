@@ -28,6 +28,7 @@ import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection
 import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
 import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
 import { _wrapWebSocketHandlers } from '@core/modules/websocket/WebSocketHandlerPipeline.ts';
+import { _isUpgradeRejection } from '@core/modules/websocket/WebSocketUpgradeRejection.ts';
 import { wsCloseCode } from '@constants/websocket.ts';
 import { httpStatusCode } from '@constants/http.ts';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
@@ -748,6 +749,15 @@ export class YinzerFlow extends SetupImpl {
 
     if (data === false) {
       this._sendHttpError(socket, 403, 'WebSocket upgrade rejected');
+      return;
+    }
+
+    // rejectUpgrade(status, body): answered through the same response path as a hook refusal
+    if (_isUpgradeRejection(data)) {
+      context.response.setStatusCode(data.statusCode);
+      context._response._setBody(data.body);
+      context._response._parseResponseIntoString();
+      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
       return;
     }
 

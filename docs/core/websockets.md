@@ -220,12 +220,31 @@ app.ws('/chat/:room', {
 
 | Handler | When | Use for |
 |---------|------|---------|
-| `upgrade(req)` | Before handshake | Auth, attach per-socket data, reject with `false` |
+| `upgrade(req)` | Before handshake | Auth, attach per-socket data, reject with `false` (403) or `rejectUpgrade(status, body?)` |
 | `open(ws)` | After handshake | Subscribe to channels, send welcome message |
 | `message(ws, data, isBinary)` | On each message | Business logic, pub/sub |
 | `close(ws, code, reason)` | On disconnect | Cleanup (unsubscribe is automatic) |
 | `error(ws, error)` | On a socket error, or when another handler throws | Logging, alerting |
 | `drain(ws)` | When backpressure clears | Resume sending |
+
+### Refusing an Upgrade
+
+Return `false` from `upgrade(req)` to refuse with 403. To refuse with another status, return `rejectUpgrade(statusCode, body?)`: the client gets a plain HTTP response with that 4xx or 5xx status and body (serialized like a route handler's return value; `{ "error": "WebSocket upgrade rejected" }` when omitted) and no handshake. A 401 tells a browser client to sign in again, where a 403 says it never will be allowed.
+
+```typescript
+import { rejectUpgrade } from 'yinzerflow';
+
+app.ws<{ userId: string }>('/feed', {
+  async upgrade(req) {
+    const session = await sessions.find(req.headers.authorization);
+    if (!session) return rejectUpgrade(401, { error: 'Sign in again' });
+    if (!session.canStream) return false; // 403
+    return { userId: session.userId };
+  },
+});
+```
+
+<span style="color: #3498db">**💡 Tip:**</span> `rejectUpgrade` throws for a status outside 400 to 599; that throw is answered with 500 like any other error in `upgrade`.
 
 ### Handler Errors
 
@@ -521,7 +540,7 @@ await app.listen();
 | 401 (or another status) on upgrade | A global `beforeRouting` / `beforeAll` hook refused it | Send the credentials the hook expects, or exclude the path with `routesToExclude` |
 | 500 on upgrade | A global hook or the `upgrade` handler threw | Check the error your `onError` handler (or the default error log) received |
 | 400 on upgrade with "Malformed request headers" | A header name or value the HTTP parser rejects | Fix the client's headers; the reason is logged at debug level |
-| 403 on upgrade | Origin not in `allowedOrigins` | Add origin or set `allowedOrigins: []` |
+| 403 on upgrade | Origin not in `allowedOrigins`, or `upgrade` returned `false` | Add origin or set `allowedOrigins: []`; return `rejectUpgrade(status)` for a different status |
 | 429 on upgrade | Too many connections from IP, or the global rate limiter | Increase `maxConnectionsPerIp`, or `rateLimit.max` |
 | Connection drops silently | Idle timeout | Increase `idleTimeout` or send periodic pings |
 | Connection closed with "Heartbeat timeout" | Client didn't respond to ping | Check client network; increase `heartbeat.interval` |

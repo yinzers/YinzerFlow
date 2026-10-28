@@ -16,6 +16,9 @@ export { corsHook } from '@core/modules/cors/corsHooks.ts';
 // Rate limiting hooks
 export { rateLimitHook } from '@core/modules/rateLimit/rateLimithooks.ts';
 
+// WebSocket upgrade refusal with a chosen status
+export { rejectUpgrade } from '@core/modules/websocket/WebSocketUpgradeRejection.ts';
+
 // ============================================
 // Constants
 // ============================================
@@ -47,4 +50,5 @@ export type {
   WebSocketUpgradeRequest,
   WebSocketBackpressureOptions,
   WebSocketMessageHook,
+  WebSocketUpgradeRejection,
 } from '@typedefs/public/WebSocket.d.ts';

@@ -1,3 +1,5 @@
+import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
+
 /**
  * User-facing WebSocket types for YinzerFlow.
  *
@@ -82,6 +84,17 @@ export interface WebSocketUpgradeRequest {
   remoteAddress: string;
 }
 
+/**
+ * A refusal returned from an `upgrade` handler, built with `rejectUpgrade(statusCode, body?)`. The client gets an
+ * HTTP response with this status and body instead of the handshake.
+ */
+export interface WebSocketUpgradeRejection {
+  /** The 4xx or 5xx status the client receives. */
+  readonly statusCode: InternalHttpStatusCode;
+  /** The response body, serialized like a route handler's return value. */
+  readonly body: unknown;
+}
+
 // ============================================
 // Route Handlers
 // ============================================
@@ -112,13 +125,13 @@ export interface WebSocketUpgradeRequest {
  */
 export interface WebSocketHandlers<T = unknown> {
   /**
-   * Called before the handshake completes. Return per-socket data to accept,
-   * or `false` to reject the connection with a 403 response.
+   * Called before the handshake completes. Return per-socket data to accept, `false` to reject the connection with
+   * a 403 response, or `rejectUpgrade(statusCode, body?)` to reject it with another 4xx/5xx status and body.
    * If omitted, the connection is accepted with `undefined` as data.
    * Runs after the global `beforeRouting` / `beforeAll` hooks and the global rate limiter. A throw (or rejection) here
    * is answered through the app's `onError` handler as an HTTP response (500 by default) before any handshake.
    */
-  upgrade?: (request: WebSocketUpgradeRequest) => Promise<T | false> | T | false;
+  upgrade?: (request: WebSocketUpgradeRequest) => Promise<T | WebSocketUpgradeRejection | false> | T | WebSocketUpgradeRejection | false;
   /** Called when the connection is established and ready. */
   open?: (ws: WebSocket<T>) => void;
   /** Called when a complete message (text or binary) is received. */

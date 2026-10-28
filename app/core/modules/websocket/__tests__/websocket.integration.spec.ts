@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { _encodeFrame } from '../WebSocketFrame.ts';
 import { buildClientFrame } from './ws-test-utils.ts';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
+import { rejectUpgrade } from '@core/modules/websocket/WebSocketUpgradeRejection.ts';
 import { wsCloseCode, wsMagicGuid, wsOpcode } from '@constants/websocket.ts';
 
 let _nextTestPort = 14000;
@@ -408,6 +409,24 @@ describe('WebSocket Integration', () => {
       const { response } = await connectWs(testPort);
       expect(response).toContain('403');
       expect(response).toContain('rejected');
+    });
+
+    // Bug (0.9.x): the upgrade handler could only refuse with 403 (`false`), so an expired token couldn't answer 401
+    // and a client couldn't tell "log in again" from "forbidden". Tier: Medium (error state a client handles differently).
+    it('should answer the status and body the upgrade handler passes to rejectUpgrade', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.ws('/ws', {
+        upgrade() {
+          return rejectUpgrade(401, { error: 'Token expired' });
+        },
+      });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort);
+      expect(response).toStartWith('HTTP/1.1 401 Unauthorized');
+      expect(response).toContain('{"error":"Token expired"}');
+      socket.destroy();
     });
 
     it('should return 404 for non-existent WS route', async () => {
