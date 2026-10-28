@@ -60,6 +60,16 @@ describe('RequestImpl', () => {
       expect(request.ipAddress).toBe('203.0.113.1');
     });
 
+    // Bug: repeated X-Forwarded-For lines kept only the last one, so a second proxy that adds its own line erased the client and every hop resolved to a proxy. Tier: High (client identity).
+    it('should join repeated X-Forwarded-For lines before walking the chain', () => {
+      const rawRequest = createRawRequest('GET /test HTTP/1.1\r\nHost: example.com\r\nX-Forwarded-For: 198.51.100.7\r\nX-Forwarded-For: 10.0.0.5\r\n\r\n');
+      const setup = new SetupImpl({ ipSecurity: { trustedProxies: ['127.0.0.1', '10.0.0.0/8'] } });
+      const request = new RequestImpl(rawRequest, setup, '127.0.0.1');
+
+      expect(request.headers['x-forwarded-for']).toBe('198.51.100.7, 10.0.0.5');
+      expect(request.ipAddress).toBe('198.51.100.7');
+    });
+
     it('should handle basic IP extraction', () => {
       const rawRequest = createRawRequest('GET /test HTTP/1.1\r\nHost: example.com\r\nX-Forwarded-For: 203.0.113.1\r\n\r\n');
 

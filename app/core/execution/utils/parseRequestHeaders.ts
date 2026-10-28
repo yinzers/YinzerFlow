@@ -87,8 +87,11 @@ export const parseHeaderStructure = (rawHeaders: string): Record<string, string>
       throw new Error(`Header value too long: maximum ${MAX_HEADER_VALUE_LENGTH} characters allowed`);
     }
 
-    // Store with lowercase key for consistency
-    headers[key.toLowerCase()] = value;
+    // Store with lowercase key for consistency. Repeated X-Forwarded-For lines are one list (RFC 9110 5.3):
+    // join them with ',' in order, so a proxy that adds its own line doesn't erase the hops before it.
+    const name = key.toLowerCase();
+    const previous = headers[name];
+    headers[name] = name === 'x-forwarded-for' && previous ? `${previous}, ${value}` : value;
   }
 
   return headers;
