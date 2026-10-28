@@ -41,11 +41,18 @@ const log = {
 // ─── Shell Helpers ──────────────────────────────────────────────────────────────
 
 const run = (cmd: string[], opts?: { cwd?: string }): { ok: boolean; stdout: string; stderr: string } => {
-  const result = Bun.spawnSync(cmd, {
-    cwd: opts?.cwd ?? process.cwd(),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  // Bun.spawnSync throws when the executable isn't on PATH; report that as a failed run so
+  // optional tools (gh) are skipped instead of aborting a release after it already published.
+  let result: ReturnType<typeof Bun.spawnSync>;
+  try {
+    result = Bun.spawnSync(cmd, {
+      cwd: opts?.cwd ?? process.cwd(),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+  } catch (err) {
+    return { ok: false, stdout: '', stderr: err instanceof Error ? err.message : String(err) };
+  }
   return {
     ok: result.exitCode === 0,
     stdout: result.stdout.toString().trim(),
