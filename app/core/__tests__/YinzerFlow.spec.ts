@@ -523,6 +523,11 @@ describe('YinzerFlow', () => {
 
         expect(response).toContain('"adminHook":true');
       });
+
+      // Bug: a ':param' or mid-path '*' hook pattern is compared literally and never matches, so an include-listed auth hook silently never runs. Tier: High (authz misconfiguration).
+      it.each([['/users/:id'], ['/api/*/admin']])('rejects unsupported hook pattern %s at registration', (pattern) => {
+        expect(() => app.beforeAll([() => undefined], { routesToInclude: [pattern] })).toThrow('unsupported hook route pattern');
+      });
     });
   });
 

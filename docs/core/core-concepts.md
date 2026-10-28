@@ -381,7 +381,7 @@ Hook patterns are matched against the request's **canonical path**, the same pat
 - Repeated and trailing slashes are collapsed: `//admin` and `/admin/` match `/admin`
 - `/api/*` matches `/api` and anything below it on a segment boundary (`/api/users`, not `/apiary`)
 
-Your patterns get the same treatment when you register them, so `'/admin/'` and `'/admin'` mean the same route.
+Your patterns get the same treatment when you register them, so `'/admin/'` and `'/admin'` mean the same route. Patterns are exact paths or a trailing `/*`; a route parameter (`'/users/:id'`) or a mid-path `*` throws at registration, because it would never match and the hook would silently never run. Use `'/users/*'` instead. Matching is decided by the request path, not by which route handles it, so `'/public/*'` also covers a request like `/public/settings` served by a `/:tenant/settings` route.
 
 Requests that can't be reduced to one unambiguous path are rejected with <span style="color: #e74c3c">**400 Bad Request**</span> before any hook or handler runs:
 

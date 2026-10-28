@@ -94,6 +94,7 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
   private _normalizeHookPatterns(patterns: Array<string>): Array<string> {
     const normalized: Array<string> = [];
     for (const pattern of patterns) {
+      this._assertSupportedHookPattern(pattern);
       if (pattern.endsWith('/*')) {
         const prefix = normalizePath(pattern.slice(0, -2));
         normalized.push(prefix === '/' ? '/*' : `${prefix}/*`);
@@ -102,6 +103,24 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
       }
     }
     return normalized;
+  }
+
+  /**
+   * Hook patterns are exact paths or a trailing `/*` wildcard. A `:param` or a `*` anywhere else is
+   * compared literally and never matches a real path, so an include-listed hook (an auth check) would
+   * silently never run. Fail loudly at registration instead.
+   */
+  private _assertSupportedHookPattern(pattern: string): void {
+    const wildcardIndex = pattern.indexOf('*');
+    const hasMisplacedWildcard = wildcardIndex !== -1 && !(wildcardIndex === pattern.length - 1 && pattern.endsWith('/*'));
+    if (pattern.includes(':') || hasMisplacedWildcard) {
+      throw new Error(
+        `YinzerFlow: unsupported hook route pattern "${pattern}". ` +
+          `routesToInclude / routesToExclude take exact paths ('/admin') or a trailing wildcard ('/admin/*'); ` +
+          `route parameters (':id') and mid-path '*' never match, so the hook would silently never run for that route. ` +
+          `Use the wildcard on the parent path instead, n'at.`,
+      );
+    }
   }
 
   private _validateHandlersArray(handlers: unknown, methodName: string): asserts handlers is Array<HandlerCallback> {
