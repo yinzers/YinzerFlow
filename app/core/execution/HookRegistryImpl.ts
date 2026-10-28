@@ -5,6 +5,7 @@ import { normalizePath } from '@core/setup/utils/normalizeStringPatterns.ts';
 import type { InternalGlobalHookOptions, InternalHookRegistryImpl } from '@typedefs/internal/InternalHookRegistryImpl.js';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import type { WebSocketMessageHook } from '@typedefs/public/WebSocket.js';
+import type { GlobalHookOptions } from '@typedefs/public/Setup.js';
 
 export class HookRegistryImpl implements InternalHookRegistryImpl {
   readonly _beforeRouting: Set<{
@@ -49,19 +50,19 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
     };
   }
 
-  _addBeforeRoutingHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
+  _addBeforeRoutingHooks(handlers: Array<HandlerCallback>, options?: GlobalHookOptions): void {
     this._validateHandlersArray(handlers, 'beforeRouting');
     const resolvedOptions = this._normalizeHookOptions(options);
     for (const handler of handlers) this._beforeRouting.add({ handler, options: resolvedOptions });
   }
 
-  _addBeforeHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
+  _addBeforeHooks(handlers: Array<HandlerCallback>, options?: GlobalHookOptions): void {
     this._validateHandlersArray(handlers, 'beforeAll');
     const resolvedOptions = this._normalizeHookOptions(options);
     for (const handler of handlers) this._beforeAll.add({ handler, options: resolvedOptions });
   }
 
-  _addAfterHooks(handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions): void {
+  _addAfterHooks(handlers: Array<HandlerCallback>, options?: GlobalHookOptions): void {
     this._validateHandlersArray(handlers, 'afterAll');
     const resolvedOptions = this._normalizeHookOptions(options);
     for (const handler of handlers) this._afterAll.add({ handler, options: resolvedOptions });
@@ -83,7 +84,7 @@ export class HookRegistryImpl implements InternalHookRegistryImpl {
    * request (`canonicalizeRequestPath`); without this, a non-canonical pattern would match nothing
    * and an include-listed hook (an auth check, say) would silently stop running.
    */
-  private _normalizeHookOptions(options?: InternalGlobalHookOptions): InternalGlobalHookOptions {
+  private _normalizeHookOptions(options?: GlobalHookOptions): InternalGlobalHookOptions {
     return {
       routesToExclude: this._normalizeHookPatterns(options?.routesToExclude ?? []),
       routesToInclude: this._normalizeHookPatterns(options?.routesToInclude ?? []),

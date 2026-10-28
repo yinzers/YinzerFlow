@@ -2,7 +2,6 @@ import { httpMethod } from '@constants/http.ts';
 import { handleCustomConfiguration } from '@core/setup/utils/handleCustomConfiguration.ts';
 import type { InternalSetupImpl } from '@typedefs/internal/InternalSetupImpl.ts';
 import { HookRegistryImpl } from '@core/execution/HookRegistryImpl.ts';
-import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.js';
 import type { InternalServerOptions } from '@typedefs/internal/InternalConfiguration.js';
 import type { ServerOptions } from '@typedefs/public/Configuration.js';
 import type { InternalRouteRegistryOptions } from '@typedefs/internal/InternalRouteRegistryImpl.js';
@@ -10,7 +9,7 @@ import { RouteRegistryImpl } from '@core/setup/RouteRegistryImpl.ts';
 import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { GroupApp } from '@core/setup/GroupApp.ts';
 import { ensureCompleteRouteOptions } from '@core/setup/utils/routeUtils.js';
-import type { RouteGroup } from '@typedefs/public/Setup.js';
+import type { GlobalHookOptions, RouteGroup } from '@typedefs/public/Setup.js';
 import { log } from '@core/utils/log.ts';
 import { WebSocketRouter } from '@core/modules/websocket/WebSocketRouter.ts';
 import type { WebSocketHandlers, WebSocketMessageHook, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
@@ -79,15 +78,15 @@ export class SetupImpl implements InternalSetupImpl {
    * allowing for more flexibility to include hook modification, conditional
    * hook execution, and better debugging.
    */
-  beforeRouting(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
+  beforeRouting(handlers: Array<HandlerCallback<any>>, options?: GlobalHookOptions): void {
     this._hooks._addBeforeRoutingHooks(handlers, options);
   }
 
-  beforeAll(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
+  beforeAll(handlers: Array<HandlerCallback<any>>, options?: GlobalHookOptions): void {
     this._hooks._addBeforeHooks(handlers, options);
   }
 
-  afterAll(handlers: Array<HandlerCallback<any>>, options?: InternalGlobalHookOptions): void {
+  afterAll(handlers: Array<HandlerCallback<any>>, options?: GlobalHookOptions): void {
     this._hooks._addAfterHooks(handlers, options);
   }
 

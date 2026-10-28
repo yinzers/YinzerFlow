@@ -1,4 +1,5 @@
 import type { InternalGlobalHookOptions } from '@typedefs/internal/InternalHookRegistryImpl.ts';
+import type { DeepPartial } from '@typedefs/internal/Generics.js';
 import type { HandlerCallback } from '@typedefs/public/Context.ts';
 import type { InternalGroupApp } from '@core/setup/GroupApp.js';
 import type { HttpMethodHandlers, RouteGroupMethod } from '@core/setup/utils/routeUtils.js';
@@ -10,6 +11,22 @@ import type { WebSocketHandlers, WebSocketMessageHook, WebSocketRouteOptions } f
  * @see {@link InternalGroupApp} for internal implementation details
  */
 export type RouteGroup = InternalGroupApp;
+
+/**
+ * Options for global hooks (`beforeRouting`, `beforeAll`, `afterAll`). Both lists are optional and
+ * default to empty: no `routesToInclude` means "every route", no `routesToExclude` means "skip none".
+ *
+ * Patterns are exact paths (`/health`) or a segment wildcard (`/public/*`, which matches `/public` and
+ * everything below it). They are matched against the request's canonical path, the same path the
+ * router uses: query string removed, decoded once, repeated and trailing slashes collapsed.
+ *
+ * @example
+ * ```typescript
+ * app.beforeAll([authHook], { routesToExclude: ['/health', '/public/*'] });
+ * app.beforeAll([adminAudit], { routesToInclude: ['/admin/*'] });
+ * ```
+ */
+export type GlobalHookOptions = DeepPartial<InternalGlobalHookOptions>;
 
 /**
  * Main setup interface for configuring YinzerFlow routes, hooks, and middleware.
@@ -76,7 +93,7 @@ export type RouteGroup = InternalGroupApp;
  *
  * @see {@link HttpMethodHandlers} for HTTP method registration methods
  * @see {@link RouteGroupMethod} for route group creation method
- * @see {@link InternalGlobalHookOptions} for global hook configuration options
+ * @see {@link GlobalHookOptions} for global hook configuration options
  * @see {@link HandlerCallback} for route handler function signature
  */
 export interface Setup extends HttpMethodHandlers {
@@ -171,10 +188,10 @@ export interface Setup extends HttpMethodHandlers {
    * ]);
    * ```
    *
-   * @see {@link InternalGlobalHookOptions} for hook configuration options
+   * @see {@link GlobalHookOptions} for hook configuration options
    * @see {@link HandlerCallback} for hook function signature
    */
-  beforeRouting: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
+  beforeRouting: (handlers: Array<HandlerCallback>, options?: GlobalHookOptions) => void;
 
   /**
    * Registers global hooks that run before all route handlers.
@@ -213,10 +230,10 @@ export interface Setup extends HttpMethodHandlers {
    * });
    * ```
    *
-   * @see {@link InternalGlobalHookOptions} for hook configuration options
+   * @see {@link GlobalHookOptions} for hook configuration options
    * @see {@link HandlerCallback} for hook function signature
    */
-  beforeAll: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
+  beforeAll: (handlers: Array<HandlerCallback>, options?: GlobalHookOptions) => void;
 
   /**
    * Registers global hooks that run after all route handlers.
@@ -258,10 +275,10 @@ export interface Setup extends HttpMethodHandlers {
    * ]);
    * ```
    *
-   * @see {@link InternalGlobalHookOptions} for hook configuration options
+   * @see {@link GlobalHookOptions} for hook configuration options
    * @see {@link HandlerCallback} for hook function signature
    */
-  afterAll: (handlers: Array<HandlerCallback>, options?: InternalGlobalHookOptions) => void;
+  afterAll: (handlers: Array<HandlerCallback>, options?: GlobalHookOptions) => void;
 
   /**
    * Registers a custom error handler for all routes.

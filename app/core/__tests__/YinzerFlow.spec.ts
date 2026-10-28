@@ -478,7 +478,7 @@ describe('YinzerFlow', () => {
               ctx.state.adminHook = true;
             },
           ],
-          { routesToInclude: ['/admin'], routesToExclude: [] },
+          { routesToInclude: ['/admin'] },
         );
         app.beforeAll(
           [
@@ -486,7 +486,7 @@ describe('YinzerFlow', () => {
               ctx.state.authHook = true;
             },
           ],
-          { routesToInclude: [], routesToExclude: ['/public/*'] },
+          { routesToExclude: ['/public/*'] },
         );
         app.get('/admin', (ctx) => ({ route: 'admin', adminHook: ctx.state.adminHook === true }));
         app.get('/public/file', (ctx) => ({ route: 'public-file', authHook: ctx.state.authHook === true }));
@@ -509,7 +509,7 @@ describe('YinzerFlow', () => {
               ctx.state.adminHook = true;
             },
           ],
-          { routesToInclude: ['//admin/'], routesToExclude: [] },
+          { routesToInclude: ['//admin/'] },
         );
         app.get('/admin', (ctx) => ({ adminHook: ctx.state.adminHook === true }));
 
