@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.9.0] - 2026-10-28
+
+### Breaking Changes
+
+- **Global rate limiter enabled by default** — The global rate limiter now runs by default with a 1000 requests per 1-minute window. If you were relying on it being disabled, explicitly set `rateLimit.enabled: false`. (a85a9eb)
+- **Canonical path matching for hooks and routes** — Hooks and routes now match against a single canonical path. Traversal paths (e.g., `/../`) are rejected with 400. Hook patterns with `:param` or mid-path `*` are rejected at registration. (eb35f22, f5ff4dc)
+
+```javascript
+// Old: hooks could match non-canonical paths
+app.beforeRouting('/**/admin', (req) => {});
+
+// New: only canonical paths and proper glob patterns work
+app.beforeRouting('/admin', (req) => {});
+app.beforeRouting('/api/*', (req) => {}); // mid-path * not allowed; use trailing *
+```
+
+- **headerPreference defaults to X-Forwarded-For only** — Client IP resolution now defaults to trusting only the `X-Forwarded-For` header from proxies. Other headers like `Client-IP` are only trusted from proxies in `trustedProxies`. A warning is logged if more headers are configured to be trusted. (29f6644)
+
+### Features
+
+- **WebSocket permessage-deflate compression (RFC 7692)** — WebSocket connections now support optional compression via the permessage-deflate extension. (ac29be0)
+- **WebSocket per-connection message rate limiting** — Rate limit individual WebSocket connections to prevent message flooding. (4882be8)
+- **WebSocket heartbeat/keepalive detection** — Automatic dead connection detection via heartbeat frames to clean up stale WebSocket connections. (3d7d949)
+
+### Bug Fixes
+
+- **IP address parsing rejects leading zeros in IPv4 octets** — IPv4 octets with leading zeros (e.g., `192.168.001.1`) are now rejected to match Node's `net.isIP()` behavior, preventing octal interpretation attacks. (3ae2c75)
+- **WebSocket upgrade headers use shared request parser** — WebSocket upgrade headers are now parsed with the same header parser as regular requests, ensuring consistent behavior. (e45c069)
+- **X-Forwarded-For repeated headers joined correctly** — Multiple `X-Forwarded-For` header lines are now joined with `,` instead of keeping only the last one. (d286962)
+- **Client IP resolved from socket peer with proxy validation** — Client IP is now resolved from the socket peer address by default, with `Client-IP` headers only trusted from addresses in `trustedProxies`. (35bef96)
+- **X-Forwarded-For walk terminates at first untrusted hop** — Only hops in the `X-Forwarded-For` chain that come from trusted proxies are walked; the first untrusted hop ends the walk. (a15c32f)
+- **trustedProxies validation compiles at construction** — `trustedProxies` patterns are now compiled and validated when the app is created, not on each request, fixing cache invalidation issues. (4e8f2ef)
+- **Socket peer address parsing warns once on error** — Unparseable socket peer addresses now trigger a one-time warning instead of silent failure. (8aa813d)
+- **Rate limiter per app instance** — Each app instance now gets its own rate limiter, so closing one app doesn't break another's rate limiting. (15a7823)
+- **Rate limit counter only advanced by unnamed hooks** — Only unnamed hooks advance the creation counter; named hook clashes now trigger a warning instead of silently overwriting. (c624eca)
+- **Global rate limiter runs after routing** — The global rate limiter now runs in its own stage after routing so `keyGenerator` has full route context. (f328126)
+- **Global rate limiter built once per hook** — Each rate limit hook's limiter is built once at registration, not recreated per request. (4b5e15e)
+- **Rate limit memory store bounded with expiry and sweep** — In-memory rate limit store now expires entries one window after the last write and periodically sweeps expired entries, with a configurable entry cap. (ba3a3dc)
+- **rateLimit.enabled rejects non-boolean values** — The `enabled` option now strictly validates its type instead of guessing. (2fe36bf)
+- **Rate limit Redis entries expire correctly** — Redis rate limit entries now expire one window after the last write, measured in milliseconds. (a904d50)
+- **Route-level limiters use isolated Redis namespaces** — Each route-level rate limiter gets its own Redis key namespace based on its route registration, preventing cross-route interference. (caa052d)
+- **Rate limiter destroy is restart-safe** — Calling `destroy()` on a rate limiter can now be safely called multiple times without errors. (ae5cc67)
+- **Blocked clients not evicted before unblocked ones** — When the in-memory rate limit store hits capacity, blocked clients are never evicted before unblocked ones. (7fb113b)
+- **IPv6 clients keyed by /56 subnet** — IPv6 clients are now keyed by their canonicalized /56 subnet, and IPv4-mapped IPv6 addresses are treated as IPv4. (6d7c648)
+- **Global rate limiter runs before routing** — The global rate limiter now runs before routing so unmatched paths are throttled along with matched ones. (676d69e)
+- **One budget and namespace per rateLimitHook instance** — Rate limit budget and Redis namespace are now per hook instance, not per route registration. (43eb2c0)
+- **Redis counters not wiped on close** — Closing an app no longer wipes shared Redis rate limit counters, allowing other apps to continue counting. (a909be5)
+- **Route literal text regex-escaped in router** — Route text is now properly regex-escaped so the router matches only the literal path, not a regex pattern. (cd79e68)
+- **Hook routesToInclude/routesToExclude are optional** — Type definitions now correctly mark `routesToInclude` and `routesToExclude` as optional in hook options. (b12f2ba)
+
+### Security
+
+- **Default client IP strategy favors socket peer over headers** — Client IP now defaults to the socket peer, trusting proxy headers only from configured `trustedProxies`. Warnings are logged when configuration trusts additional headers. (29f6644, 35bef96, a15c32f)
+- **Hook patterns validated against traversal attacks** — Patterns with `:param` or mid-path `*` are rejected at registration; paths with traversal sequences are rejected with 400. (f5ff4dc, eb35f22)
+- **Rate limit hook patterns validated** — Hook patterns are now validated to prevent security issues from malformed patterns. (f5ff4dc)
+
+### Internal
+
+- **TypeScript strict mode errors resolved** — All 37 pre-existing TypeScript strict mode errors have been fixed. (cfb008f, dad4a74, 09a7149)
+- **Default rate limit increased to 1000 requests/minute** — The default rate limit window now allows 1000 requests per minute instead of the previous default. (7bcb7d1)
+- **Prettier and eslint formatting applied** — Code formatting brought into compliance across eight files. (980d756, 3054dd5)
+- **Bun pinned to 1.2.17 in CI** — Build checks now declare sealed check lanes and pin Bun version for reproducibility. (75771d2)
+- **Planning documents consolidated and cleaned** — Completed planning documents removed; future planning consolidated. (86fb880, 3d5fc84)
+
 ## [0.8.0] - 2026-04-24
 
 ### Features
