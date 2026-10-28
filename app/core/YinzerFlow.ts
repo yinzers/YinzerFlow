@@ -31,6 +31,8 @@ import { _wrapWebSocketHandlers } from '@core/modules/websocket/WebSocketHandler
 import { _isUpgradeRejection } from '@core/modules/websocket/WebSocketUpgradeRejection.ts';
 import { wsCloseCode } from '@constants/websocket.ts';
 import { httpStatusCode } from '@constants/http.ts';
+import { mapStatusCodeToMessage } from '@core/execution/utils/mapStatusCodeToMessage.ts';
+import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 /**
@@ -703,7 +705,11 @@ export class YinzerFlow extends SetupImpl {
 
     const validation = _validateHandshake({ method: context.request.method, protocol: context.request.protocol, headers: context.request.headers });
     if (!validation.valid) {
-      this._sendHttpError(socket, 400, validation.reason);
+      // Malformed like a bad request line or path: answered before any stage, so no afterAll
+      context.response.setStatusCode(httpStatusCode.badRequest);
+      context._response._setBody({ error: validation.reason });
+      context._response._parseResponseIntoString();
+      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
       return;
     }
 
@@ -711,9 +717,14 @@ export class YinzerFlow extends SetupImpl {
     const canonicalPath = canonicalizeRequestPath(context.request.path);
     const rawPath = context.request.path.split('?', 1)[0] ?? '/';
     if (canonicalPath === null) {
-      this._sendHttpError(socket, 400, 'Malformed request path');
+      requestHandler._rejectMalformedPath(context);
+      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
       return;
     }
+
+    // Every refusal from here on is an ordinary response: default headers, afterAll hooks, the access log
+    const refuse = async (statusCode: InternalHttpStatusCode, body: unknown): Promise<void> =>
+      this._refuseWebSocketUpgrade({ context, socket, startTime, requestBytes: buffer.length, requestHandler, canonicalPath, statusCode, body });
 
     // Security checks (lazy allocation)
     this._wsSecurity ??= new WebSocketSecurity();
@@ -731,7 +742,7 @@ export class YinzerFlow extends SetupImpl {
       }
 
       if (!this._wsSecurity.validateOrigin(validation.origin, wsConfig.allowedOrigins, wsConfig.allowMissingOrigin)) {
-        this._sendHttpError(socket, 403, 'Origin not allowed');
+        await refuse(httpStatusCode.forbidden, { error: 'Origin not allowed' });
         return;
       }
 
@@ -755,16 +766,12 @@ export class YinzerFlow extends SetupImpl {
     if (socket.destroyed || !socket.writable) return;
 
     if (data === false) {
-      this._sendHttpError(socket, 403, 'WebSocket upgrade rejected');
+      await refuse(httpStatusCode.forbidden, { error: 'WebSocket upgrade rejected' });
       return;
     }
 
-    // rejectUpgrade(status, body): answered through the same response path as a hook refusal
     if (_isUpgradeRejection(data)) {
-      context.response.setStatusCode(data.statusCode);
-      context._response._setBody(data.body);
-      context._response._parseResponseIntoString();
-      this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
+      await refuse(data.statusCode, data.body);
       return;
     }
 
@@ -788,7 +795,8 @@ export class YinzerFlow extends SetupImpl {
     // The per-IP cap is checked here, after the last await, so concurrent upgrades can't all pass it while awaiting and
     // then all take a slot; check, 101, trackConnect and close wiring run in one synchronous stretch.
     if (!this._wsSecurity.canConnect(clientAddress, wsConfig.maxConnectionsPerIp)) {
-      this._sendHttpError(socket, 429, 'Too many WebSocket connections from this IP');
+      // Refusing takes no slot, so the await in afterAll can't leak one
+      await refuse(httpStatusCode.tooManyRequests, { error: 'Too many WebSocket connections from this IP' });
       return;
     }
 
@@ -813,8 +821,42 @@ export class YinzerFlow extends SetupImpl {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this._log.debug(`Malformed WebSocket upgrade request from ${peerAddress}: ${JSON.stringify(reason.slice(0, 200))}`);
-      this._sendHttpError(socket, 400, 'Malformed request headers');
+      this._sendHttpError(socket, httpStatusCode.badRequest, 'Malformed request headers');
       return null;
+    }
+  }
+
+  /**
+   * Refuse an upgrade after the hook stages (origin 403, `upgrade()` returning false or rejectUpgrade, the per-IP cap
+   * 429) as an ordinary response: status and body, afterAll hooks, default headers, then the access log. A throw from
+   * an afterAll hook here goes to onError like any other upgrade error.
+   */
+  private async _refuseWebSocketUpgrade({
+    context,
+    socket,
+    startTime,
+    requestBytes,
+    requestHandler,
+    canonicalPath,
+    statusCode,
+    body,
+  }: {
+    context: ContextImpl;
+    socket: Socket;
+    startTime: number;
+    requestBytes: number;
+    requestHandler: RequestHandlerImpl;
+    canonicalPath: string;
+    statusCode: InternalHttpStatusCode;
+    body: unknown;
+  }): Promise<void> {
+    try {
+      context.response.setStatusCode(statusCode);
+      context._response._setBody(body);
+      await requestHandler._finishResponse(context, canonicalPath);
+      this._sendContextResponse({ context, socket, startTime, requestBytes });
+    } catch (error) {
+      await this._answerUpgradeError({ context, socket, startTime, requestBytes, requestHandler, error });
     }
   }
 
@@ -952,18 +994,13 @@ export class YinzerFlow extends SetupImpl {
   }
 
   /**
-   * Send an HTTP error response on a socket and destroy it.
+   * Send an HTTP error response on a socket and destroy it. Only for an upgrade whose headers couldn't be parsed, so
+   * there is no context to build an ordinary response from; every other refusal goes through _sendContextResponse.
    */
-  private _sendHttpError(socket: Socket, statusCode: number, message: string): void {
+  private _sendHttpError(socket: Socket, statusCode: InternalHttpStatusCode, message: string): void {
     const body = JSON.stringify({ error: message });
-    const statusTextMap: Record<number, string> = {
-      400: 'Bad Request',
-      403: 'Forbidden',
-      404: 'Not Found',
-    };
-    const statusText = statusTextMap[statusCode] ?? 'Error';
     socket.write(
-      `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
+      `HTTP/1.1 ${statusCode} ${mapStatusCodeToMessage(statusCode)}\r\n` +
         `Content-Type: application/json\r\n` +
         `Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n` +
         `Connection: close\r\n\r\n${body}`,

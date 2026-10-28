@@ -531,6 +531,36 @@ describe('WebSocket Integration', () => {
       expect(response).toStartWith('HTTP/1.1 400');
     });
 
+    // Bug (0.10.0 review): origin 403, the per-IP cap's 429 and upgrade() === false were written by a bare string
+    // writer, so they skipped default headers, afterAll and the access log, and the cap answered "429 Error".
+    // Tier: Medium (one refusal contract for every upgrade refusal).
+    it.each([
+      ['a wrong Origin', 'origin', 'HTTP/1.1 403 Forbidden'],
+      ['upgrade() returning false', 'false', 'HTTP/1.1 403 Forbidden'],
+      ['the per-IP cap', 'cap', 'HTTP/1.1 429 Too Many Requests'],
+    ])('should answer %s through the normal response path', async (_label, refusal, statusLine) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({
+        port: testPort,
+        host: '127.0.0.1',
+        gracefulShutdownTimeout: 0,
+        websocket: { allowedOrigins: ['https://app.example'], maxConnectionsPerIp: 1 },
+      });
+      app.afterAll([(ctx) => void ctx.response.addHeaders({ 'X-Request-Id': 'abc123' })]);
+      app.ws('/ws', { upgrade: () => (refusal === 'false' ? false : {}) });
+      await app.listen();
+
+      const held = refusal === 'cap' ? await connectWs(testPort, '/ws', 'AAAAAAAAAAAAAAAAAAAAAA==') : undefined;
+      const origin = refusal === 'origin' ? 'https://evil.example' : undefined;
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, origin);
+
+      expect(response).toStartWith(statusLine);
+      expect(response).toContain('X-Request-Id: abc123');
+      expect(response).toContain('X-Content-Type-Options: nosniff');
+      socket.destroy();
+      held?.socket.destroy();
+    });
+
     it('should return 404 for non-existent WS route', async () => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });

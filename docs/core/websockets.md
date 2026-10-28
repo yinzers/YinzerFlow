@@ -357,6 +357,8 @@ An upgrade request runs these steps, in this order, before the connection opens:
 
 Steps 2 to 6 are the same stages, in the same order and through the same code, that an HTTP request to the same path runs, and `routesToInclude` / `routesToExclude` match against the same canonical path. Hooks receive an ordinary `ctx`, so `ctx.request.headers`, `ctx.request.ipAddress`, `ctx.request.cookies` (with the cookie parser) and `ctx.state` work unchanged. Route hooks don't run, since a WebSocket route has none, and `afterAll` hooks run only on the 404 of step 6: an accepted upgrade has no HTTP response for them to change.
 
+Every refusal is an ordinary HTTP response with the default security headers, written to the access log. The refusals YinzerFlow makes after the hook stages (origin 403, `upgrade()` returning `false` or `rejectUpgrade(...)`, the per-IP cap's 429) also run `afterAll` hooks, like any response that isn't a hook short-circuit. A malformed handshake, request line or path gets its 400 before any hook runs.
+
 A hook refuses the upgrade the way it answers an HTTP request early: by returning a value. On an upgrade, setting a status other than 200 without returning anything refuses it too, because there is no route handler left to carry that status. Either way the client gets a real HTTP response with that status and body, and the socket is closed.
 
 ```typescript
