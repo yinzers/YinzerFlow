@@ -196,9 +196,11 @@ export interface Setup extends HttpMethodHandlers {
   /**
    * Registers global hooks that run before all route handlers.
    *
-   * These hooks execute for every request before any route-specific hooks
+   * These hooks execute for every matched request before any route-specific hooks
    * or the route handler itself. They're perfect for setting up global
-   * state, authentication, logging, or request preprocessing.
+   * state, authentication, logging, or request preprocessing. Unmatched routes
+   * skip them and go straight to the not-found handler; use `beforeRouting` for
+   * anything that must see every request.
    *
    * @param handlers - Array of hook functions to execute
    * @param options - Optional configuration for hook execution scope
@@ -238,7 +240,8 @@ export interface Setup extends HttpMethodHandlers {
   /**
    * Registers global hooks that run after all route handlers.
    *
-   * These hooks execute for every request after the route handler completes
+   * These hooks execute for every matched request after the route handler completes
+   * (unmatched routes skip them and go straight to the not-found handler)
    * and after any route-specific after hooks. They're perfect for response
    * modification, logging, cleanup, or adding response headers.
    *

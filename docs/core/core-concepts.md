@@ -213,7 +213,7 @@ YinzerFlow provides a comprehensive hooks system for middleware, authentication,
 
 ### Global Hooks
 
-Global hooks run for every request and are perfect for authentication, logging, and response modification.
+Global hooks run for every request that matches a route and are perfect for authentication, logging, and response modification. `beforeAll` and `afterAll` do not run for unmatched routes: a request with no matching route goes straight to the not-found handler. Use `beforeRouting` for anything that must see every request, including 404s (the built-in rate limiter runs there).
 
 ```typescript
 // Global authentication hook
