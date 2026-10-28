@@ -4,6 +4,7 @@ import type { HandlerCallback } from '@typedefs/public/Context.js';
 import { _convertTimeToMs } from '@core/utils/time.ts';
 import type { RateLimitOptions } from '@typedefs/public/RateLimit.js';
 import { RateLimitConfig } from '@core/modules/rateLimit/RateLimitConfig.ts';
+import { log } from '@core/utils/log.ts';
 import type { HandlerCallbackGenerics } from '@typedefs/public/HandlerCallbackGenerics.js';
 import type { InternalContextImpl } from '@typedefs/internal/InternalContextImpl.js';
 
@@ -13,8 +14,31 @@ const _hookLimiters = new WeakMap<object, (app: object) => RateLimiter | undefin
 /** Key for a hook called outside a YinzerFlow request (no app on the context), so it still has a limiter. */
 const _noApp = {};
 
-/** Creation-order counter naming hooks created without `name`. */
+/** Creation-order counter naming hooks created without `name`; named hooks never advance it. */
 let _unnamedHookCount = 0;
+
+/** `name` -> the limit first registered under it, to warn once when another hook reuses the name with a different limit. */
+const _namedHookLimits = new Map<string, { max: number; window: number }>();
+const _warnedHookNames = new Set<string>();
+
+/**
+ * Two hooks with one `name` share one Redis namespace, so one counter. If their max or window differ they disagree
+ * about the limit for that counter: warn once per name. Same name and same limit is a deliberate shared budget.
+ */
+const _checkHookNameClash = (name: string, config: RateLimitConfig): void => {
+  const first = _namedHookLimits.get(name);
+  if (!first) {
+    _namedHookLimits.set(name, { max: config.max, window: config.window });
+    return;
+  }
+  if ((first.max === config.max && first.window === config.window) || _warnedHookNames.has(name)) return;
+  _warnedHookNames.add(name);
+  log.warn(
+    `[RATE LIMIT] Two rateLimitHook() calls share name "${name}" with different limits ` +
+      `(max ${first.max} per ${first.window}ms vs max ${config.max} per ${config.window}ms). ` +
+      'Hooks with one name share one counter in Redis; give each limit its own name.',
+  );
+};
 
 /**
  * Give a Redis store config its own key namespace: keys become `<keyPrefix><namespace>:<client key>`. The
@@ -65,8 +89,9 @@ export const _withStoreNamespace = <O extends RateLimitOptions | undefined>(rate
 export const rateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions): HandlerCallback<T> => {
   // One budget per rateLimitHook() call, wherever the hook is used: GET and its automatic HEAD, several routes
   // sharing one hook, or a group hook all count against the same limiter (the express-rate-limit model).
-  _unnamedHookCount += 1;
-  const namespace = `hook:${rateLimitOptions.name ?? `#${_unnamedHookCount}`}`;
+  const { name } = rateLimitOptions;
+  if (name === undefined) _unnamedHookCount += 1;
+  const namespace = `hook:${name ?? `#${_unnamedHookCount}`}`;
   return _createRateLimitHook<T>(rateLimitOptions, namespace);
 };
 
@@ -79,6 +104,7 @@ export const rateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOption
  */
 const _createRateLimitHook = <T extends HandlerCallbackGenerics>(rateLimitOptions: RateLimitOptions, namespace: string): HandlerCallback<T> => {
   const rateLimitConfig = new RateLimitConfig(_withStoreNamespace(rateLimitOptions, namespace));
+  if (rateLimitOptions.name !== undefined) _checkHookNameClash(rateLimitOptions.name, rateLimitConfig);
   const limitersByApp = new WeakMap<object, RateLimiter>();
   const limiterFor = (app: object): RateLimiter => {
     let limiter = limitersByApp.get(app);

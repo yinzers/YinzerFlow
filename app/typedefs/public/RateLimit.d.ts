@@ -182,8 +182,10 @@ export interface RateLimitOptions {
    *
    * Each `rateLimitHook()` call is one budget wherever the hook is used: GET and its automatic HEAD, several
    * routes sharing one hook, or a group hook all count against it. Without `name`, the namespace is a creation-order
-   * number (`hook:#3`), which is the same on every node and after restarts only while every node creates its hooks
-   * in the same order. Give every hook a unique `name` when several nodes share one Redis. Ignored by the
+   * number (`hook:#3`), counted over unnamed hooks only, which is the same on every node and after restarts only
+   * while every node creates its unnamed hooks in the same order. Give every hook a unique `name` when several
+   * nodes share one Redis. Hooks that share a `name` share one Redis counter; a warning is logged once if they
+   * declare different `max` or `window`. Ignored by the
    * global limiter, whose keys always live under `<keyPrefix>global:`.
    *
    * @example

@@ -727,7 +727,9 @@ app.post('/api/auth/login', loginHandler, { beforeHooks: [loginLimit] });
 app.post('/api/auth/login/otp', otpHandler, { beforeHooks: [loginLimit] }); // same 5-per-15-minutes budget
 ```
 
-<span style="color: #f39c12">**⚠️ Multi-node Redis:**</span> each hook's Redis keys live under `<keyPrefix>hook:<name>:`. Without `name`, the namespace is the hook's creation order (`hook:#1`, `hook:#2`, ...), which matches across nodes and restarts only while every node creates its hooks in the same order. Give every hook a unique `name` when several nodes share one Redis.
+<span style="color: #f39c12">**⚠️ Multi-node Redis:**</span> each hook's Redis keys live under `<keyPrefix>hook:<name>:`. Without `name`, the namespace is the hook's creation order among unnamed hooks (`hook:#1`, `hook:#2`, ...). Adding a named hook doesn't renumber them, but the order matches across nodes and restarts only while every node creates its unnamed hooks in the same order. Give every hook a unique `name` when several nodes share one Redis.
+
+<span style="color: #f39c12">**⚠️ Name clashes:**</span> two hooks with the same `name` share one Redis counter. That's a deliberate shared budget when their limits match. If they declare a different `max` or `window`, each enforces its own limit against the same counter, and YinzerFlow logs a warning once at startup. Give each distinct limit its own name.
 
 ### 🛡️ Custom Key Generators
 

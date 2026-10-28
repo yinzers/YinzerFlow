@@ -713,17 +713,28 @@ describe('Rate Limiting with Redis Store', () => {
       };
       const store = { type: 'redis' as const, client: recordingClient as any, keyPrefix: 'test:rate_limit:', maxRetries: 1 };
       const { app: sharedApp, testPort: sharedPort } = createTestApp({ rateLimit: { max: 50, window: '1m', store } });
-      sharedApp.post('/login', () => ({ ok: true }), { beforeHooks: [rateLimitHook({ name: 'login', max: 5, window: '1m', store })], afterHooks: [] });
-      sharedApp.get('/search', () => ({ ok: true }), { beforeHooks: [rateLimitHook({ max: 5, window: '1m', store })], afterHooks: [] });
+      // Unnamed, named, unnamed: the named hook must not advance the creation counter (that renumbered the rest)
+      const searchLimit = rateLimitHook({ max: 5, window: '1m', store });
+      const loginLimit = rateLimitHook({ name: 'login', max: 5, window: '1m', store });
+      const exportLimit = rateLimitHook({ max: 5, window: '1m', store });
+      sharedApp.get('/search', () => ({ ok: true }), { beforeHooks: [searchLimit], afterHooks: [] });
+      sharedApp.post('/login', () => ({ ok: true }), { beforeHooks: [loginLimit], afterHooks: [] });
+      sharedApp.get('/export', () => ({ ok: true }), { beforeHooks: [exportLimit], afterHooks: [] });
       await sharedApp.listen();
 
-      await fetch(`http://127.0.0.1:${sharedPort}/login`, { method: 'POST' });
       await fetch(`http://127.0.0.1:${sharedPort}/search`);
+      await fetch(`http://127.0.0.1:${sharedPort}/login`, { method: 'POST' });
+      await fetch(`http://127.0.0.1:${sharedPort}/export`);
       const namespaces = [...new Set(setKeys.map((key) => key.slice(0, key.lastIndexOf(':') + 1)))].sort();
-      expect(namespaces).toHaveLength(3);
+      expect(namespaces).toHaveLength(4);
       expect(namespaces[0]).toBe('test:rate_limit:global:');
-      expect(namespaces[1]).toMatch(/^test:rate_limit:hook:#\d+:$/);
-      expect(namespaces[2]).toBe('test:rate_limit:hook:login:');
+      expect(namespaces[3]).toBe('test:rate_limit:hook:login:');
+      // /search was requested before /export, so the first and last unnamed-hook keys are theirs
+      const unnamedNumbers = setKeys.flatMap((key) => {
+        const match = /^test:rate_limit:hook:#(?<number>\d+):/.exec(key);
+        return match?.groups?.number ? [Number(match.groups.number)] : [];
+      });
+      expect(unnamedNumbers.at(-1)).toBe((unnamedNumbers[0] ?? 0) + 1);
 
       await sharedApp.close();
       // close() must not touch shared counters: no KEYS scan, no deletes (they expire on their own)
