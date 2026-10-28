@@ -135,32 +135,16 @@ const _handleError = (operation: string, error: unknown, connectionHealthy: bool
 };
 
 /**
- * Set key with TTL, handling both ioredis and redis package differences
+ * Write a value with a millisecond TTL of one window, refreshed on every write. An entry therefore expires
+ * one window after the client's LAST request, the same rule as the in-memory store; the strategy would have
+ * reset it by then anyway (its windowStart is never later than the last write).
  */
-const _setWithTtl = async ({ client, key, value, ttlSeconds }: { client: RedisClient; key: string; value: string; ttlSeconds: number }): Promise<void> => {
+const _setWithWindowTtl = async ({ client, key, value, ttlMs }: { client: RedisClient; key: string; value: string; ttlMs: number }): Promise<void> => {
   try {
     if (client instanceof Redis) {
-      await client.set(key, value, 'EX', ttlSeconds);
+      await client.set(key, value, 'PX', ttlMs);
     } else {
-      await client.set(key, value, { EX: ttlSeconds });
-    }
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Unsupported Redis client or Redis operation failed: ${error.message}`);
-    }
-    throw error;
-  }
-};
-
-/**
- * Set key while preserving TTL, handling both ioredis and redis package differences
- */
-const _setKeepTtl = async ({ client, key, value }: { client: RedisClient; key: string; value: string }): Promise<void> => {
-  try {
-    if (client instanceof Redis) {
-      await client.set(key, value, 'KEEPTTL'); // cspell:disable-line
-    } else {
-      await client.set(key, value, { KEEPTTL: true }); // cspell:disable-line
+      await client.set(key, value, { PX: ttlMs });
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -221,16 +205,8 @@ const _set = async <T>({
     const redisKey = _buildKey(key, keyPrefix);
     const serialized = _serialize(value);
 
-    // Check if key exists first
-    const exists = await client.exists(redisKey);
-
-    if (exists) {
-      // Key exists - update value but preserve TTL using KEEPTTL (cspell:disable-line)
-      await _setKeepTtl({ client, key: redisKey, value: serialized });
-    } else {
-      // New key - set with TTL
-      await _setWithTtl({ client, key: redisKey, value: serialized, ttlSeconds: Math.floor(config.window / 1000) });
-    }
+    // One round trip; the TTL restarts on every write (one window after the last request)
+    await _setWithWindowTtl({ client, key: redisKey, value: serialized, ttlMs: Math.ceil(config.window) });
   } catch (error) {
     _handleError('SET', error, connectionHealthy);
   }

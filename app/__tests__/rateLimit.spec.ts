@@ -475,11 +475,15 @@ describe('Rate Limit Configuration Validation', () => {
 });
 
 describe('Rate Limiting with Redis Store', () => {
-  // Mock Redis client for testing
+  // Mock Redis client for testing (the network boundary); records SET arguments
+  const redisSetCalls: Array<Array<unknown>> = [];
   const mockRedisClient = {
     ping: async () => Promise.resolve('PONG'),
     get: async () => Promise.resolve(null),
-    set: async () => Promise.resolve('OK'),
+    set: async (...args: Array<unknown>) => {
+      redisSetCalls.push(args);
+      return Promise.resolve('OK');
+    },
     setEx: async () => Promise.resolve('OK'),
     exists: async () => Promise.resolve(0),
     del: async () => Promise.resolve(1),
@@ -580,11 +584,16 @@ describe('Rate Limiting with Redis Store', () => {
       expect(response.status).toBe(200);
     });
 
-    it('should include rate limit headers with Redis store', async () => {
+    // Bug: the TTL was set once (whole seconds) and then kept, so entries expired one window after the FIRST write, unlike the memory store. Tier: Medium.
+    it('should include rate limit headers with Redis store and refresh a one-window ms TTL on every write', async () => {
+      redisSetCalls.length = 0;
       const response = await getRequest({ testPort });
+      await getRequest({ testPort });
 
       expect(response.headers.get('RateLimit-Limit')).toBe('2');
       expect(response.headers.get('RateLimit-Remaining')).toBe('1');
+      expect(redisSetCalls.length).toBe(2);
+      for (const call of redisSetCalls) expect(call[2]).toEqual({ PX: 1000 });
     });
   });
 
