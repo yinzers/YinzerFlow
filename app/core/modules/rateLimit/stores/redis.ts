@@ -89,7 +89,10 @@ export const createRedisStore = async <T>(config: RateLimitConfig): Promise<Inte
     get: async (key: string) => _get({ client, key, keyPrefix, connectionHealthy }),
     set: async (key: string, value: T) => _set({ client, config, key, value, keyPrefix, connectionHealthy }),
     delete: async (key: string) => _delete({ client, key, keyPrefix, connectionHealthy }),
-    destroy: async () => _destroy({ client, keyPrefix, connectionHealthy }),
+    // Deliberately keeps every key: counters are shared by all nodes and expire on their own (PX, one window
+    // after the last write). Deleting them on close reset every node's limits on each deploy, and the KEYS scan
+    // it needed blocked Redis. The client belongs to the app, so it is not closed here either.
+    destroy: async () => Promise.resolve(),
   };
 };
 
@@ -231,22 +234,5 @@ const _delete = async ({
     await client.del(redisKey);
   } catch (error) {
     _handleError('DELETE', error, connectionHealthy);
-  }
-};
-
-/**
- * Delete all keys related to this store
- */
-const _destroy = async ({ client, keyPrefix, connectionHealthy }: { client: RedisClient; keyPrefix: string; connectionHealthy: boolean }): Promise<void> => {
-  try {
-    // Escape glob metacharacters: route namespaces contain the route pattern, and a user prefix may too
-    const pattern = `${keyPrefix.replace(/[*?[\]\\]/g, '\\$&')}*`;
-    const keys = await client.keys(pattern);
-    if (keys.length > 0) {
-      await Promise.all(keys.map(async (key) => client.del(key)));
-      log.info(`[RedisStore] Destroyed ${keys.length} rate limit keys`);
-    }
-  } catch (error) {
-    _handleError('DESTROY', error, connectionHealthy);
   }
 };

@@ -645,7 +645,7 @@ describe('Rate Limiting with Redis Store', () => {
   });
 
   describe('Separate rateLimitHooks on a shared client', () => {
-    // Bug: rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other. Tier: Medium.
+    // Bug: rateLimitHooks sharing the global Redis client and prefix wrote the same keys as the global limiter and each other, and close() wiped every node's counters with KEYS. Tier: Medium.
     it('should keep each hook and the global limiter in their own namespace, and keep working after close and listen', async () => {
       const setKeys: Array<string> = [];
       const destroyedPatterns: Array<string> = [];
@@ -675,7 +675,8 @@ describe('Rate Limiting with Redis Store', () => {
       expect(namespaces[2]).toBe('test:rate_limit:hook:login:');
 
       await sharedApp.close();
-      expect(destroyedPatterns.sort()).toEqual([...namespaces].map((namespace) => `${namespace}*`).sort());
+      // close() must not touch shared counters: no KEYS scan, no deletes (they expire on their own)
+      expect(destroyedPatterns).toEqual([]);
 
       const keysBeforeRestart = setKeys.length;
       await sharedApp.listen();

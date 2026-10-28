@@ -179,16 +179,3 @@ before touching the area an entry names.
 - **Cost later**: low; pass the logger via the store options.
 - **Trigger**: the next change to the store factory or RateLimitConfig's constructor signature, or a
   user asking where the warning went.
-
-## redis-destroy-wipes-shared-counters — close() on one node deletes counters for all nodes
-
-- **What**: the Redis store's `destroy()` runs `KEYS <prefix>*` and deletes every match. Every
-  `close()` (deploy, restart, scale-in) on one node therefore wipes the global and per-route counters
-  that every other node shares, and `KEYS` is O(keyspace) and blocks Redis while it runs.
-- **Why deferred**: found in review round 3 (item 4, e67ccf8 made route limiters destroyed on close
-  too). Whether close() should clear shared state at all is a behavior decision for Patrick; the
-  likely answer is "never delete on close, let TTLs expire", which is a one-line change but a
-  documented behavior change.
-- **Cost later**: low; drop the delete (or switch to SCAN for an explicit reset API).
-- **Trigger**: a report of limits resetting on deploys, Redis latency spikes during shutdown, or the
-  next change to the Redis store's destroy.
