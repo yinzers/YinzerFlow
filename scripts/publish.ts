@@ -22,6 +22,7 @@
 
 import dts from 'bun-plugin-dts';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { requestAiDraft } from './ai-changelog.ts';
 import { addRelease, hasUnreleasedEntries, hasVersionHeading, promoteUnreleased } from './changelog.ts';
 import { abortRelease, newRollbackState, publishThenPush, type RollbackIo } from './release-rollback.ts';
 
@@ -40,6 +41,9 @@ const dryRun = argv.includes('--dry-run');
 // Model for the --ai-changelog fallback. Sonnet, not Haiku: the draft has to stay faithful to
 // full commit messages and migration details. Update when a newer Sonnet ships.
 const AI_CHANGELOG_MODEL = 'claude-sonnet-5-5';
+
+// Liveness bound on the model call; past it the draft falls back to the raw commit list.
+const AI_REQUEST_TIMEOUT_MS = 60_000;
 
 // Cap on docs diff text sent to the model, so a docs-heavy release does not blow the prompt.
 const AI_DOCS_DIFF_LIMIT = 20_000;
@@ -476,51 +480,29 @@ const draftChangelogWithAi = async (current: string, lastTag: string, newVersion
   const docsAdditions = getDocsAdditions(lastTag);
   log.dim(`Calling ${AI_CHANGELOG_MODEL}...`);
 
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.CLAUDE_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: AI_CHANGELOG_MODEL,
-        max_tokens: 4096,
-        system: AI_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content:
-              `Full commit messages since ${lastTag || 'the beginning'}:\n\n${commits}` +
-              (docsAdditions ? `\n\nLines added to docs/ in the same range (behavior-change notes):\n\n${docsAdditions}` : ''),
-          },
-        ],
-      }),
-    });
+  const draft = await requestAiDraft({
+    apiKey: process.env.CLAUDE_API_KEY!,
+    model: AI_CHANGELOG_MODEL,
+    system: AI_SYSTEM_PROMPT,
+    user:
+      `Full commit messages since ${lastTag || 'the beginning'}:\n\n${commits}` +
+      (docsAdditions ? `\n\nLines added to docs/ in the same range (behavior-change notes):\n\n${docsAdditions}` : ''),
+    timeoutMs: AI_REQUEST_TIMEOUT_MS,
+  });
 
-    if (!response.ok) {
-      log.warn(`Claude API returned ${response.status}: ${await response.text()}`);
-      log.dim('Falling back to raw commit list');
-      return _rawPlan(current, rawCommits, newVersion, false);
-    }
-
-    const data = (await response.json()) as { content: Array<{ text: string }> };
-    const text = data.content[0]?.text?.trim() ?? '';
-
-    if (text === 'NO_USER_CHANGES') {
-      log.warn('AI determined no user-facing changes in these commits');
-      return _rawPlan(current, rawCommits, newVersion, true);
-    }
-
-    const entry = `## [${newVersion}] - ${_today()}\n\n${text}`;
-    log.success('AI changelog drafted. Review it below: names come from commits, but you are the check.');
-    return { entry, body: text, nextContent: addRelease(current, entry), source: 'ai', noUserChanges: false };
-  } catch (err) {
-    log.warn(`Claude API call failed: ${err instanceof Error ? err.message : String(err)}`);
+  if (draft.kind === 'fallback') {
+    log.warn(draft.reason);
     log.dim('Falling back to raw commit list');
     return _rawPlan(current, rawCommits, newVersion, false);
   }
+  if (draft.kind === 'no-changes') {
+    log.warn('AI determined no user-facing changes in these commits');
+    return _rawPlan(current, rawCommits, newVersion, true);
+  }
+
+  const entry = `## [${newVersion}] - ${_today()}\n\n${draft.text}`;
+  log.success('AI changelog drafted. Review it below: names come from commits, but you are the check.');
+  return { entry, body: draft.text, nextContent: addRelease(current, entry), source: 'ai', noUserChanges: false };
 };
 
 /** Pure: no AI, no writes. Promotes the Unreleased section for `newVersion`. */
