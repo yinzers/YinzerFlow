@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking Changes
+
+### Security
+
+### Features
+
+### Bug Fixes
+
+### Internal
+
 ## [0.10.0] - 2026-10-29
 
 Security release for WebSockets and global hooks. Read the breaking changes before upgrading; the behavior-change notes are in `docs/core/websockets.md` and `docs/core/core-concepts.md`.
