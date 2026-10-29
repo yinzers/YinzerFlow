@@ -35,7 +35,9 @@ await app.listen();
 
 ### websocket.maxPayloadLength — @default <span style="color: #2ecc71">`16777216`</span> (16MB)
 
-Maximum incoming message payload in bytes. Frames exceeding this limit trigger a close with code 1009.
+Maximum incoming message payload in bytes, as your `message` handler would receive it. The limit holds for a single frame, for the running total of a fragmented message, and for what a compressed message inflates to; past it the connection is closed with code 1009 and the handler isn't called.
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.11.0:**</span> before 0.11.0 only each frame was checked, so a message split into fragments, or a small compressed frame that inflated past the limit, reached the handler at any size.
 
 ```typescript
 const app = new YinzerFlow({
@@ -650,7 +652,7 @@ await app.listen();
 
 ### 🛡️ Payload Size Limits
 - **Problem**: Memory exhaustion from oversized messages
-- **YinzerFlow Solution**: `websocket.maxPayloadLength` checked on frame header before buffering. Exceeding triggers close with code 1009 (Too Large).
+- **YinzerFlow Solution**: `websocket.maxPayloadLength` is checked on each frame header before buffering, on the running total of a fragmented message, and as the cap on decompression, so neither fragmentation nor a decompression bomb gets a message past it. Exceeding triggers close with code 1009 (Too Large).
 
 ## 🔧 Troubleshooting
 

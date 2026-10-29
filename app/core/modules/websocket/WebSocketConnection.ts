@@ -56,6 +56,8 @@ export class WebSocketConnection<T = unknown> {
   private _fragmentBuffers: Array<Buffer> = [];
   private _fragmentOpcode = 0;
   private _fragmentCompressed = false;
+  /** Bytes buffered so far for the fragmented message in progress, held to maxPayloadLength like a whole message */
+  private _fragmentBytes = 0;
 
   // Backpressure state
   private _backpressured = false;
@@ -216,8 +218,7 @@ export class WebSocketConnection<T = unknown> {
 
       // Max payload enforcement — check before processing
       if (frame.payloadLength > this._options.maxPayloadLength) {
-        this.close(wsCloseCode.tooLarge, 'Payload too large');
-        this._destroySocket();
+        this._rejectTooLarge();
         return;
       }
 
@@ -299,6 +300,11 @@ export class WebSocketConnection<T = unknown> {
         this._destroySocket();
         return;
       }
+      this._fragmentBytes += payload.length;
+      if (this._fragmentBytes > this._options.maxPayloadLength) {
+        this._rejectTooLarge();
+        return;
+      }
       this._fragmentBuffers.push(payload);
 
       if (fin) {
@@ -309,6 +315,7 @@ export class WebSocketConnection<T = unknown> {
         this._fragmentBuffers = [];
         this._fragmentOpcode = 0;
         this._fragmentCompressed = false;
+        this._fragmentBytes = 0;
         this._deliverMessage(originalOpcode, completePayload, compressed);
       }
     } else if (fin) {
@@ -319,6 +326,7 @@ export class WebSocketConnection<T = unknown> {
       this._fragmentOpcode = opcode;
       this._fragmentCompressed = rsv1;
       this._fragmentBuffers = [payload];
+      this._fragmentBytes = payload.length;
     }
   }
 
@@ -369,8 +377,13 @@ export class WebSocketConnection<T = unknown> {
     let finalPayload = payload;
     if (compressed) {
       try {
-        finalPayload = _decompressPayload(payload, this._options.compression.clientMaxWindowBits);
-      } catch {
+        // Inflation is capped at maxPayloadLength: the frame check only bounds the compressed size
+        finalPayload = _decompressPayload(payload, this._options.compression.clientMaxWindowBits, this._options.maxPayloadLength);
+      } catch (error) {
+        if (_isOutputTooLarge(error)) {
+          this._rejectTooLarge();
+          return;
+        }
         this.close(wsCloseCode.invalidPayload, 'Decompression failed');
         this._destroySocket();
         return;
@@ -453,6 +466,14 @@ export class WebSocketConnection<T = unknown> {
   // Helpers
   // ============================================
 
+  /** Close 1009 for a message over maxPayloadLength: one frame, the fragments so far, or what it inflates to. */
+  private _rejectTooLarge(): void {
+    this._fragmentBuffers = [];
+    this._fragmentBytes = 0;
+    this.close(wsCloseCode.tooLarge, 'Payload too large');
+    this._destroySocket();
+  }
+
   private _destroySocket(): void {
     this._clearIdleTimeout();
     if (!this._socket.destroyed) {
@@ -468,3 +489,6 @@ export class WebSocketConnection<T = unknown> {
     return this;
   }
 }
+
+/** zlib refused to inflate past maxOutputLength (Node and Bun both report ERR_BUFFER_TOO_LARGE). */
+const _isOutputTooLarge = (error: unknown): boolean => error instanceof Error && (error as Error & { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE';

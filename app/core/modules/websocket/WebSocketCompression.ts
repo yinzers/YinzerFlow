@@ -26,9 +26,16 @@ export const _compressPayload = (payload: Buffer, level: number, windowBits: num
 /**
  * Decompress a permessage-deflate payload: append the sync marker, then inflate.
  * Per RFC 7692 §7.2.3, the sender stripped the trailing bytes.
+ *
+ * `maxOutputLength` caps the inflated size, so a small compressed frame can't expand into an unbounded buffer
+ * (a decompression bomb). Past it, zlib throws an error with code `ERR_BUFFER_TOO_LARGE`.
  */
-export const _decompressPayload = (payload: Buffer, windowBits: number): Buffer =>
-  inflateRawSync(Buffer.concat([payload, DEFLATE_TAIL]), { windowBits, finishFlush: constants.Z_SYNC_FLUSH });
+export const _decompressPayload = (payload: Buffer, windowBits: number, maxOutputLength?: number): Buffer =>
+  inflateRawSync(Buffer.concat([payload, DEFLATE_TAIL]), {
+    windowBits,
+    finishFlush: constants.Z_SYNC_FLUSH,
+    ...(maxOutputLength === undefined ? {} : { maxOutputLength }),
+  });
 
 /**
  * Parse the client's Sec-WebSocket-Extensions header value for permessage-deflate offers.

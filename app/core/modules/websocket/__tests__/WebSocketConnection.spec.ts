@@ -5,6 +5,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { _encodeCloseFrame, _encodeFrame } from '../WebSocketFrame.ts';
+import { _compressPayload } from '../WebSocketCompression.ts';
 import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
 import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
 import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
@@ -233,17 +234,43 @@ describe('WebSocketConnection', () => {
   // Max payload enforcement
   // ============================================
 
+  // Bug (0.10.x): maxPayloadLength was checked per frame on the wire, so a message split into fragments, or a
+  // compressed frame that inflates past it (a decompression bomb: 64 KB inflating to 64 MB), reached the handler at
+  // any size. The limit is on the message as the handler would see it. Tier: High (untrusted input size bound).
   describe('max payload', () => {
-    it('should close connection when frame exceeds max payload', () => {
-      const closeFn = mock(() => {});
-      const { socket } = createConnection({ close: closeFn }, { ...defaultOptions, maxPayloadLength: 100 });
+    const limit = 100;
+    const compressedFrame = (size: number): Buffer => {
+      const frame = buildClientFrame(wsOpcode.text, _compressPayload(Buffer.alloc(size, 0x41), 1, 15));
+      frame[0] = frame[0]! | 0x40; // RSV1: permessage-deflate
+      return frame;
+    };
+    const fragments = (sizes: Array<number>): Buffer =>
+      Buffer.concat(
+        sizes.map((size, i) => buildClientFrame(i === 0 ? wsOpcode.text : wsOpcode.continuation, Buffer.alloc(size, 0x41), i === sizes.length - 1)),
+      );
 
-      const oversized = buildClientFrame(wsOpcode.text, Buffer.alloc(200, 0x41));
-      socket.emit('data', oversized);
+    it.each([
+      ['a single frame at the limit', buildClientFrame(wsOpcode.text, Buffer.alloc(limit, 0x41)), true],
+      ['a single frame over the limit', buildClientFrame(wsOpcode.text, Buffer.alloc(limit + 1, 0x41)), false],
+      ['fragments totalling the limit', fragments([40, 40, 20]), true],
+      ['fragments totalling one byte over, each under it', fragments([40, 40, 21]), false],
+      ['a compressed frame inflating to the limit', compressedFrame(limit), true],
+      ['a compressed frame inflating one byte over', compressedFrame(limit + 1), false],
+    ])('%s', (_label, bytes, delivered) => {
+      const messageFn = mock(() => {});
+      const { socket } = createConnection(
+        { message: messageFn },
+        { ...defaultOptions, maxPayloadLength: limit, compression: { ...defaultOptions.compression, enabled: true } },
+      );
 
-      // Should have sent a close frame with code 1009
-      expect(socket.written.length).toBeGreaterThanOrEqual(1);
-      expect(socket.destroyed).toBe(true);
+      socket.emit('data', bytes);
+
+      expect(messageFn).toHaveBeenCalledTimes(delivered ? 1 : 0);
+      expect(socket.destroyed).toBe(!delivered);
+      if (!delivered) {
+        const closeFrame = socket.written.find((frame) => (frame[0]! & 0x0f) === wsOpcode.close);
+        expect(closeFrame?.readUInt16BE(2)).toBe(wsCloseCode.tooLarge);
+      }
     });
   });
 

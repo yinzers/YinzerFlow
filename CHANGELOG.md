@@ -13,6 +13,8 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 ### Security
 
+- **`websocket.maxPayloadLength` now bounds whole messages** — it was checked only per frame on the wire, so a client could send a message of any size split into fragments, or a compressed frame that inflated far past the limit (with compression enabled, a 64 KB frame reached the `message` handler as 64 MB, enough to exhaust memory). Fragments are now counted against the limit as they arrive and decompression stops at the limit; either closes the connection with 1009, like an oversized frame.
+
 ### Features
 
 - **Warning for an idle timeout at or below the heartbeat interval** — `new YinzerFlow()` now warns when `websocket.idleTimeout` is at or below `websocket.heartbeat.interval`, and `app.ws()` warns when a route's `idleTimeout` is, unless that route sets `heartbeatInterval: 0`. A client that only listens would be closed for idleness before the next ping could keep it alive. The route warning goes to the app's logger.
