@@ -293,3 +293,59 @@ before touching the area an entry names.
   fake git.
 - **Trigger**: a CI lane that runs this check on a shallow clone (a default `actions/checkout` fetches depth 1
   and no tags), or any report of the check passing where an `app/` change had no entry.
+
+## ws-accept-drops-hook-headers — headers a hook sets are silently dropped on an accepted upgrade
+
+- **What**: a global `beforeAll`/`beforeRouting` hook that calls `ctx.response.addHeaders(...)` (a refreshed session
+  `Set-Cookie`, a request id) and lets the upgrade through gets a bare 101: `_buildHandshakeResponse` writes only the
+  handshake headers. Proved by the 0.11.0 item-4 probe. The docs say afterAll has no response to change on an accepted
+  upgrade, but say nothing about headers set before it.
+- **Why deferred**: copying hook headers onto a 101 is a design call (which headers are safe on a 101, and whether
+  security defaults like `X-Content-Type-Options` belong there); nothing is corrupted, the headers are just absent.
+- **Cost later**: low; merge a filtered set of `context._response._headers` into `_buildHandshakeResponse`, or
+  document the drop, plus one test.
+- **Trigger**: a user report of a cookie or header set in a hook missing on a WebSocket handshake, or the next change
+  to `_buildHandshakeResponse`.
+
+## ws-handler-promise-types — open/message/close are typed void though promises are handled
+
+- **What**: `WebSocketHandlers.open`, `message` and `close` are typed `=> void` (app/typedefs/public/WebSocket.d.ts),
+  but `_wrapWebSocketHandlers` already catches a returned promise's rejection. An `async open(ws)` therefore trips
+  `@typescript-eslint/no-misused-promises` in user code, so the docs' late-subscribe example uses `.then().catch()`.
+- **Why deferred**: found while documenting the 0.11.0 `subscribe` return value; widening public handler types is
+  API surface that deserves its own changelog line.
+- **Cost later**: trivial; `=> void | Promise<void>` on the three handlers, then simplify the websockets.md example.
+- **Trigger**: the next change to `WebSocketHandlers`, or a user asking why `async open` fails lint.
+
+## ws-close-then-destroy-1006 — clients see 1006 instead of the close code YinzerFlow sent
+
+- **What**: limit and protocol closes call `close(code)` and then `_destroySocket()` at once, so the socket is gone
+  before the client reads the close frame. The `ws` client reported `1006` for the 0.11.0 backpressure-overflow and
+  oversize probes, where the server had written 1009.
+- **Why deferred**: pre-existing on every close-and-destroy path; waiting for the close frame to flush (`socket.end`
+  after the write) changes teardown timing for all of them and wants its own tests.
+- **Cost later**: low; end instead of destroy after writing the close frame, with the existing 5 s force-destroy as the
+  fallback, plus a test reading the close code with a real client.
+- **Trigger**: a user report of 1006 where a 1008/1009 was expected, or the next change to `_destroySocket`.
+
+## ws-route-options-unvalidated — app.ws() route overrides get no range checks
+
+- **What**: `WebSocketRouteOptions` values (`idleTimeout`, `maxPayloadLength`, `heartbeatInterval`,
+  `messageRateLimit`, `compressionThreshold`) are used as given; a negative `idleTimeout` or a `maxPayloadLength` of 0
+  is never refused, unlike the same global options in `_validateWebSocketConfig`. The 0.11.0 warning for an idle
+  timeout at or below the heartbeat interval covers only that one combination.
+- **Why deferred**: the closed `ws-idle-below-heartbeat-unwarned` entry asked for a warning, which landed (aa1aa9a);
+  validating every override means sharing the global validators with `app.ws()`, a separate change.
+- **Cost later**: low; reuse the global range checks in `SetupImpl.ws` and throw there, plus a table test.
+- **Trigger**: the next change to `WebSocketRouteOptions` or `SetupImpl.ws`, or a report of a nonsensical route
+  override being accepted.
+
+## status-413-phrase-drift — the oversize 413 is hard-coded with an older reason phrase
+
+- **What**: `_rejectOversizedRequest` (app/core/YinzerFlow.ts) writes `413 Payload Too Large` as a literal, while
+  `setStatusCode(413)` now sends the RFC 9110 phrase `Content Too Large` from `httpStatus`. Clients ignore reason
+  phrases, so nothing breaks; it is two sources for one value.
+- **Why deferred**: found while completing the status table in 0.11.0; changing the literal is a visible wire change
+  with its own changelog line, outside that item.
+- **Cost later**: trivial; use `mapStatusCodeToMessage(httpStatusCode.contentTooLarge)` in the literal.
+- **Trigger**: the next change to `_rejectOversizedRequest` or to `_sendHttpError`.
