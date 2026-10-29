@@ -7,8 +7,13 @@ const defaultHandler = (ctx: Context<{ response: { ctx: Context } }>) => {
   return { ctx };
 };
 
+// A counter, not a random pick: suites that hold two apps open at once (an outer beforeEach app plus a nested one)
+// drew the same random port about once in a thousand and failed with EADDRINUSE. bun runs every file in one process,
+// so the counter is shared by all users of this helper; 5000-9998 stays clear of the ranges other specs claim.
+let _nextTestPort = 5000;
+
 export const createTestApp = (customConfig?: ServerOptions): { app: YinzerFlow; testPort: number } => {
-  const testPort = 5000 + Math.floor(Math.random() * 1000);
+  const testPort = _nextTestPort++;
 
   const app = new YinzerFlow({ port: testPort, host: '127.0.0.1', ...customConfig });
 
