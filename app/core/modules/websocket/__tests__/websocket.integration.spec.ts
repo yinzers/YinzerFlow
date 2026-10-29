@@ -622,6 +622,27 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
+    // Confirming pass (0.11.0): the upgrade branch ran before request framing was validated, so an upgrade carrying
+    // Content-Length + Transfer-Encoding, or Transfer-Encoding alone, got a 101. An upgrade has no body: any framing
+    // header that implies one is refused like on HTTP. Tier: High (request framing, untrusted input).
+    it.each([
+      ['Content-Length and Transfer-Encoding', 'Content-Length: 5\r\nTransfer-Encoding: chunked\r\n', 'HTTP/1.1 400'],
+      ['Transfer-Encoding alone', 'Transfer-Encoding: chunked\r\n', 'HTTP/1.1 501'],
+      ['a non-zero Content-Length', 'Content-Length: 5\r\n', 'HTTP/1.1 400'],
+      ['an invalid Content-Length', 'Content-Length: 5abc\r\n', 'HTTP/1.1 400'],
+      ['a repeated Content-Length', 'Content-Length: 0\r\nContent-Length: 0\r\n', 'HTTP/1.1 400'],
+      ['Content-Length: 0', 'Content-Length: 0\r\n', 'HTTP/1.1 101'],
+    ])('should frame an upgrade carrying %s like any request', async (_label, extraHeaders, statusLine) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, undefined, extraHeaders);
+      expect(response).toStartWith(statusLine);
+      socket.destroy();
+    });
+
     // Confirming pass (0.11.0): `Host : evil.example` was read as Host, so with `Origin: http://evil.example` the same-origin
     // check compared the attacker's own values and answered 101. RFC 9112 §5.1: a 400. Tier: High (origin check input).
     it('should answer 400 to an upgrade whose Host has whitespace before the colon', async () => {

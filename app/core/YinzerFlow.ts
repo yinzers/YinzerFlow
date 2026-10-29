@@ -494,6 +494,25 @@ export class YinzerFlow extends SetupImpl {
     return index;
   }
 
+  /** Answer a request whose framing is refused, and close: the body's end is unknown, so the connection can't be reused. */
+  private _refuseFraming({
+    state,
+    socket,
+    clientAddress,
+    statusCode,
+    message,
+  }: {
+    state: { requestDispatched: boolean };
+    socket: Socket;
+    clientAddress: string;
+    statusCode: InternalHttpStatusCode;
+    message: string;
+  }): void {
+    state.requestDispatched = true;
+    this._log.debug(`Refused request framing from ${clientAddress}: ${message}`);
+    this._sendHttpError(socket, statusCode, message);
+  }
+
   /**
    * Decide how long the request body is, from the header block parsed into a map by the same parser the request uses,
    * never by searching the raw text (a decoy `X-Note: content-length: 9` or `X-Content-Length` decided framing that way).
@@ -693,24 +712,29 @@ export class YinzerFlow extends SetupImpl {
 
     state.headersParsed = true;
 
+    // Framing is decided for every request, upgrades included, before anything acts on the head
+    const framing = this._requestFraming(buffer, requestStart, state.headerEndIndex);
+    if ('statusCode' in framing) {
+      this._refuseFraming({ state, socket, clientAddress, statusCode: framing.statusCode, message: framing.message });
+      return;
+    }
+
     // WebSocket upgrade check — before body assembly (zero overhead when no WS routes)
     if (this._wsRouter._hasRoutes()) {
       const headersStr = buffer.subarray(0, state.headerEndIndex).toString();
       if (_isWebSocketUpgrade(headersStr)) {
+        // An upgrade has no body: bytes after its head are WebSocket frames, so a body length would be ambiguous
+        if (framing.bodyLength > 0) {
+          const message = 'A WebSocket upgrade request may not carry a body';
+          this._refuseFraming({ state, socket, clientAddress, statusCode: httpStatusCode.badRequest, message });
+          return;
+        }
         state.requestDispatched = true;
         this._handleWebSocketUpgrade({ buffer, socket, peerAddress: clientAddress, requestHandler });
         return;
       }
     }
 
-    const framing = this._requestFraming(buffer, requestStart, state.headerEndIndex);
-    if ('statusCode' in framing) {
-      // The body's end is unknown, so the connection can't be reused: answer and close
-      state.requestDispatched = true;
-      this._log.debug(`Refused request framing from ${clientAddress}: ${framing.message}`);
-      this._sendHttpError(socket, framing.statusCode, framing.message);
-      return;
-    }
     state.expectedBodyLength = framing.bodyLength;
     const bodyStart = state.headerEndIndex + 4;
 
