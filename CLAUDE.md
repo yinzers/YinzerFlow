@@ -79,6 +79,14 @@ As a framework, we must protect users from common vulnerabilities:
 - Header validation and size limits
 - Prototype pollution protection
 
+## 📝 Changelog
+
+The changelog is written as changes land, not at release time.
+
+- **Write your entry under `## [Unreleased]` in `CHANGELOG.md`, in the same commit as the change.** Put it in the matching subsection (Breaking Changes, Security, Features, Bug Fixes, Internal). Name the real API, say what changed from what to what, and file anything existing code relied on under Breaking Changes, even when it is a bug fix.
+- **A machine enforces it.** `scripts/check-changelog.sh` (a `host-check` in `.claude/checks.conf`, quick tier) fails when non-test files under `app/` changed since the last `v*` tag, committed or not, and Unreleased has no bullet. Tests (`__tests__/`, `*.spec.ts`, `*.test.ts`) define what is not library code; they are not skipped from a check. Subsection headings alone do not count as an entry.
+- **The release promotes it.** `scripts/publish.ts` renames Unreleased to the new version and date, adds a fresh empty Unreleased, and uses that text for the confirmation, the release commit and the GitHub release. No AI is involved. It refuses to run when Unreleased is empty.
+
 ## 🚀 Releasing
 
 Run from the repo root on a clean, pushed `main`. Nothing needs installing on the host except Docker:
@@ -87,10 +95,12 @@ Run from the repo root on a clean, pushed `main`. Nothing needs installing on th
 docker compose run --rm bun scripts/publish.ts
 ```
 
-The `bun` compose service (`docker/release.Dockerfile`) has bun, Node/npm, git and ssh. It asks for the bump type and a final confirmation, then bumps, builds, tags, publishes to npm and pushes `main` with tags over your SSH key.
+The `bun` compose service (`docker/release.Dockerfile`) has bun, Node/npm, git and ssh. It asks for the bump type and a final confirmation, then bumps, builds, tags, publishes to npm and pushes `main` with tags over your SSH key. Add `--dry-run` to stop after the confirmation screen with nothing changed.
+
+- **`--ai-changelog` is the fallback**, for commits that landed without an entry: `docker compose run --rm bun scripts/publish.ts --ai-changelog`. With an empty Unreleased it drafts the entry with Claude (Sonnet) from the full commit messages and the docs lines added since the last tag, and is told to use only names found there. Read the draft on the confirmation screen; with entries already in Unreleased the flag is ignored.
 
 - **npm login (once)**: if `npm whoami` fails the script runs `npm login` itself and prints a URL; open it in a browser on the host. The token lands in the named volume `yinzerflow-release-npm-config`, so later runs skip it. Log out with `docker volume rm yinzerflow-release-npm-config`.
-- **`CLAUDE_API_KEY`**: required, used for the AI changelog. Export it in the shell you run the command from (`~/.bashrc`); compose passes it through.
+- **`CLAUDE_API_KEY`**: needed only with `--ai-changelog`; a normal release never reads it. Export it in the shell you run the command from (`~/.bashrc`); compose passes it through.
 - **Host files**: `~/.ssh` and `~/.gitconfig` are mounted read-only and must exist (compose errors rather than creating them). `~/.gitconfig` supplies the commit identity.
 - **Dependencies**: if `node_modules` is missing the container runs `bun install --frozen-lockfile` first.
 
