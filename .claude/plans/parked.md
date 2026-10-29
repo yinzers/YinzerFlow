@@ -261,3 +261,16 @@ before touching the area an entry names.
 - **Cost later**: low; return a flag for an unknown method and answer 501 next to `_rejectMalformedRequestLine`.
 - **Trigger**: the next change to `parseHttpRequest`'s method handling or `httpMethod`, or a report of a custom
   method reaching a GET route.
+
+## slow-headers-no-timeout — nothing bounds how long a client may take to send its request head
+
+- **What**: `_handleConnection` (app/core/YinzerFlow.ts) buffers until `\r\n\r\n` with only a byte cap
+  (`_maxBufferSize`, answered 413) and no timer, so a client that trickles bytes (a slowloris, including the leading
+  empty lines RFC 9112 §2.2 now lets through) holds a socket open indefinitely. Bytes are bounded, time is not. This
+  predates 0.10.0; the CRLF change adds no new exposure, since any slow bytes do the same.
+- **Why deferred**: found while confirming the leading-CRLF strip is bounded; a header timeout needs a chosen default
+  (nginx `client_header_timeout` is 60 s, Node's `headersTimeout` 60 s) and a 408 response path, which is a
+  configuration decision, not a patch.
+- **Cost later**: low; one per-connection timer cleared at header end, a `headersTimeout` option, a 408, and a test.
+- **Trigger**: a report of idle or half-sent connections piling up, or the next change to `_handleConnection` or the
+  server's connection options.

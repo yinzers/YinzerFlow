@@ -128,6 +128,7 @@ describe('parseHttpRequest', () => {
     it.each([
       ['GET /test HTTP/1.1', true],
       ['GET /test HTTP/1.0', true],
+      ['\r\n\r\nGET /test HTTP/1.1', true], // RFC 9112 2.2: empty lines before the request line are ignored
       ['GET\t/test HTTP/1.1', false],
       ['GET  /test HTTP/1.1', false],
       ['GET /test HTTP/1.1 ', false],
@@ -221,17 +222,15 @@ describe('parseHttpRequest', () => {
       expect(result.rawBody).toBe('body');
     });
 
-    it('should handle malformed request line with no method gracefully', () => {
+    it('should flag a request with no request line, only headers after an empty line', () => {
+      // The leading empty line is skipped (RFC 9112 2.2), so the header line is read as the request line and fails it
       const rawRequest = '\r\nHost: example.com\r\n\r\nbody';
 
       const result = parseHttpRequest(rawRequest);
 
       expect(result.isRequestLineValid).toBe(false);
       expect(result.method).toBe('GET');
-      expect(result.path).toBe('/');
       expect(result.protocol).toBe('HTTP/1.1');
-      expect(result.headersRaw).toBe('Host: example.com');
-      expect(result.rawBody).toBe('body');
     });
 
     it('should handle request with body containing header-like content', () => {

@@ -465,22 +465,32 @@ export class YinzerFlow extends SetupImpl {
    * (G, P, D, H, O), then validates the first 8 bytes against the full method pattern.
    * Returns `false` for non-HTTP traffic so it can be dispatched for a graceful error.
    */
-  private _looksLikeHttp(chunks: Array<Buffer>, totalLength: number, buffer: Buffer): boolean {
-    if (totalLength >= 1) {
-      const firstByte = chunks[0]?.[0] ?? 0;
+  private _looksLikeHttp(buffer: Buffer, requestStart: number): boolean {
+    // Only the empty lines RFC 9112 §2.2 lets a client send before the request line so far: wait for more
+    if (requestStart >= buffer.length) return true;
+
+    if (buffer.length - requestStart >= 1) {
+      const firstByte = buffer[requestStart] ?? 0;
       // cspell:disable-next-line
       // HTTP methods start with: G(ET)=0x47, P(OST/UT/ATCH)=0x50, D(ELETE)=0x44, H(EAD)=0x48, O(PTIONS)=0x4f
       if (firstByte !== 0x47 && firstByte !== 0x50 && firstByte !== 0x44 && firstByte !== 0x48 && firstByte !== 0x4f) {
         return false;
       }
     }
-    if (totalLength >= 8) {
-      const start = buffer.subarray(0, 8).toString();
+    if (buffer.length - requestStart >= 8) {
+      const start = buffer.subarray(requestStart, requestStart + 8).toString();
       if (!/^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s/.test(start)) {
         return false;
       }
     }
     return true;
+  }
+
+  /** Index of the first byte that is not CR or LF: where the request line starts after any leading empty lines. */
+  private _skipLeadingEmptyLines(buffer: Buffer): number {
+    let index = 0;
+    while (index < buffer.length && (buffer[index] === 0x0d || buffer[index] === 0x0a)) index++;
+    return index;
   }
 
   /**
@@ -641,10 +651,13 @@ export class YinzerFlow extends SetupImpl {
     clientAddress: string;
   }): void {
     const buffer = Buffer.concat(chunks, totalLength);
-    state.headerEndIndex = buffer.indexOf('\r\n\r\n');
+    // Skip the empty lines RFC 9112 §2.2 allows before the request line, or `\r\n\r\n` at offset 0 would read as an
+    // empty header block and dispatch early. The parser strips the same run. The 413 buffer cap above bounds it.
+    const requestStart = this._skipLeadingEmptyLines(buffer);
+    state.headerEndIndex = buffer.indexOf('\r\n\r\n', requestStart);
 
     if (state.headerEndIndex === -1) {
-      if (!this._looksLikeHttp(chunks, totalLength, buffer)) {
+      if (!this._looksLikeHttp(buffer, requestStart)) {
         state.requestDispatched = true;
         this._dispatchRequest({ data: buffer, socket, requestHandler, clientAddress });
       }

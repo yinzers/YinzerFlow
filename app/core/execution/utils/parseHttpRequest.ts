@@ -27,7 +27,9 @@ const requestLinePattern = /^(?<method>\S+) (?<target>\S+) (?<protocol>HTTP\/1\.
 export const parseHttpRequest = (
   request: string,
 ): { method: InternalHttpMethod; path: string; protocol: string; headersRaw: string; rawBody: string; isRequestLineValid: boolean } => {
-  const [firstLine, rest] = divideString(request, '\r\n');
+  // RFC 9112 §2.2: a server SHOULD ignore empty lines received before the request line. The caller bounds how many
+  // can arrive (the connection's buffer cap), and this anchored strip is linear.
+  const [firstLine, rest] = divideString(request.replace(/^[\r\n]+/, ''), '\r\n');
   const [headersRaw, rawBody] = divideString(rest, '\r\n\r\n');
   const groups = requestLinePattern.exec(firstLine)?.groups;
 

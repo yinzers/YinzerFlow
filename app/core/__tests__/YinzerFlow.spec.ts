@@ -658,6 +658,17 @@ describe('YinzerFlow', () => {
         expect(response).toBeTruthy();
       });
 
+      // Security pass (0.10.0): the strict request line made a leading CRLF a 400, and the framing rejected it before
+      // the parser saw it; RFC 9112 2.2 says a server SHOULD ignore empty lines before the request line.
+      // Tier: Medium (interop with clients that send a CRLF after a previous request's body).
+      it('should ignore empty lines before the request line', async () => {
+        app.get('/ok', createTestHandler({ ok: true }));
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, `\r\n\r\n${createHttpRequest('GET', '/ok')}`);
+        expect(response).toStartWith('HTTP/1.1 200');
+      });
+
       // Review note (0.10.0): an HTTP request with a malformed header name logged the client's raw bytes at error level,
       // ANSI escapes included, in the message and again in the logged error's stack. Tier: High (log injection from
       // untrusted input). The missing 400 response is parked as http-parse-error-logging.
