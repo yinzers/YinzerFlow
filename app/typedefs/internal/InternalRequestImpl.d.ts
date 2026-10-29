@@ -349,6 +349,11 @@ export interface InternalRequestImpl extends Request {
   readonly _isRequestLineValid: boolean;
   /** Lower-cased names of headers that appeared on more than one line. `host` here is a 400 on every request. */
   readonly _repeatedHeaders: ReadonlySet<string>;
+  /**
+   * False when the header block had a line RFC 9112 makes a 400: whitespace before the colon or around the name
+   * (including obs-fold continuation lines), or a bare CR or LF. Answered 400 before any hook runs.
+   */
+  readonly _isHeaderBlockValid: boolean;
 
   /**
    * The original raw request data as received from the client.
@@ -397,4 +402,14 @@ export interface InternalRequestImpl extends Request {
    * ```
    */
   readonly _setup: InternalSetupImpl;
+}
+
+/**
+ * What parseRequestHeaders found besides the headers themselves, for callers that must refuse an ambiguous head.
+ */
+export interface InternalHeaderParseReport {
+  /** Lower-cased names seen on more than one line */
+  repeatedNames: Set<string>;
+  /** Set when a line was malformed in a way RFC 9112 answers with 400 (see `_isHeaderBlockValid`) */
+  malformed: boolean;
 }

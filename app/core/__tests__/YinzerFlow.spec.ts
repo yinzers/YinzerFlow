@@ -861,6 +861,29 @@ describe('YinzerFlow', () => {
         expect(handlerRan).toBe(false);
       });
 
+      // Confirming pass (0.11.0): `Host : evil.com` was read as Host, and a bare CR or LF split one header line in two, so
+      // a proxy that saw one header and YinzerFlow that saw another could disagree on Host or X-Forwarded-For.
+      // RFC 9112 §5.1 and §2.2: a 400. Tier: High (request framing, untrusted input).
+      it.each([
+        ['whitespace before the colon', 'GET /hdr HTTP/1.1\r\nHost : evil.example\r\n\r\n'],
+        ['a header name starting with whitespace (obs-fold)', 'GET /hdr HTTP/1.1\r\nHost: localhost\r\n X-Forwarded-For: 1.2.3.4\r\n\r\n'],
+        ['a bare LF inside the head', 'GET /hdr HTTP/1.1\r\nHost: localhost\nX-Forwarded-For: 1.2.3.4\r\n\r\n'],
+        ['a bare CR inside the head', 'GET /hdr HTTP/1.1\r\nHost: localhost\rX-Forwarded-For: 1.2.3.4\r\n\r\n'],
+      ])('should answer 400 to a request head with %s', async (_label, request) => {
+        let handlerRan = false;
+        app.get('/hdr', () => {
+          handlerRan = true;
+          return { ok: true };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, request);
+
+        expect(response).toStartWith('HTTP/1.1 400 Bad Request');
+        expect(handlerRan).toBe(false);
+      });
+
       it('should handle custom headers', async () => {
         app.get('/custom-headers', (ctx) => {
           ctx.response.addHeaders({

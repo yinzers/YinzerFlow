@@ -207,13 +207,23 @@ export class RequestHandlerImpl {
 
   /**
    * Answer 400, before any hook runs, to a request head that can't be read one way: a request line that isn't
-   * `METHOD SP target SP HTTP/1.x`, or one of `uniqueHeaders` (lower-cased) on more than one line. RFC 9112 §3.2 makes a
+   * `METHOD SP target SP HTTP/1.x`, a header line RFC 9112 makes a 400 (whitespace around a name, a bare CR or LF),
+   * or one of `uniqueHeaders` (lower-cased) on more than one line. RFC 9112 §3.2 makes a
    * repeated Host a 400 on every request; a WebSocket upgrade also refuses a repeated Origin. Last-wins would let a
    * front proxy and YinzerFlow read different values. Returns true when it answered.
    */
   _rejectMalformedHead(context: InternalContextImpl, uniqueHeaders: Array<string>): boolean {
     if (!context._request._isRequestLineValid) {
       this._rejectMalformedRequestLine(context);
+      return true;
+    }
+    if (!context._request._isHeaderBlockValid) {
+      context.response.setStatusCode(httpStatusCode.badRequest);
+      context._response._setBody({
+        success: false,
+        message: '400 Bad Request: a header line has whitespace around its name, or a line break that is not CRLF',
+      });
+      context._response._parseResponseIntoString();
       return true;
     }
     const repeated = uniqueHeaders.find((name) => context._request._repeatedHeaders.has(name));

@@ -1,4 +1,8 @@
 import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
+import type { InternalHeaderParseReport } from '@typedefs/internal/InternalRequestImpl.js';
+
+// A CR not followed by LF, or an LF not preceded by CR
+const _bareLineBreak = /\r(?!\n)|(?<!\r)\n/;
 
 // Security limits to prevent DoS attacks
 const MAX_HEADERS = 100;
@@ -17,16 +21,18 @@ const MAX_HEADER_VALUE_LENGTH = 8192;
  * // Returns { host: 'example.com', 'content-type': 'application/json' }
  * ```
  *
- * `repeatedNames`, when given, receives the lower-cased name of every header that appeared on more than one line.
+ * `report`, when given, receives the lower-cased name of every header that appeared on more than one line, and is
+ * marked malformed for a line RFC 9112 answers with 400: whitespace before the colon or around the name (§5.1, which
+ * also covers an obs-fold continuation line), or a bare CR or LF (§2.2). Parsing carries on either way; the caller decides.
  */
-export const parseRequestHeaders = (rawHeaders: string, repeatedNames?: Set<string>): Partial<Record<InternalHttpHeaders, string>> => {
+export const parseRequestHeaders = (rawHeaders: string, report?: InternalHeaderParseReport): Partial<Record<InternalHttpHeaders, string>> => {
   if (!rawHeaders) return {};
 
   // Step 1: Pre-parse validation (format, DoS protection)
   validateRawHeaders(rawHeaders);
 
   // Step 2: Parse header structure into key-value pairs
-  const parsedHeaders = parseHeaderStructure(rawHeaders, repeatedNames);
+  const parsedHeaders = parseHeaderStructure(rawHeaders, report);
 
   // Step 3: Sanitize header values (remove control chars, etc.)
   const sanitizedHeaders = sanitizeHeaders(parsedHeaders);
@@ -56,8 +62,12 @@ export const validateRawHeaders = (rawHeaders: string): void => {
  * Step 2: Parse header structure into key-value pairs
  * Handles line ending normalization and basic parsing
  */
-export const parseHeaderStructure = (rawHeaders: string, repeatedNames?: Set<string>): Record<string, string> => {
+export const parseHeaderStructure = (rawHeaders: string, report?: InternalHeaderParseReport): Record<string, string> => {
   const headers: Record<string, string> = {};
+
+  // The head ends at CRLF CRLF, so every line break inside it should be CRLF too: a bare CR or LF is a line break to
+  // some parsers and part of a value to others, which is how one header line becomes two (§2.2)
+  if (report && _bareLineBreak.test(rawHeaders)) report.malformed = true;
 
   // Normalize line endings and split
   const normalizedHeaders = rawHeaders.replace(/\r\n|\r|\n/g, '\n');
@@ -69,7 +79,10 @@ export const parseHeaderStructure = (rawHeaders: string, repeatedNames?: Set<str
     const colonIndex = line.indexOf(':');
     if (colonIndex === -1) continue;
 
-    const key = line.slice(0, colonIndex).trim();
+    const rawKey = line.slice(0, colonIndex);
+    const key = rawKey.trim();
+    // `Host : x` and a continuation line ` X-Forwarded-For: y` are read as headers by some parsers and not others (§5.1)
+    if (report && rawKey !== key) report.malformed = true;
     const value = line.slice(colonIndex + 1).trim();
 
     if (!key) continue;
@@ -94,7 +107,7 @@ export const parseHeaderStructure = (rawHeaders: string, repeatedNames?: Set<str
     const name = key.toLowerCase();
     const previous = headers[name];
     // Last-wins for everything but X-Forwarded-For; callers that must refuse a repeat (Host, an upgrade's Origin) ask
-    if (previous !== undefined) repeatedNames?.add(name);
+    if (previous !== undefined) report?.repeatedNames.add(name);
     headers[name] = name === 'x-forwarded-for' && previous ? `${previous}, ${value}` : value;
   }
 

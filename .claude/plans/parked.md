@@ -192,18 +192,6 @@ before touching the area an entry names.
 - **Trigger**: the next change to the access-log line format, or an operator report of being unable to trace
   a client behind `'*'`.
 
-## header-parser-leniency — header names with whitespace before the colon and bare CR/LF line breaks are accepted
-
-- **What**: `app/core/execution/utils/parseRequestHeaders.ts:62-70` reads `X-Forwarded-For : v` as
-  X-Forwarded-For and treats a bare CR or LF as a line break. Behind a front proxy that passes those bytes
-  through, a client can smuggle its own X-Forwarded-For line after the proxy's and choose its resolved IP.
-  RFC 9112 §5.1 says both get a 400. The WebSocket upgrade now uses the same parser, so it shares the gap.
-- **Why deferred**: final security pass for 0.9.0 graded it a note: nginx and HAProxy reject both shapes before
-  they reach YinzerFlow, and the leniency predates this release. Tightening the parser is a framing change that
-  needs its own review against real clients.
-- **Cost later**: low; reject the two shapes with 400 and add one table test.
-- **Trigger**: the next change to parseRequestHeaders, or a deployment without a conforming front proxy.
-
 ## http-parse-error-logging — a malformed HTTP request header gets no response
 
 - **What**: `_processRequest` builds `ContextImpl` outside any handler, so when `parseRequestHeaders` throws (an

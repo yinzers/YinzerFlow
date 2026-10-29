@@ -622,6 +622,28 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
+    // Confirming pass (0.11.0): `Host : evil.example` was read as Host, so with `Origin: http://evil.example` the same-origin
+    // check compared the attacker's own values and answered 101. RFC 9112 §5.1: a 400. Tier: High (origin check input).
+    it('should answer 400 to an upgrade whose Host has whitespace before the colon', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const response = await new Promise<string>((resolve, reject) => {
+        const socket = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
+          socket.write(buildUpgradeRequest('/ws', undefined, 'http://evil.example').replace('Host: localhost', 'Host : evil.example'));
+        });
+        socket.once('data', (chunk) => {
+          resolve(chunk.toString());
+          socket.destroy();
+        });
+        socket.on('error', reject);
+      });
+
+      expect(response).toStartWith('HTTP/1.1 400 Bad Request');
+    });
+
     // Bug (0.10.x): any string was accepted, so a typo ('https://app.example/', a bare host, '*.example') silently never
     // matched, and '*' next to real origins was ambiguous. Tier: High (validator for the CSWSH defence).
     it.each([

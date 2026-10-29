@@ -25,6 +25,7 @@ export class RequestImpl implements InternalRequestImpl {
   rawBody: Buffer | string;
   readonly _isRequestLineValid: boolean;
   readonly _repeatedHeaders: ReadonlySet<string>;
+  readonly _isHeaderBlockValid: boolean;
   cookies = new Map<string, string>();
   signedCookies = new Map<string, string>();
 
@@ -32,10 +33,12 @@ export class RequestImpl implements InternalRequestImpl {
     this._rawRequest = rawRequest;
     this._setup = setup;
 
-    const { method, path, protocol, headers, body, query, params, rawBody, _isRequestLineValid, _repeatedHeaders } = this._parseRequestIntoObject();
+    const { method, path, protocol, headers, body, query, params, rawBody, _isRequestLineValid, _repeatedHeaders, _isHeaderBlockValid } =
+      this._parseRequestIntoObject();
 
     this._isRequestLineValid = _isRequestLineValid;
     this._repeatedHeaders = _repeatedHeaders;
+    this._isHeaderBlockValid = _isHeaderBlockValid;
     this.method = method;
     this.path = path;
     this.protocol = protocol;
@@ -50,13 +53,13 @@ export class RequestImpl implements InternalRequestImpl {
   }
 
   private _parseRequestIntoObject(): Omit<Request, 'cookies' | 'ipAddress' | 'signedCookies'> &
-    Pick<InternalRequestImpl, '_isRequestLineValid' | '_repeatedHeaders'> {
+    Pick<InternalRequestImpl, '_isHeaderBlockValid' | '_isRequestLineValid' | '_repeatedHeaders'> {
     const request = this._rawRequest.toString();
 
     const { method, path, protocol, headersRaw, rawBody, isRequestLineValid } = parseHttpRequest(request);
 
-    const repeatedHeaders = new Set<string>();
-    const headers = parseRequestHeaders(headersRaw, repeatedHeaders);
+    const headerReport = { repeatedNames: new Set<string>(), malformed: false };
+    const headers = parseRequestHeaders(headersRaw, headerReport);
 
     // Extract content type and boundary for body parsing
     const contentTypeHeader = headers['content-type'];
@@ -78,7 +81,8 @@ export class RequestImpl implements InternalRequestImpl {
       params: {}, // Route params will be set in RequestHandlerImpl when route is matched
       rawBody,
       _isRequestLineValid: isRequestLineValid,
-      _repeatedHeaders: repeatedHeaders,
+      _repeatedHeaders: headerReport.repeatedNames,
+      _isHeaderBlockValid: !headerReport.malformed,
     };
   }
 }
