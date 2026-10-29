@@ -233,7 +233,34 @@ const preflight = async (): Promise<PreflightResult> => {
   }
   log.success(`[${++passed}/${total}] No unpushed commits`);
 
-  // 6. npm CLI available
+  // 6. Anthropic API key (only for --ai-changelog). Cheap checks come before anything slow.
+  if (aiChangelog) {
+    if (process.env.CLAUDE_API_KEY) {
+      log.success(`[${++passed}/${total}] Anthropic API key found (--ai-changelog)`);
+    } else {
+      log.error(`[${++passed}/${total}] --ai-changelog needs CLAUDE_API_KEY — set it in ~/.bashrc: export CLAUDE_API_KEY=sk-ant-...`);
+      process.exit(1);
+    }
+  }
+
+  // 7. Changelog: Unreleased has entries to promote, or --ai-changelog will draft them
+  const changelogFile = Bun.file('CHANGELOG.md');
+  const changelogText = (await changelogFile.exists()) ? await changelogFile.text() : '';
+  if (hasUnreleasedEntries(changelogText)) {
+    log.success(`[${++passed}/${total}] Unreleased has entries to promote`);
+    if (aiChangelog) log.warn('--ai-changelog ignored: Unreleased has entries, so they are promoted as written');
+  } else if (aiChangelog) {
+    log.warn(`[${++passed}/${total}] Unreleased is empty — the changelog will be drafted by AI from commit messages`);
+  } else {
+    // The same check green-check runs, so a commit that landed without the gate is caught here.
+    const gate = run(['sh', 'scripts/check-changelog.sh']);
+    log.error('CHANGELOG.md has no entries under "## [Unreleased]", so there is nothing to release.');
+    if (!gate.ok) log.dim(gate.stderr);
+    log.dim('Write the entries under Unreleased and commit them, or run with --ai-changelog to draft from commits.');
+    process.exit(1);
+  }
+
+  // 8. npm CLI available
   const npmCheck = run(['npm', '--version']);
   if (!npmCheck.ok) {
     log.error('npm CLI not found');
@@ -241,7 +268,7 @@ const preflight = async (): Promise<PreflightResult> => {
   }
   log.success(`[${++passed}/${total}] npm v${npmCheck.stdout}`);
 
-  // 7. npm authenticated (interactive login if needed)
+  // 9. npm authenticated (interactive login if needed)
   let whoami = run(['npm', 'whoami']);
   if (!whoami.ok) {
     log.warn('Not authenticated with npm. Launching npm login...');
@@ -258,7 +285,7 @@ const preflight = async (): Promise<PreflightResult> => {
   }
   log.success(`[${++passed}/${total}] npm authenticated as ${whoami.stdout}`);
 
-  // 8. Quality checks (lint, tests, formatting, spelling, unused packages)
+  // 10. Quality checks (lint, tests, formatting, spelling, unused packages)
   log.dim('Running quality checks (this may take a moment)...');
   const qualityChecks = [
     { cmd: ['bun', 'run', 'find-unused-packages'], name: 'Unused packages' },
@@ -275,7 +302,7 @@ const preflight = async (): Promise<PreflightResult> => {
   }
   log.success(`[${++passed}/${total}] Quality checks passed`);
 
-  // 8b. Compile bundle (catches TS errors before AI credits are spent)
+  // 10b. Compile bundle
   log.dim('Compiling bundle (type-check + build)...');
   run(['rm', '-rf', 'lib']);
   mkdirSync('lib');
@@ -310,16 +337,6 @@ const preflight = async (): Promise<PreflightResult> => {
   const currentVersion = pkg.version as string;
   const packageName = pkg.name as string;
 
-  // 9. Anthropic API key (only for --ai-changelog)
-  if (aiChangelog) {
-    if (process.env.CLAUDE_API_KEY) {
-      log.success(`[${++passed}/${total}] Anthropic API key found (--ai-changelog)`);
-    } else {
-      log.error(`[${++passed}/${total}] --ai-changelog needs CLAUDE_API_KEY — set it in ~/.bashrc: export CLAUDE_API_KEY=sk-ant-...`);
-      process.exit(1);
-    }
-  }
-
   // Get last PUBLISHED tag — walk back through git tags to find one actually on npm.
   // This handles aborted publishes where git tag exists but npm publish never ran.
   const allTagsResult = run(['git', 'tag', '--sort=-v:refname']);
@@ -344,24 +361,7 @@ const preflight = async (): Promise<PreflightResult> => {
     commitCount = parseInt(countResult.stdout, 10) || 0;
   }
 
-  // 9b. Changelog: Unreleased has entries to promote, or --ai-changelog will draft them
-  const changelogFile = Bun.file('CHANGELOG.md');
-  const changelogText = (await changelogFile.exists()) ? await changelogFile.text() : '';
-  if (hasUnreleasedEntries(changelogText)) {
-    log.success(`[${++passed}/${total}] Unreleased has entries to promote`);
-    if (aiChangelog) log.warn('--ai-changelog ignored: Unreleased has entries, so they are promoted as written');
-  } else if (aiChangelog) {
-    log.warn(`[${++passed}/${total}] Unreleased is empty — the changelog will be drafted by AI from commit messages`);
-  } else {
-    // The same check green-check runs, so a commit that landed without the gate is caught here.
-    const gate = run(['sh', 'scripts/check-changelog.sh']);
-    log.error('CHANGELOG.md has no entries under "## [Unreleased]", so there is nothing to release.');
-    if (!gate.ok) log.dim(gate.stderr);
-    log.dim('Write the entries under Unreleased and commit them, or run with --ai-changelog to draft from commits.');
-    process.exit(1);
-  }
-
-  // 10. Docs staleness check
+  // 11. Docs staleness check
   const docsRange = lastTag ? `${lastTag}..HEAD` : 'HEAD';
   const docsChanged = run(['git', 'diff', '--name-only', docsRange, '--', 'docs/']);
   if (docsChanged.stdout === '') {
