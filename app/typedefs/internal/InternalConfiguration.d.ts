@@ -395,18 +395,25 @@ export interface InternalWebSocketOptions {
   /** Maximum concurrent WebSocket connections per IP. @default 50 */
   maxConnectionsPerIp: number;
   /**
-   * Allowed origins for upgrade requests (case-insensitive exact match). Empty = allow all. @default []
+   * Which browser origins may open a WebSocket. @default unset (same-origin only)
    *
-   * 🛡️ An app that authenticates WebSocket upgrades with cookies MUST set this: a browser sends the user's cookies on
-   * a cross-site upgrade, so without an origin list any page the user visits can open an authenticated socket
-   * (cross-site WebSocket hijacking).
+   * - Unset: same-origin only. The `Origin` header's host and port must match the request's `Host` header
+   *   (case-insensitive; a missing port is the scheme's default, 80 for http/ws and 443 for https/wss). Behind a proxy
+   *   that rewrites `Host`, list your public origin instead.
+   * - `['*']`: every origin. `'*'` must be the only entry.
+   * - A list such as `['https://app.example.com']`: case-insensitive exact match. Entries must be serialized origins
+   *   (`scheme://host[:port]`, no path, no trailing slash, no default port); anything else throws at startup.
+   * - `[]`: no browser origin is allowed; only clients without an `Origin` header connect (see `allowMissingOrigin`).
+   *
+   * 🛡️ The default blocks cross-site WebSocket hijacking: a browser sends the user's cookies on a cross-site upgrade,
+   * and WebSockets are not covered by CORS, so allowing other origins lets any page the user visits open a socket that is
+   * logged in as them.
    */
-  allowedOrigins: Array<string>;
+  allowedOrigins?: Array<string>;
   /**
-   * With an `allowedOrigins` list set, whether an upgrade with no `Origin` header is allowed. Browsers always send
+   * Whether an upgrade with no `Origin` header is allowed, under every `allowedOrigins` setting. Browsers always send
    * `Origin` on a WebSocket upgrade, so a missing one means a non-browser client (a server, CLI or mobile app), which
-   * cross-site hijacking can't use. Set `false` to require an allowed `Origin` from everyone. No effect when
-   * `allowedOrigins` is empty. @default true
+   * cross-site hijacking can't use. Set `false` to require an allowed `Origin` from everyone. @default true
    */
   allowMissingOrigin: boolean;
   /** Backpressure handling when clients can't keep up. */

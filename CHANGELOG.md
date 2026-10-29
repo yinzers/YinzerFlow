@@ -4,6 +4,13 @@
 
 ### Breaking Changes
 
+- **WebSockets are same-origin by default** — `websocket.allowedOrigins` used to default to `[]`, and an empty list allowed every origin, so any website could open a socket (logged in as the visitor, with cookie auth) unless you set a list. Now an unset `allowedOrigins` allows only upgrades whose `Origin` matches the request's `Host` (case-insensitive, default ports 80/443 normalized); `['*']` is the only way to allow every origin; `[]` refuses every browser origin; a list of origins matches exactly as before. Behind a proxy that rewrites `Host`, list your public origin. `allowMissingOrigin` now applies under every setting, including `[]`. Entries are validated at startup: anything that isn't `scheme://host[:port]` (a path, trailing slash, wildcard, bare host, `'null'`, an explicit default port) or `'*'` mixed with other entries throws. See `docs/core/websockets.md`.
+
+```typescript
+new YinzerFlow({ websocket: { allowedOrigins: ['https://app.example.com'] } }); // a browser app on another origin
+new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all default, now explicit
+```
+
 ### Security
 
 ### Features

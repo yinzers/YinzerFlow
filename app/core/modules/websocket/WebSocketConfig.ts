@@ -1,5 +1,6 @@
 import { log } from '@core/utils/log.ts';
 import { _formatBytesForDisplay } from '@core/utils/bytes.ts';
+import { _defaultPortForScheme, _parseOrigin } from '@core/modules/websocket/WebSocketOrigin.ts';
 import type { InternalWebSocketOptions } from '@typedefs/internal/InternalConfiguration.js';
 
 /**
@@ -9,7 +10,7 @@ export const DEFAULT_WEBSOCKET_CONFIG: InternalWebSocketOptions = {
   maxPayloadLength: 16_777_216, // 16MB
   idleTimeout: 120, // seconds
   maxConnectionsPerIp: 50,
-  allowedOrigins: [],
+  // allowedOrigins is left unset: same-origin only
   allowMissingOrigin: true,
   backpressure: {
     strategy: 'buffer',
@@ -50,6 +51,8 @@ export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void
     throw new Error('websocket.maxConnectionsPerIp must be at least 1');
   }
 
+  if (config.allowedOrigins !== undefined) _validateAllowedOrigins(config.allowedOrigins);
+
   if (config.backpressure.limit < 0) {
     throw new Error('websocket.backpressure.limit must be >= 0');
   }
@@ -89,6 +92,47 @@ export const _validateWebSocketConfig = (config: InternalWebSocketOptions): void
 };
 
 /**
+ * Validate `websocket.allowedOrigins`: either exactly `['*']`, or serialized origins a browser could send
+ * (`scheme://host[:port]`, no path, no trailing slash, no default port). An entry that can never match throws.
+ */
+const _validateAllowedOrigins = (allowedOrigins: Array<string>): void => {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime validation for JS users who bypass TypeScript
+  if (!Array.isArray(allowedOrigins)) {
+    throw new Error("websocket.allowedOrigins must be an array of origins, ['*'], or [] (leave it unset for same-origin only)");
+  }
+
+  if (allowedOrigins.includes('*') && allowedOrigins.length > 1) {
+    throw new Error("websocket.allowedOrigins: '*' must be the only entry. Use ['*'] to allow every origin, or list origins without it.");
+  }
+
+  for (const entry of allowedOrigins) {
+    if (entry === '*') continue;
+    _validateOriginEntry(entry);
+  }
+};
+
+const _validateOriginEntry = (entry: unknown): void => {
+  const parsed = typeof entry === 'string' ? _parseOrigin(entry) : null;
+  if (!parsed) {
+    throw new Error(
+      `websocket.allowedOrigins: ${JSON.stringify(entry)} is not an origin. ` +
+        "Write it the way a browser sends it, like 'https://app.example.com' or 'http://localhost:3000' " +
+        '(scheme, host and optional port; no path, no trailing slash, no wildcards).',
+    );
+  }
+  if (parsed.port === undefined) return;
+  if (parsed.port < 1 || parsed.port > 65_535) {
+    throw new Error(`websocket.allowedOrigins: ${JSON.stringify(entry)} has an invalid port; port must be 1-65535.`);
+  }
+  if (parsed.port === _defaultPortForScheme(parsed.scheme)) {
+    throw new Error(
+      `websocket.allowedOrigins: ${JSON.stringify(entry)} would never match, because browsers omit the default port. ` +
+        `Write '${parsed.scheme}://${parsed.host}'.`,
+    );
+  }
+};
+
+/**
  * Issue security warnings for risky WebSocket configurations.
  */
 export const _warnWebSocketConfig = (config: InternalWebSocketOptions): void => {
@@ -97,6 +141,13 @@ export const _warnWebSocketConfig = (config: InternalWebSocketOptions): void => 
     log.warn(
       `[SECURITY WARNING] websocket.maxPayloadLength is set to ${_formatBytesForDisplay(config.maxPayloadLength)}. ` +
         'Very large payloads can cause memory exhaustion. Consider if this size is necessary.',
+    );
+  }
+
+  if (config.allowedOrigins?.length === 1 && config.allowedOrigins[0] === '*') {
+    log.warn(
+      "[SECURITY WARNING] websocket.allowedOrigins is ['*'], so any website can open a WebSocket to this server. " +
+        'If upgrades are authenticated by cookies, that socket is logged in as the visiting user (cross-site WebSocket hijacking).',
     );
   }
 

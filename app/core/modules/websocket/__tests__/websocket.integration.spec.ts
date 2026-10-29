@@ -24,8 +24,8 @@ const createTestApp = (customConfig?: Record<string, unknown>): { app: YinzerFlo
 /**
  * Build a WebSocket upgrade request string.
  */
-const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', origin?: string, extraHeaders = ''): string => {
-  let req = `GET ${path} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n`;
+const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', origin?: string, extraHeaders = '', host = 'localhost'): string => {
+  let req = `GET ${path} HTTP/1.1\r\nHost: ${host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n`;
   if (origin) req += `Origin: ${origin}\r\n`;
   req += extraHeaders;
   req += '\r\n';
@@ -41,13 +41,14 @@ const connectWs = async (
   key = 'dGhlIHNhbXBsZSBub25jZQ==',
   origin?: string,
   extraHeaders = '',
+  host = 'localhost',
 ): Promise<{
   socket: net.Socket;
   response: string;
 }> =>
   new Promise((resolve, reject) => {
     const socket = net.createConnection({ port: testPort, host: '127.0.0.1' }, () => {
-      socket.write(buildUpgradeRequest(path, key, origin, extraHeaders));
+      socket.write(buildUpgradeRequest(path, key, origin, extraHeaders, host));
     });
     let data = '';
     const onData = (chunk: Buffer): void => {
@@ -506,28 +507,87 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
-    // Bug (0.9.x): with an allowedOrigins list, an upgrade with no Origin header got 403, which locked out every
-    // non-browser client. Cross-site WebSocket hijacking needs a browser, and browsers always send Origin.
+    // Bug (0.10.x): an unset or empty allowedOrigins allowed every origin, so any site could open a cookie-authenticated
+    // socket (cross-site WebSocket hijacking) unless the app opted in. 0.11.0: unset means same-origin, ['*'] is the only
+    // allow-all and [] refuses every browser origin. Bug (0.9.x): with a list, a missing Origin got 403 and locked out
+    // every non-browser client; a missing Origin follows allowMissingOrigin in every mode.
     // Tier: High (origin check is the CSWSH defence; each row is one boundary of it).
+    const sameOrigin = undefined;
     it.each([
-      ['a missing Origin is allowed by default', {}, undefined, '101 Switching Protocols'],
-      ['a missing Origin is refused with allowMissingOrigin: false', { allowMissingOrigin: false }, undefined, 'HTTP/1.1 403'],
-      ['a wrong Origin is refused', {}, 'https://evil.example', 'HTTP/1.1 403'],
-    ])('origin check with an allowedOrigins list: %s', async (_label, extra, origin, expected) => {
+      ['same origin is allowed by default', sameOrigin, {}, 'localhost', 'http://localhost', '101 Switching Protocols'],
+      ['same origin matches case-insensitively', sameOrigin, {}, 'App.Example:8080', 'http://app.example:8080', '101 Switching Protocols'],
+      ['a cross origin is refused by default', sameOrigin, {}, 'localhost', 'https://evil.example', 'HTTP/1.1 403'],
+      ['a port mismatch is refused by default', sameOrigin, {}, 'localhost:3000', 'http://localhost:4000', 'HTTP/1.1 403'],
+      ['an explicit default port in Host matches', sameOrigin, {}, 'app.example:443', 'https://app.example', '101 Switching Protocols'],
+      ['an explicit :80 in Origin matches a bare Host', sameOrigin, {}, 'app.example', 'http://app.example:80', '101 Switching Protocols'],
+      ["the other scheme's default port is refused", sameOrigin, {}, 'app.example:443', 'http://app.example', 'HTTP/1.1 403'],
+      ['a non-web scheme is refused by default', sameOrigin, {}, 'localhost', 'capacitor://localhost', 'HTTP/1.1 403'],
+      ['an opaque "null" Origin is refused by default', sameOrigin, {}, 'localhost', 'null', 'HTTP/1.1 403'],
+      ["['*'] allows a cross origin", ['*'], {}, 'localhost', 'https://evil.example', '101 Switching Protocols'],
+      ['[] refuses a same-origin browser request', [], {}, 'localhost', 'http://localhost', 'HTTP/1.1 403'],
+      ['a listed origin is allowed', ['https://App.Example'], {}, 'localhost', 'https://app.example', '101 Switching Protocols'],
+      ['an unlisted origin is refused', ['https://app.example'], {}, 'app.example', 'https://evil.example', 'HTTP/1.1 403'],
+      ['a list does not imply same origin', ['https://app.example'], {}, 'localhost', 'http://localhost', 'HTTP/1.1 403'],
+      ['default: a missing Origin is allowed', sameOrigin, {}, 'localhost', undefined, '101 Switching Protocols'],
+      [
+        'default: a missing Origin is refused with allowMissingOrigin: false',
+        sameOrigin,
+        { allowMissingOrigin: false },
+        'localhost',
+        undefined,
+        'HTTP/1.1 403',
+      ],
+      ["['*']: a missing Origin is allowed", ['*'], {}, 'localhost', undefined, '101 Switching Protocols'],
+      ["['*']: a missing Origin is refused with allowMissingOrigin: false", ['*'], { allowMissingOrigin: false }, 'localhost', undefined, 'HTTP/1.1 403'],
+      ['[]: a missing Origin is allowed', [], {}, 'localhost', undefined, '101 Switching Protocols'],
+      ['[]: a missing Origin is refused with allowMissingOrigin: false', [], { allowMissingOrigin: false }, 'localhost', undefined, 'HTTP/1.1 403'],
+      ['list: a missing Origin is allowed', ['https://app.example'], {}, 'localhost', undefined, '101 Switching Protocols'],
+      [
+        'list: a missing Origin is refused with allowMissingOrigin: false',
+        ['https://app.example'],
+        { allowMissingOrigin: false },
+        'localhost',
+        undefined,
+        'HTTP/1.1 403',
+      ],
+    ] as const)('origin policy: %s', async (_label, allowedOrigins, extra, host, origin, expected) => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({
         port: testPort,
         host: '127.0.0.1',
         gracefulShutdownTimeout: 0,
-        websocket: { allowedOrigins: ['https://app.example'], ...extra },
+        websocket: { ...(allowedOrigins === undefined ? {} : { allowedOrigins: [...allowedOrigins] }), ...extra },
       });
       app.ws('/ws', { message() {} });
       await app.listen();
 
-      const { socket, response } = await connectWs(testPort, '/ws', undefined, origin);
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, origin, '', host);
       expect(response).toContain(expected);
       socket.destroy();
     });
+
+    // Bug (0.10.x): any string was accepted, so a typo ('https://app.example/', a bare host, '*.example') silently never
+    // matched, and '*' next to real origins was ambiguous. Tier: High (validator for the CSWSH defence).
+    it.each([
+      ["'*' mixed with an origin", ['*', 'https://app.example'], "'*' must be the only entry"],
+      ['a bare host', ['app.example'], 'is not an origin'],
+      ['a trailing slash', ['https://app.example/'], 'is not an origin'],
+      ['a path', ['https://app.example/chat'], 'is not an origin'],
+      ['a wildcard subdomain', ['https://*.example.com'], 'is not an origin'],
+      ['the opaque origin "null"', ['null'], 'is not an origin'],
+      ['an explicit default port', ['https://app.example:443'], 'browsers omit the default port'],
+      ['a port out of range', ['http://app.example:65536'], 'port must be 1-65535'],
+      ['a non-string entry', [42], 'is not an origin'],
+    ])('should refuse allowedOrigins with %s at config time', (_label, allowedOrigins, message) => {
+      expect(() => new YinzerFlow({ websocket: { allowedOrigins: allowedOrigins as Array<string> } })).toThrow(message);
+    });
+
+    it.each([[['*']], [[]], [['https://app.example', 'http://localhost:3000', 'capacitor://localhost', 'http://[::1]:8080']]])(
+      'should accept allowedOrigins %j',
+      (allowedOrigins) => {
+        expect(() => new YinzerFlow({ websocket: { allowedOrigins } })).not.toThrow();
+      },
+    );
 
     // Bug (0.10.0 review): the upgrade re-parsed the request line on \s+ while hooks saw the HTTP parser's split on ' ',
     // so `GET\t/ws` gave hooks the path "HTTP/1.1" while the ws router matched /ws. Tier: High (hook path must equal route path).
