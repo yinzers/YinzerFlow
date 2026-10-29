@@ -24,6 +24,7 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 ### Bug Fixes
 
+- **Out-of-order WebSocket fragments close with 1002** — a continuation frame with no fragmented message in progress was delivered as a message of its own, and a new text or binary frame arriving before a fragmented message's final fragment silently restarted it. Both are protocol errors under RFC 6455 and now close the connection with 1002; pings and other control frames between fragments still work.
 - **A WebSocket frame with RSV2 or RSV3 set is closed with 1002** — the frame parser's error escaped the socket's data handler, so the client got no close frame (and under Node it was an uncaught exception). The connection now closes with 1002 (protocol error).
 - **Every valid status code works** — `response.setStatusCode()` and `rejectUpgrade()` threw for any code outside a 16-entry table, so `setStatusCode(503)` or `rejectUpgrade(418)` answered 500. `httpStatus` and `httpStatusCode` now list the whole IANA registry plus 418 (new keys such as `serviceUnavailable`, `notImplemented`, `unprocessableContent`, `imATeapot`; every existing key is unchanged). Any other integer from 200 to 599 is sent with its class's reason phrase (`299 Success`); a code outside that range or a non-integer throws, with a clearer message. The `setStatusCode` parameter type now accepts any `number` while still autocompleting the listed codes.
 

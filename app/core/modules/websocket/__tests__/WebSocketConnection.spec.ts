@@ -234,6 +234,43 @@ describe('WebSocketConnection', () => {
   // Max payload enforcement
   // ============================================
 
+  // Security review (0.11.0): a continuation with no fragmented message in progress was appended to nothing and delivered
+  // under opcode 0, and a new data frame mid-fragment silently restarted or interleaved the message. RFC 6455 §5.4: both
+  // are protocol errors, closed with 1002. Tier: High (untrusted input framing).
+  describe('fragmentation protocol errors', () => {
+    const text = (payload: string, fin: boolean): Buffer => buildClientFrame(wsOpcode.text, Buffer.from(payload), fin);
+    const continuation = (payload: string, fin: boolean): Buffer => buildClientFrame(wsOpcode.continuation, Buffer.from(payload), fin);
+
+    it.each([
+      ['a continuation with no fragmented message in progress', [continuation('orphan', true)]],
+      ['a non-final continuation with nothing in progress', [continuation('orphan', false)]],
+      ['a new non-final data frame mid-fragment', [text('first', false), text('second', false)]],
+      ['a new final data frame mid-fragment', [text('first', false), text('second', true)]],
+    ])('should close 1002 on %s', (_label, frames) => {
+      const messageFn = mock(() => {});
+      const { socket } = createConnection({ message: messageFn });
+
+      for (const frame of frames) socket.emit('data', frame);
+
+      expect(messageFn).not.toHaveBeenCalled();
+      expect(socket.destroyed).toBe(true);
+      const closeFrame = socket.written.find((frame) => (frame[0]! & 0x0f) === wsOpcode.close);
+      expect(closeFrame?.readUInt16BE(2)).toBe(wsCloseCode.protocolError);
+    });
+
+    it('should still deliver a ping between fragments', () => {
+      const messageFn = mock(() => {});
+      const { socket } = createConnection({ message: messageFn });
+
+      socket.emit('data', text('hel', false));
+      socket.emit('data', buildClientFrame(wsOpcode.ping, Buffer.alloc(0)));
+      socket.emit('data', continuation('lo', true));
+
+      expect(messageFn).toHaveBeenCalledTimes(1);
+      expect(socket.destroyed).toBe(false);
+    });
+  });
+
   // Bug (0.10.x): maxPayloadLength was checked per frame on the wire, so a message split into fragments, or a
   // compressed frame that inflates past it (a decompression bomb: 64 KB inflating to 64 MB), reached the handler at
   // any size. The limit is on the message as the handler would see it. Tier: High (untrusted input size bound).

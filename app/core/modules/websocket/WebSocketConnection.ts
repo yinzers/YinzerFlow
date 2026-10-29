@@ -1,5 +1,6 @@
 import type { Socket } from 'net';
 import { _encodeCloseFrame, _encodeFrame, _maxFrameHeaderSize, _parseFrame, _parseFrameHeader } from './WebSocketFrame.ts';
+import { WebSocketReceiveBuffer } from './WebSocketReceiveBuffer.ts';
 import { _compressPayload, _decompressPayload, _inflateWindowBits } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
 import { wsCloseCode, wsOpcode, wsReadyState, wsSendStatus } from '@constants/websocket.ts';
@@ -50,9 +51,8 @@ export class WebSocketConnection<T = unknown> {
   private readonly _remoteAddress: string;
 
   // TCP chunk → frame reassembly
-  /** Received bytes not yet parsed, kept as the chunks they arrived in and joined only once a whole frame is here */
-  private _receiveChunks: Array<Buffer> = [];
-  private _receivedBytes = 0;
+  /** Received bytes not yet parsed, joined only once a whole frame is here */
+  private readonly _received = new WebSocketReceiveBuffer();
 
   // WebSocket message fragment reassembly
   private _fragmentBuffers: Array<Buffer> = [];
@@ -202,12 +202,11 @@ export class WebSocketConnection<T = unknown> {
     this._isAlive = true;
     this._resetIdleTimeout();
 
-    this._receiveChunks.push(chunk);
-    this._receivedBytes += chunk.length;
+    this._received.push(chunk);
 
     // Parse all complete frames. Each frame leaves the buffer BEFORE it is acted on, so nothing a handler does (a throw
     // included) can leave it behind to be parsed and delivered again on the next read.
-    while (this._receivedBytes > 0) {
+    while (this._received.length > 0) {
       // The header first: its announced length is refused before a single body byte is waited for or buffered
       const header = this._readFrameHeader();
       if (!header) return;
@@ -217,9 +216,9 @@ export class WebSocketConnection<T = unknown> {
       }
 
       const frameSize = header.headerSize + header.payloadLength;
-      if (this._receivedBytes < frameSize) return;
-      const result = _parseFrame(this._joinFirst(frameSize), 0);
-      this._consumeReceived(frameSize);
+      if (this._received.length < frameSize) return;
+      const result = _parseFrame(this._received.first(frameSize), 0);
+      this._received.consume(frameSize);
       if (!result) return; // unreachable: the whole frame is here
 
       // RFC 6455 §5.1: server MUST close if client frame is not masked
@@ -241,7 +240,7 @@ export class WebSocketConnection<T = unknown> {
    */
   private _readFrameHeader(): ReturnType<typeof _parseFrameHeader> {
     try {
-      return _parseFrameHeader(this._joinFirst(Math.min(this._receivedBytes, _maxFrameHeaderSize)), 0);
+      return _parseFrameHeader(this._received.first(Math.min(this._received.length, _maxFrameHeaderSize)), 0);
     } catch (error) {
       this.close(wsCloseCode.protocolError, error instanceof Error ? error.message : 'Malformed frame header');
       this._destroySocket();
@@ -259,40 +258,6 @@ export class WebSocketConnection<T = unknown> {
     const max = this._options.maxPayloadLength;
     if (payloadLength > max) return true;
     return opcode === wsOpcode.continuation && this._fragmentBytes + payloadLength > max;
-  }
-
-  /** The first `length` received bytes as one buffer, joining leading chunks only when the first one is shorter. */
-  private _joinFirst(length: number): Buffer {
-    const [first] = this._receiveChunks;
-    if (first && first.length >= length) return first;
-
-    let joinedLength = 0;
-    let count = 0;
-    for (const chunk of this._receiveChunks) {
-      if (joinedLength >= length) break;
-      joinedLength += chunk.length;
-      count++;
-    }
-    const joined = Buffer.concat(this._receiveChunks.slice(0, count), joinedLength);
-    this._receiveChunks.splice(0, count, joined);
-    return joined;
-  }
-
-  /** Drop `length` bytes from the front of the received chunks. */
-  private _consumeReceived(length: number): void {
-    let remaining = length;
-    let [first] = this._receiveChunks;
-    while (remaining > 0 && first) {
-      if (first.length <= remaining) {
-        remaining -= first.length;
-        this._receiveChunks.shift();
-        [first] = this._receiveChunks;
-      } else {
-        this._receiveChunks[0] = first.subarray(remaining);
-        remaining = 0;
-      }
-    }
-    this._receivedBytes -= length;
   }
 
   private _onSocketClose(): void {
@@ -356,6 +321,15 @@ export class WebSocketConnection<T = unknown> {
     // RSV1 on data frame without compression negotiated = protocol error
     if (rsv1 && !this._options.compression.enabled) {
       this.close(wsCloseCode.protocolError, 'RSV1 set but no compression negotiated');
+      this._destroySocket();
+      return;
+    }
+
+    // RFC 6455 §5.4: a continuation only continues a fragmented message, and no other data frame may start until that
+    // message's final fragment (control frames may interleave; they returned above)
+    const fragmentInProgress = this._fragmentOpcode !== 0;
+    if (opcode === wsOpcode.continuation ? !fragmentInProgress : fragmentInProgress) {
+      this.close(wsCloseCode.protocolError, fragmentInProgress ? 'Expected a continuation frame' : 'Unexpected continuation frame');
       this._destroySocket();
       return;
     }
