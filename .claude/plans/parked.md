@@ -263,6 +263,10 @@ before touching the area an entry names.
   on the authority part (ignore it, or check it against `Host`), which is more than a patch.
 - **Cost later**: low. Strip `scheme://authority` before canonicalizing (keeping the path, or `/` when it is empty),
   or answer 400 for an absolute-form target, plus a table row in the canonicalization test and one integration test.
+- **Constraint for whoever builds it** (0.11.0 security review): RFC 9112 §3.2.2 says the target's authority replaces
+  `Host` when the target is absolute-form. Everything that reads `Host` (the WebSocket same-origin compare, the repeated-
+  Host 400, user hooks) must then read the authority instead, or a request `GET http://evil.example/ws` with
+  `Host: app.example` is routed for one host and origin-checked against another.
 - **Trigger**: the first forward- or reverse-proxy deployment that sends absolute-form targets, or the first bug report
   of a 404 for a `http://...` request line.
 
@@ -348,3 +352,18 @@ before touching the area an entry names.
   is new API surface (security review of 0.11.0).
 - **Cost later**: low; one option or trusted-header read and a scheme compare in `_isSameOrigin`, plus table rows.
 - **Trigger**: a user asking for scheme-aware same-origin, or the next change to the WebSocket origin policy.
+
+## unparsed-bytes-no-server-cap — no server-wide bound on bytes received but not yet parsed
+
+- **What**: every WebSocket connection may hold up to `maxPayloadLength` of received, unparsed frame and fragment
+  bytes, and nothing bounds the sum. With the defaults (`maxConnectionsPerIp` 50, `maxPayloadLength` 16 MB) one IP can
+  hold about 800 MB, and many IPs scale it without limit. The per-frame and per-message caps (a6806d6, cb56dd2) bound
+  each connection, not the server.
+- **Why deferred**: found by the 0.11.0 security review; a server-wide budget needs a chosen default, a decision on
+  what happens at the cap (refuse new upgrades with 503, or close the largest holder with 1009), and accounting across
+  the receive buffer and fragment buffers, which is a design change, not a patch.
+- **Cost later**: low to medium; a shared byte counter updated where `WebSocketReceiveBuffer` and the fragment list
+  grow and shrink, a `websocket.maxBufferedBytes` option, its refusal path, and a test with two connections.
+- **Trigger**: a memory report from a deployment (RSS growth under many slow WebSocket senders), or the next change to
+  WebSocket connection limits (`maxConnectionsPerIp`, `maxPayloadLength` defaults or the per-IP accounting).
+
