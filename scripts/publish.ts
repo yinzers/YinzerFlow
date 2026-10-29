@@ -21,8 +21,9 @@
  */
 
 import dts from 'bun-plugin-dts';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { addRelease, hasUnreleasedEntries, hasVersionHeading, promoteUnreleased } from './changelog.ts';
+import { abortRelease, newRollbackState, publishThenPush, type RollbackIo } from './release-rollback.ts';
 
 // ─── Arguments ──────────────────────────────────────────────────────────────────
 
@@ -156,68 +157,15 @@ const bumpVersion = (current: string, type: BumpType): string => {
 
 // ─── Rollback State ─────────────────────────────────────────────────────────────
 
-interface RollbackState {
-  originalPackageJson: string | null;
-  originalChangelog: string | null;
-  changelogExisted: boolean;
-  commitCreated: boolean;
-  tagCreated: string | null;
-  pushed: boolean;
-}
+const rollbackState = newRollbackState();
 
-const rollbackState: RollbackState = {
-  originalPackageJson: null,
-  originalChangelog: null,
-  changelogExisted: false,
-  commitCreated: false,
-  tagCreated: null,
-  pushed: false,
-};
-
-const rollback = async (): Promise<void> => {
-  log.step('Rolling back mutations...');
-
-  if (rollbackState.pushed) {
-    log.error('Changes were already pushed. Manual rollback required:');
-    if (rollbackState.tagCreated) {
-      log.dim(`  git push --delete origin ${rollbackState.tagCreated}`);
-      log.dim(`  git tag -d ${rollbackState.tagCreated}`);
-    }
-    log.dim('  git revert HEAD');
-    log.dim('  git push');
-    return;
-  }
-
-  if (rollbackState.tagCreated) {
-    run(['git', 'tag', '-d', rollbackState.tagCreated]);
-    log.dim(`Deleted tag ${rollbackState.tagCreated}`);
-  }
-
-  if (rollbackState.commitCreated) {
-    run(['git', 'reset', '--soft', 'HEAD~1']);
-    log.dim('Reset last commit');
-  }
-
-  // Unstage everything
-  run(['git', 'reset', 'HEAD', '.']);
-
-  if (rollbackState.originalPackageJson) {
-    await Bun.write('package.json', rollbackState.originalPackageJson);
-    log.dim('Restored package.json');
-  }
-
-  if (rollbackState.changelogExisted && rollbackState.originalChangelog) {
-    await Bun.write('CHANGELOG.md', rollbackState.originalChangelog);
-    log.dim('Restored CHANGELOG.md');
-  } else if (!rollbackState.changelogExisted) {
-    const { existsSync, unlinkSync } = await import('node:fs');
-    if (existsSync('CHANGELOG.md')) {
-      unlinkSync('CHANGELOG.md');
-      log.dim('Removed CHANGELOG.md (did not exist before)');
-    }
-  }
-
-  log.success('Rollback complete');
+// Real side effects for release-rollback.ts, which holds the rollback rules and their tests.
+const rollbackIo: RollbackIo = {
+  run,
+  writeFile: (path, text) => Bun.write(path, text),
+  exists: existsSync,
+  remove: unlinkSync,
+  log,
 };
 
 // ─── Pre-flight Checks ─────────────────────────────────────────────────────────
@@ -794,8 +742,7 @@ const main = async (): Promise<void> => {
   const sigintHandler = async () => {
     console.log('');
     log.error('Interrupted during release — rolling back...');
-    await rollback();
-    process.exit(1);
+    await abortRelease(rollbackState, rollbackIo, process.exit);
   };
   process.on('SIGINT', sigintHandler);
 
@@ -849,11 +796,11 @@ const main = async (): Promise<void> => {
     // 5. Git commit + tag (local only — not pushed yet)
     gitCommitAndTag(newVersion, changelog, releaseNotes);
 
-    // 6. npm publish FIRST — if this fails, we can still rollback local commit+tag
-    npmPublish();
-
+    // 6. npm publish FIRST — if this fails, we can still rollback local commit+tag. Once it
+    //    succeeds the release is public: rollbackState.published is set and a later failure
+    //    (the push, Ctrl-C) prints manual steps instead of undoing local git.
     // 7. Git push (only after npm succeeds — once pushed, rollback is manual)
-    gitPush();
+    publishThenPush(rollbackState, { npmPublish, gitPush });
 
     // 8. GitHub release (optional)
     createGithubRelease(newVersion, releaseNotes, packageName);
@@ -875,8 +822,7 @@ const main = async (): Promise<void> => {
     console.log('');
   } catch (err) {
     log.error(`Release failed: ${err instanceof Error ? err.message : String(err)}`);
-    await rollback();
-    process.exit(1);
+    await abortRelease(rollbackState, rollbackIo, process.exit);
   }
 };
 
