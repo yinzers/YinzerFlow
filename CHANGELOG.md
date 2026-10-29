@@ -21,6 +21,8 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 - **Every valid status code works** — `response.setStatusCode()` and `rejectUpgrade()` threw for any code outside a 16-entry table, so `setStatusCode(503)` or `rejectUpgrade(418)` answered 500. `httpStatus` and `httpStatusCode` now list the whole IANA registry plus 418 (new keys such as `serviceUnavailable`, `notImplemented`, `unprocessableContent`, `imATeapot`; every existing key is unchanged). Any other integer from 100 to 599 is sent with its class's reason phrase (`299 Success`); a code outside that range or a non-integer still throws, with a clearer message. The `setStatusCode` parameter type now accepts any `number` while still autocompleting the listed codes.
 
+- **`ws.subscribe()` on a closed connection leaked it** — subscribing after the client had gone (an `async` `open` handler resuming after an `await`, or a `close` handler) put the dead connection back in the channel for good, so `app.subscriberCount()` kept counting it and it was never freed. `subscribe` now does nothing on a closing or closed connection and returns `false`; it returns `true` otherwise (it used to return nothing).
+
 ### Internal
 
 ## [0.10.0] - 2026-10-29

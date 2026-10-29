@@ -48,8 +48,12 @@ export interface WebSocket<T = unknown> {
   close: (code?: number, reason?: string) => void;
   /** Send a ping frame (payload must be ≤125 bytes per RFC 6455 §5.5). */
   ping: (data?: Buffer) => void;
-  /** Subscribe this connection to a named channel for pub/sub. */
-  subscribe: (channel: string) => void;
+  /**
+   * Subscribe this connection to a named channel for pub/sub. Returns `true` when the connection is subscribed, and
+   * `false` (doing nothing) when it is closing or already closed, so a late subscribe can't keep a dead connection in
+   * the channel.
+   */
+  subscribe: (channel: string) => boolean;
   /** Unsubscribe this connection from a named channel. */
   unsubscribe: (channel: string) => void;
   /**

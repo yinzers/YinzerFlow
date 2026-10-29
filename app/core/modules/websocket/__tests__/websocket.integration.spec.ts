@@ -791,6 +791,50 @@ describe('WebSocket Integration', () => {
 
       socket.destroy();
     });
+    // Bug (0.10.x): subscribe() added the connection whatever its state, and the channel is only cleaned when the socket
+    // closes. An async open() that subscribed after the client had gone (or a close() handler that subscribed) left the
+    // dead connection in the channel forever: subscriberCount kept counting it and the connection was never freed.
+    // Tier: Medium (resource leak on a core flow; one row per way to reach a non-open subscribe).
+    it.each([
+      ['an async open() that subscribes after the client has gone', 'late-open'],
+      ['a close() handler that subscribes', 'in-close'],
+    ])('should not subscribe a closed connection: %s', async (_label, mode) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      let markClosed: () => void = () => {};
+      const closed = new Promise<void>((resolve) => {
+        markClosed = resolve;
+      });
+      let subscribeResult = undefined as boolean | undefined;
+      const subscribed = new Promise<void>((resolve, reject) => {
+        app.ws('/ws', {
+          open(ws) {
+            if (mode !== 'late-open') return;
+            closed
+              .then(() => {
+                subscribeResult = ws.subscribe('room');
+                resolve();
+              })
+              .catch(reject);
+          },
+          close(ws) {
+            markClosed();
+            if (mode !== 'in-close') return;
+            subscribeResult = ws.subscribe('room');
+            resolve();
+          },
+        });
+      });
+      await app.listen();
+
+      const { socket } = await connectWs(testPort);
+      socket.destroy();
+      await subscribed;
+
+      expect(app.subscriberCount('room')).toBe(0);
+      expect(app.publish('room', 'hello')).toBe(0);
+      expect(subscribeResult).toBe(false);
+    });
   });
 
   // Claim investigated for 0.10.0: "the idle timer only resets on client frames and the server never pings, so a

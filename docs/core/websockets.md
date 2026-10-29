@@ -332,10 +332,30 @@ app.ws<{ userId: string; role: string }>('/api/ws', {
 ### Channel Subscriptions
 
 ```typescript
-ws.subscribe('channel-name');    // Join a channel
+ws.subscribe('channel-name');    // Join a channel; true, or false if the connection is closing or closed
 ws.unsubscribe('channel-name');  // Leave a channel
 ws.isSubscribed('channel-name'); // Check membership
 ```
+
+Channels are left automatically when the connection closes. A `subscribe` on a connection that is closing or already closed does nothing and returns `false`, so an `open` handler that subscribes after waiting on something can't keep a client that left in the meantime in the channel:
+
+```typescript
+app.ws<{ room: string }>('/ws/rooms/:room', {
+  upgrade: (req) => ({ room: req.params.room ?? 'lobby' }),
+  open(ws) {
+    // The client may disconnect while the room loads
+    rooms
+      .load(ws.data.room)
+      .then((room) => {
+        if (!ws.subscribe(`room:${room.id}`)) return; // it did; nothing to set up
+        ws.send(JSON.stringify({ joined: room.id }));
+      })
+      .catch(() => ws.close(1011, 'Room failed to load'));
+  },
+});
+```
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.11.0:**</span> before 0.11.0 `subscribe` returned nothing and added the connection whatever its state, so a subscribe after the client left kept it in the channel (and in `app.subscriberCount()`) for the life of the process.
 
 ### Broadcasting
 

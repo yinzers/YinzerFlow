@@ -165,8 +165,12 @@ export class WebSocketConnection<T = unknown> {
     this._socket.write(frame);
   }
 
-  subscribe(channel: string): void {
-    this._channelManager?.subscribe(this as WebSocketConnection, channel);
+  subscribe(channel: string): boolean {
+    // Channels are cleaned once, when the socket closes; a connection added after that (an async open() resuming after
+    // the client left, a close() handler) would stay in the channel forever. A closing connection gets no more frames.
+    if (this._readyState !== wsReadyState.open || this._socket.destroyed || !this._channelManager) return false;
+    this._channelManager.subscribe(this as WebSocketConnection, channel);
+    return true;
   }
 
   unsubscribe(channel: string): void {
