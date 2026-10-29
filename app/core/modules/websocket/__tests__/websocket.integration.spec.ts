@@ -595,6 +595,39 @@ describe('WebSocket Integration', () => {
       },
     );
 
+    // Probed for 0.11.0: afterAll runs only on refused upgrades. An accepted upgrade has no HTTP response to change, and
+    // the 101 is written on its own. Catches routing the accept path through the shared refusal/response writer, where
+    // an afterAll that sets a status, headers or a body would rewrite or follow the 101 and break the handshake.
+    // Tier: Medium (handshake contract every client depends on).
+    it('should send a clean 101 and skip afterAll on an accepted upgrade', async () => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      let afterAllRuns = 0;
+      app.afterAll([
+        (ctx) => {
+          afterAllRuns++;
+          ctx.response.setStatusCode(500);
+          ctx.response.addHeaders({ 'X-After-All': '1' });
+          return { hijacked: true };
+        },
+      ]);
+      app.ws('/ws', {
+        message(ws, data) {
+          ws.send(data);
+        },
+      });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort);
+      const clean101 = ['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo='];
+      expect(response).toBe(`${clean101.join('\r\n')}\r\n\r\n`);
+      const echo = readFrame(socket);
+      socket.write(buildClientFrame(wsOpcode.text, Buffer.from('still a websocket')));
+      expect((await echo).payload.toString()).toBe('still a websocket');
+      expect(afterAllRuns).toBe(0);
+      socket.destroy();
+    });
+
     // Bug (0.10.0 review): the upgrade re-parsed the request line on \s+ while hooks saw the HTTP parser's split on ' ',
     // so `GET\t/ws` gave hooks the path "HTTP/1.1" while the ws router matched /ws. Tier: High (hook path must equal route path).
     it('should answer 400 to an upgrade whose request line is not single-space separated', async () => {

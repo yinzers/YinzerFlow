@@ -7,9 +7,9 @@ import { WebSocketChannelManager } from '../WebSocketChannelManager.ts';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { _encodeFrame } from '../WebSocketFrame.ts';
 import { MockSocket } from './ws-test-utils.ts';
-import { wsOpcode } from '@constants/websocket.ts';
+import { wsOpcode, wsReadyState } from '@constants/websocket.ts';
 
-const createTestConnection = (strategy: 'buffer' | 'drop' = 'buffer'): { conn: WebSocketConnection; socket: MockSocket } => {
+const createTestConnection = (strategy: 'buffer' | 'drop' = 'buffer', limit = 1_048_576): { conn: WebSocketConnection; socket: MockSocket } => {
   const socket = new MockSocket();
   const conn = new WebSocketConnection<unknown>(
     socket as never,
@@ -18,7 +18,7 @@ const createTestConnection = (strategy: 'buffer' | 'drop' = 'buffer'): { conn: W
     {
       maxPayloadLength: 16_777_216,
       idleTimeout: 0,
-      backpressure: { strategy, limit: 1_048_576 },
+      backpressure: { strategy, limit },
       heartbeatInterval: 0,
       messageRateLimit: { enabled: false, maxMessages: 100, window: 10 },
       compression: { enabled: false, level: 1, threshold: 128, serverMaxWindowBits: 11 },
@@ -147,17 +147,31 @@ describe('WebSocketChannelManager', () => {
     });
 
     // Bug (0.9.x): publish counted every subscriber, including ones whose 'drop' strategy discarded the frame, so the
-    // count overstated delivery. Tier: Medium (return contract of publish).
+    // count overstated delivery. Tier: Medium (return contract of publish). The 0.11.0 probe added the other outcomes:
+    // a buffered frame counts (the contract is "sent or buffered"), and a 'buffer' subscriber whose queue overflows is
+    // closed and leaves the channel in the middle of publish without the subscriber after it being skipped.
     it('should count only subscribers that took the frame, not ones that dropped it', () => {
       const manager = new WebSocketChannelManager();
+      const backpressured = (strategy: 'buffer' | 'drop', limit: number): WebSocketConnection => {
+        const { conn, socket } = createTestConnection(strategy, limit);
+        socket.simulateBackpressure();
+        conn.send('fills the socket buffer'); // now backpressured
+        return conn;
+      };
       const { conn: healthy } = createTestConnection();
-      const { conn: slow, socket: slowSocket } = createTestConnection('drop');
-      manager.subscribe(healthy, 'quotes');
-      manager.subscribe(slow, 'quotes');
-      slowSocket.simulateBackpressure();
-      slow.send('fills the socket buffer'); // now backpressured: the next frame is dropped
+      const slowDrop = backpressured('drop', 1_048_576);
+      const queued = backpressured('buffer', 1_048_576);
+      const overflowing = backpressured('buffer', 1);
+      const { conn: afterOverflow, socket: afterOverflowSocket } = createTestConnection();
+      for (const conn of [healthy, slowDrop, queued, overflowing, afterOverflow]) {
+        conn.setChannelManager(manager); // as the server wires it, so a close leaves the channel
+        manager.subscribe(conn, 'quotes');
+      }
 
-      expect(manager.publish('quotes', 'tick')).toBe(1);
+      expect(manager.publish('quotes', 'tick')).toBe(3); // healthy, queued, afterOverflow
+      expect(afterOverflowSocket.written.length).toBe(1);
+      expect(overflowing.readyState).not.toBe(wsReadyState.open);
+      expect(manager.subscriberCount('quotes')).toBe(4);
     });
 
     it('should encode the frame only once (same Buffer reference to all subscribers)', () => {
