@@ -3,16 +3,45 @@
  * YinzerFlow Release Script
  *
  * Handles the full release pipeline: pre-flight checks (including quality gates and
- * bundle compilation), version bumping, AI changelog generation, git tagging, and npm publish.
+ * bundle compilation), version bumping, changelog promotion, git tagging, and npm publish.
  *
- * Quality checks AND bundle compilation run BEFORE any mutations (and before AI credits
- * are spent), so a TS/lint/test failure never wastes money or requires rollback.
+ * The changelog is written as changes land, under "## [Unreleased]" in CHANGELOG.md. A release
+ * promotes that section to the new version; no AI call is involved. scripts/check-changelog.sh
+ * enforces that library changes come with an entry, and pre-flight refuses a release whose
+ * Unreleased section is empty.
  *
- * Usage: bun scripts/publish.ts
+ * Quality checks AND bundle compilation run BEFORE any mutations, so a TS/lint/test failure
+ * never requires rollback.
+ *
+ * Usage: bun scripts/publish.ts [--ai-changelog] [--dry-run]
+ *   --ai-changelog  Fallback for an empty Unreleased: draft the entry with Claude from the full
+ *                   commit messages. Needs CLAUDE_API_KEY; without this flag the key is not read.
+ *   --dry-run       Run pre-flight, pick a version and show the changelog, then stop before any
+ *                   mutation (no bump, write, commit, tag, publish or push).
  */
 
 import dts from 'bun-plugin-dts';
 import { existsSync, mkdirSync } from 'node:fs';
+import { addRelease, hasUnreleasedEntries, promoteUnreleased } from './changelog.ts';
+
+// ─── Arguments ──────────────────────────────────────────────────────────────────
+
+const knownFlags = ['--ai-changelog', '--dry-run'];
+const argv = process.argv.slice(2);
+const unknownFlags = argv.filter((arg) => !knownFlags.includes(arg));
+if (unknownFlags.length > 0) {
+  console.error(`Unknown argument(s): ${unknownFlags.join(' ')}. Known: ${knownFlags.join(' ')}`);
+  process.exit(1);
+}
+const aiChangelog = argv.includes('--ai-changelog');
+const dryRun = argv.includes('--dry-run');
+
+// Model for the --ai-changelog fallback. Sonnet, not Haiku: the draft has to stay faithful to
+// full commit messages and migration details. Update when a newer Sonnet ships.
+const AI_CHANGELOG_MODEL = 'claude-sonnet-5-5';
+
+// Cap on docs diff text sent to the model, so a docs-heavy release does not blow the prompt.
+const AI_DOCS_DIFF_LIMIT = 20_000;
 
 // ─── ANSI Colors ────────────────────────────────────────────────────────────────
 
@@ -197,15 +226,14 @@ interface PreflightResult {
   currentVersion: string;
   lastTag: string;
   commitCount: number;
-  hasApiKey: boolean;
   packageName: string;
 }
 
 const preflight = async (): Promise<PreflightResult> => {
   log.step('Running pre-flight checks');
   let passed = 0;
-  const total = 11;
-  let hasApiKey = false;
+  // The API key check only exists (and only counts) with --ai-changelog; the changelog check always does.
+  const total = aiChangelog ? 12 : 11;
 
   // 1. Inside git repo
   const gitCheck = run(['git', 'rev-parse', '--is-inside-work-tree']);
@@ -330,13 +358,14 @@ const preflight = async (): Promise<PreflightResult> => {
   const currentVersion = pkg.version as string;
   const packageName = pkg.name as string;
 
-  // 9. Anthropic API key (required for AI changelog)
-  if (process.env.CLAUDE_API_KEY) {
-    hasApiKey = true;
-    log.success(`[${++passed}/${total}] Anthropic API key found`);
-  } else {
-    log.error(`[${++passed}/${total}] Missing CLAUDE_API_KEY — set it in ~/.bashrc: export CLAUDE_API_KEY=sk-ant-...`);
-    process.exit(1);
+  // 9. Anthropic API key (only for --ai-changelog)
+  if (aiChangelog) {
+    if (process.env.CLAUDE_API_KEY) {
+      log.success(`[${++passed}/${total}] Anthropic API key found (--ai-changelog)`);
+    } else {
+      log.error(`[${++passed}/${total}] --ai-changelog needs CLAUDE_API_KEY — set it in ~/.bashrc: export CLAUDE_API_KEY=sk-ant-...`);
+      process.exit(1);
+    }
   }
 
   // Get last PUBLISHED tag — walk back through git tags to find one actually on npm.
@@ -363,6 +392,23 @@ const preflight = async (): Promise<PreflightResult> => {
     commitCount = parseInt(countResult.stdout, 10) || 0;
   }
 
+  // 9b. Changelog: Unreleased has entries to promote, or --ai-changelog will draft them
+  const changelogFile = Bun.file('CHANGELOG.md');
+  const changelogText = (await changelogFile.exists()) ? await changelogFile.text() : '';
+  if (hasUnreleasedEntries(changelogText)) {
+    log.success(`[${++passed}/${total}] Unreleased has entries to promote`);
+    if (aiChangelog) log.warn('--ai-changelog ignored: Unreleased has entries, so they are promoted as written');
+  } else if (aiChangelog) {
+    log.warn(`[${++passed}/${total}] Unreleased is empty — the changelog will be drafted by AI from commit messages`);
+  } else {
+    // The same check green-check runs, so a commit that landed without the gate is caught here.
+    const gate = run(['sh', 'scripts/check-changelog.sh']);
+    log.error('CHANGELOG.md has no entries under "## [Unreleased]", so there is nothing to release.');
+    if (!gate.ok) log.dim(gate.stderr);
+    log.dim('Write the entries under Unreleased and commit them, or run with --ai-changelog to draft from commits.');
+    process.exit(1);
+  }
+
   // 10. Docs staleness check
   const docsRange = lastTag ? `${lastTag}..HEAD` : 'HEAD';
   const docsChanged = run(['git', 'diff', '--name-only', docsRange, '--', 'docs/']);
@@ -380,7 +426,7 @@ const preflight = async (): Promise<PreflightResult> => {
   console.log('');
   log.success(`All checks passed! (${packageName}@${currentVersion}, ${commitCount} commits since ${lastTag || 'beginning'})`);
 
-  return { currentVersion, lastTag, commitCount, hasApiKey, packageName };
+  return { currentVersion, lastTag, commitCount, packageName };
 };
 
 // ─── Version Selection ──────────────────────────────────────────────────────────
@@ -409,27 +455,78 @@ const selectVersion = async (currentVersion: string): Promise<{ type: BumpType; 
   }
 };
 
-// ─── AI Changelog Generation ────────────────────────────────────────────────────
+// ─── Changelog Generation ───────────────────────────────────────────────────────
 
+type ChangelogSource = 'unreleased' | 'ai' | 'raw';
+
+interface ChangelogPlan {
+  /** Full release entry, `## [version] - date` header included. */
+  entry: string;
+  /** The entry without its header: GitHub release notes and the release commit body. */
+  body: string;
+  /** What CHANGELOG.md will contain after the release. */
+  nextContent: string;
+  source: ChangelogSource;
+  noUserChanges: boolean;
+}
+
+const _today = (): string => new Date().toISOString().split('T')[0];
+
+/** Full commit messages (subject AND body: the bodies carry the decision and the why). */
 const getCommitsSinceTag = (lastTag: string): string => {
   const range = lastTag ? `${lastTag}..HEAD` : 'HEAD';
-  const result = run(['git', 'log', range, '--format=- %s (%h)', '--no-merges']);
+  const result = run(['git', 'log', range, '--format=### commit %h%n%B', '--no-merges']);
   return result.stdout;
 };
 
-const generateChangelog = async (
-  commits: string,
-  newVersion: string,
-  hasApiKey: boolean,
-): Promise<{ changelog: string; aiGenerated: boolean; noUserChanges: boolean }> => {
-  log.step('Generating changelog');
+const getRawCommitList = (lastTag: string): string => {
+  const range = lastTag ? `${lastTag}..HEAD` : 'HEAD';
+  return run(['git', 'log', range, '--format=- %s (%h)', '--no-merges']).stdout;
+};
 
-  if (!hasApiKey) {
-    log.dim('No API key — using raw commit list');
-    return { changelog: formatRawChangelog(commits, newVersion), aiGenerated: false, noUserChanges: false };
-  }
+/** Added lines of docs/ since the last tag: where the behavior-change notes for a release live. */
+const getDocsAdditions = (lastTag: string): string => {
+  if (!lastTag) return '';
+  const diff = run(['git', 'diff', '--unified=0', `${lastTag}..HEAD`, '--', 'docs/']).stdout;
+  const added = diff
+    .split('\n')
+    .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+    .join('\n');
+  return added.length > AI_DOCS_DIFF_LIMIT ? `${added.slice(0, AI_DOCS_DIFF_LIMIT)}\n[truncated]` : added;
+};
 
-  log.dim('Calling Claude API for intelligent changelog...');
+const _rawPlan = (current: string, rawCommits: string, newVersion: string, noUserChanges: boolean): ChangelogPlan => {
+  const entry = `## [${newVersion}] - ${_today()}\n\n${rawCommits}`;
+  return { entry, body: rawCommits, nextContent: addRelease(current, entry), source: 'raw', noUserChanges };
+};
+
+const AI_SYSTEM_PROMPT = `You write the changelog entry for a release of YinzerFlow, a lightweight HTTP server framework for Node.js/Bun. The readers are developers who use the framework, deciding whether and how to upgrade.
+
+Sources you get: the full commit messages since the last release (subject and body) and the lines added to docs/ in the same range. Commit bodies carry the decision and the reason; use them.
+
+Hard rules:
+- NEVER invent APIs, options, flags, functions, types, status codes or behavior. Use only names that appear in the commit messages or the added docs lines. If a detail is not in the sources, leave it out.
+- Anything that changes behavior existing code relied on is a Breaking Change, even when the commit calls it a fix. Say what changed from what to what.
+- Include all meaningful changes, user-facing and internal. Ignore version bumps, .claude/ changes, CI tweaks and trivial formatting.
+- Group into these sections, in this order, only the ones with entries:
+  ### Breaking Changes
+  ### Security
+  ### Features
+  ### Bug Fixes
+  ### Internal
+- Breaking Changes: add a short fenced code snippet showing old to new only when the sources show both.
+- Bug Fixes: say what was broken and how it behaves now, not just "fixed X".
+- Each entry: "- **Short title** — description (commit_hash)", with the short hash from the sources.
+- If there are absolutely NO meaningful changes, respond with exactly: NO_USER_CHANGES
+- Do NOT include a version header; it is added for you.`;
+
+/** The --ai-changelog fallback, used only when Unreleased is empty. */
+const draftChangelogWithAi = async (current: string, lastTag: string, newVersion: string): Promise<ChangelogPlan> => {
+  log.step('Drafting changelog with AI (--ai-changelog)');
+  const rawCommits = getRawCommitList(lastTag);
+  const commits = getCommitsSinceTag(lastTag);
+  const docsAdditions = getDocsAdditions(lastTag);
+  log.dim(`Calling ${AI_CHANGELOG_MODEL}...`);
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -440,42 +537,24 @@ const generateChangelog = async (
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2048,
-        system: `You generate well-formatted changelogs for YinzerFlow, a lightweight HTTP server framework for Node.js/Bun. The audience is developers who use and contribute to the framework.
-
-Rules:
-- Include ALL meaningful changes — both user-facing and internal. Developers care about bug fixes, refactors, performance, and code quality improvements.
-- IGNORE ONLY: version bumps, .claude/ file changes, CI config tweaks, and trivial whitespace/formatting commits.
-- Group into these sections (only include sections that have entries):
-  ### Breaking Changes
-  ### Features
-  ### Bug Fixes
-  ### Performance
-  ### Security
-  ### Internal
-- For **Breaking Changes**: include a brief code snippet showing the migration path (old → new). Use fenced code blocks.
-- For **Bug Fixes**: explain what was broken and how it's fixed, not just "fixed X".
-- Each entry: "- **Short title** — description (commit_hash)"
-- Keep the short hash in parentheses at the end of each line.
-- Rewrite commit messages to be clear and descriptive. Don't just copy the raw commit message.
-- If there are absolutely NO meaningful changes (only version bumps/CI), respond with exactly: NO_USER_CHANGES
-- Do NOT include section headers for empty sections.
-- Do NOT include a version header — I'll add that myself.`,
+        model: AI_CHANGELOG_MODEL,
+        max_tokens: 4096,
+        system: AI_SYSTEM_PROMPT,
         messages: [
           {
             role: 'user',
-            content: `Generate a changelog from these commits:\n\n${commits}`,
+            content:
+              `Full commit messages since ${lastTag || 'the beginning'}:\n\n${commits}` +
+              (docsAdditions ? `\n\nLines added to docs/ in the same range (behavior-change notes):\n\n${docsAdditions}` : ''),
           },
         ],
       }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      log.warn(`Claude API returned ${response.status}: ${errText}`);
+      log.warn(`Claude API returned ${response.status}: ${await response.text()}`);
       log.dim('Falling back to raw commit list');
-      return { changelog: formatRawChangelog(commits, newVersion), aiGenerated: false, noUserChanges: false };
+      return _rawPlan(current, rawCommits, newVersion, false);
     }
 
     const data = (await response.json()) as { content: Array<{ text: string }> };
@@ -483,50 +562,33 @@ Rules:
 
     if (text === 'NO_USER_CHANGES') {
       log.warn('AI determined no user-facing changes in these commits');
-      return { changelog: formatRawChangelog(commits, newVersion), aiGenerated: true, noUserChanges: true };
+      return _rawPlan(current, rawCommits, newVersion, true);
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    const formatted = `## [${newVersion}] - ${today}\n\n${text}`;
-    log.success('AI changelog generated');
-    return { changelog: formatted, aiGenerated: true, noUserChanges: false };
+    const entry = `## [${newVersion}] - ${_today()}\n\n${text}`;
+    log.success('AI changelog drafted. Review it below: names come from commits, but you are the check.');
+    return { entry, body: text, nextContent: addRelease(current, entry), source: 'ai', noUserChanges: false };
   } catch (err) {
     log.warn(`Claude API call failed: ${err instanceof Error ? err.message : String(err)}`);
     log.dim('Falling back to raw commit list');
-    return { changelog: formatRawChangelog(commits, newVersion), aiGenerated: false, noUserChanges: false };
+    return _rawPlan(current, rawCommits, newVersion, false);
   }
 };
 
-const formatRawChangelog = (commits: string, newVersion: string): string => {
-  const today = new Date().toISOString().split('T')[0];
-  return `## [${newVersion}] - ${today}\n\n${commits}`;
+/** Pure: no AI, no writes. Promotes the Unreleased section for `newVersion`. */
+const planPromotion = (current: string, newVersion: string): ChangelogPlan => {
+  const { content, entry, body } = promoteUnreleased(current, newVersion, _today());
+  return { entry, body, nextContent: content, source: 'unreleased', noUserChanges: false };
 };
 
 // ─── CHANGELOG.md Writer ────────────────────────────────────────────────────────
 
-const writeChangelog = async (entry: string): Promise<void> => {
-  const header = '# Changelog\n\nAll notable changes to YinzerFlow will be documented in this file.\n\n';
-  const changelogPath = 'CHANGELOG.md';
-  const file = Bun.file(changelogPath);
-
-  if (await file.exists()) {
-    const existing = await file.text();
-    rollbackState.originalChangelog = existing;
-    rollbackState.changelogExisted = true;
-
-    // Prepend after the header (or after first blank line if header exists)
-    const headerEnd = existing.indexOf('\n\n');
-    if (headerEnd !== -1 && existing.startsWith('# Changelog')) {
-      const afterHeader = existing.slice(headerEnd + 2);
-      await Bun.write(changelogPath, `${existing.slice(0, headerEnd + 2)}${entry}\n\n${afterHeader}`);
-    } else {
-      await Bun.write(changelogPath, `${header}${entry}\n\n${existing}`);
-    }
-  } else {
-    rollbackState.changelogExisted = false;
-    await Bun.write(changelogPath, `${header}${entry}\n`);
-  }
-
+/** Writes the planned CHANGELOG.md. The original is recorded first so rollback can restore it. */
+const writeChangelog = async (nextContent: string): Promise<void> => {
+  const file = Bun.file('CHANGELOG.md');
+  rollbackState.changelogExisted = await file.exists();
+  rollbackState.originalChangelog = rollbackState.changelogExisted ? await file.text() : null;
+  await Bun.write('CHANGELOG.md', nextContent);
   log.success('CHANGELOG.md updated');
 };
 
@@ -539,7 +601,7 @@ const showConfirmation = (opts: {
   commitCount: number;
   lastTag: string;
   changelog: string;
-  aiGenerated: boolean;
+  source: ChangelogSource;
 }): void => {
   const border = `${c.dim}─${c.reset}`;
   const line = border.repeat(50);
@@ -549,9 +611,14 @@ const showConfirmation = (opts: {
   console.log(`  ${c.bold}Version:${c.reset}  ${opts.currentVersion} → ${c.green}${c.bold}${opts.newVersion}${c.reset}`);
   console.log(`  ${c.bold}Tag:${c.reset}      v${opts.newVersion}`);
   console.log(`  ${c.bold}Commits:${c.reset}  ${opts.commitCount} since ${opts.lastTag || 'beginning'}`);
-  console.log(`  ${c.bold}AI:${c.reset}       ${opts.aiGenerated ? `${c.green}yes${c.reset}` : `${c.yellow}raw commits${c.reset}`}`);
+  const sourceLabel = {
+    unreleased: `${c.green}promoted from Unreleased${c.reset}`,
+    ai: `${c.yellow}AI draft (--ai-changelog)${c.reset}`,
+    raw: `${c.yellow}raw commits${c.reset}`,
+  }[opts.source];
+  console.log(`  ${c.bold}Changelog:${c.reset} ${sourceLabel}`);
   console.log('');
-  console.log(`  ${c.bold}Changelog:${c.reset}`);
+  console.log('');
 
   // Indent changelog preview
   const previewLines = opts.changelog.split('\n').slice(0, 20);
@@ -587,9 +654,9 @@ const verifyLibVersion = async (newVersion: string): Promise<void> => {
   log.success(`lib/package.json version verified: ${newVersion}`);
 };
 
-const gitCommitAndTag = (newVersion: string, changelogEntry: string): void => {
+const gitCommitAndTag = (newVersion: string, changelogEntry: string, changelogBody: string): void => {
   const tag = `v${newVersion}`;
-  const commitMsg = `🔖 release: v${newVersion}\n\nBump version to ${newVersion} and update changelog.`;
+  const commitMsg = `🔖 release: v${newVersion}\n\nBump version to ${newVersion}; the changelog entry below was promoted from Unreleased.\n\n${changelogBody}`;
 
   // Stage only the two files we changed
   const addResult = run(['git', 'add', 'package.json', 'CHANGELOG.md']);
@@ -634,7 +701,7 @@ const npmPublish = (): void => {
   log.success('Published to npm');
 };
 
-const createGithubRelease = (newVersion: string, changelogEntry: string, packageName: string): void => {
+const createGithubRelease = (newVersion: string, releaseNotes: string, packageName: string): void => {
   const ghCheck = run(['gh', '--version']);
   if (!ghCheck.ok) {
     log.dim('gh CLI not found — skipping GitHub release');
@@ -646,7 +713,7 @@ const createGithubRelease = (newVersion: string, changelogEntry: string, package
   const result = run([
     'gh', 'release', 'create', tag,
     '--title', `${packageName} ${tag}`,
-    '--notes', changelogEntry,
+    '--notes', releaseNotes,
   ]);
 
   if (result.ok) {
@@ -662,7 +729,7 @@ const main = async (): Promise<void> => {
   console.log(`\n${c.bold}${c.cyan}  YinzerFlow Release${c.reset}\n`);
 
   // ── Pre-flight ──
-  const { currentVersion, lastTag, commitCount, hasApiKey, packageName } = await preflight();
+  const { currentVersion, lastTag, commitCount, packageName } = await preflight();
 
   if (commitCount === 0) {
     log.warn('No commits since last tag. Nothing to release.');
@@ -680,9 +747,13 @@ const main = async (): Promise<void> => {
   }
   log.success(`${newVersion} is available on npm`);
 
-  // ── Changelog generation ──
-  const commits = getCommitsSinceTag(lastTag);
-  const { changelog, aiGenerated, noUserChanges } = await generateChangelog(commits, newVersion, hasApiKey);
+  // ── Changelog plan (promotion, or the --ai-changelog fallback; preflight guaranteed one of them) ──
+  log.step('Preparing changelog');
+  const currentChangelog = (await Bun.file('CHANGELOG.md').exists()) ? await Bun.file('CHANGELOG.md').text() : '';
+  const plan = hasUnreleasedEntries(currentChangelog)
+    ? planPromotion(currentChangelog, newVersion)
+    : await draftChangelogWithAi(currentChangelog, lastTag, newVersion);
+  const { entry: changelog, body: releaseNotes, nextContent, source, noUserChanges } = plan;
 
   if (noUserChanges) {
     const proceed = await confirm('AI found no user-facing changes. Publish anyway?');
@@ -700,8 +771,13 @@ const main = async (): Promise<void> => {
     commitCount,
     lastTag,
     changelog,
-    aiGenerated,
+    source,
   });
+
+  if (dryRun) {
+    log.info('Dry run: stopping before any change (no bump, CHANGELOG write, commit, tag, publish or push).');
+    process.exit(0);
+  }
 
   const confirmed = await confirm(`Publish ${packageName}@${newVersion}?`);
   if (!confirmed) {
@@ -726,7 +802,7 @@ const main = async (): Promise<void> => {
     await bumpPackageVersion(newVersion);
 
     // 2. Write changelog
-    await writeChangelog(changelog);
+    await writeChangelog(nextContent);
 
     // 3. Rebuild bundle (source already verified in preflight — rebuild for clean lib/)
     log.dim('Rebuilding bundle...');
@@ -767,7 +843,7 @@ const main = async (): Promise<void> => {
     await verifyLibVersion(newVersion);
 
     // 5. Git commit + tag (local only — not pushed yet)
-    gitCommitAndTag(newVersion, changelog);
+    gitCommitAndTag(newVersion, changelog, releaseNotes);
 
     // 6. npm publish FIRST — if this fails, we can still rollback local commit+tag
     npmPublish();
@@ -776,7 +852,7 @@ const main = async (): Promise<void> => {
     gitPush();
 
     // 8. GitHub release (optional)
-    createGithubRelease(newVersion, changelog, packageName);
+    createGithubRelease(newVersion, releaseNotes, packageName);
 
     // ── Success — remove SIGINT handler ──
     process.removeListener('SIGINT', sigintHandler);
