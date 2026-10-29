@@ -87,6 +87,18 @@ const open = new YinzerFlow({ websocket: { allowedOrigins: ['*'] } });
 - **Same-origin** compares the `Origin` header's host and port with the request's `Host` header, ignoring case. A missing port counts as the default for the `Origin`'s scheme (80 for `http`/`ws`, 443 for `https`/`wss`), so `Host: app.example.com:443` matches `Origin: https://app.example.com`, while `Host: app.example.com:3000` doesn't match `Origin: http://app.example.com:4000`. Only `http`, `https`, `ws` and `wss` origins can be same-origin; an app shell origin such as `capacitor://localhost` has to be listed.
 - **Same-origin compares host and port, not the scheme.** The `Host` header carries no scheme, and behind TLS termination YinzerFlow can't tell whether the client connected over `https`, so `Origin: http://app.example.com` and `Origin: https://app.example.com` both match `Host: app.example.com` when their ports line up. If your app serves both `http` and `https` on the same host, list the `https` origin explicitly (`allowedOrigins: ['https://app.example.com']`) so a page loaded over plain `http`, which a network attacker can inject into, can't open the socket.
 - **Behind a proxy that rewrites `Host`** (for example one that forwards to `localhost:3000`), the browser's `Origin` no longer matches the `Host` YinzerFlow sees, so same-origin refuses every browser. List your public origin explicitly: `allowedOrigins: ['https://app.example.com']`.
+- **Same-origin doesn't stop DNS rebinding.** A rebinding page is served from the attacker's hostname, then re-points that name at your server's address, so the browser sends matching `Origin: http://attacker.example` and `Host: attacker.example`, and the same-origin compare passes. This matters most for servers reachable on a private address (`localhost` dev servers, devices on a LAN). The defence is an explicit `allowedOrigins` list, or a `beforeRouting` hook that refuses any `Host` that isn't yours:
+
+  ```typescript
+  const knownHosts = new Set(['app.example.com', 'localhost:3000']);
+  app.beforeRouting([
+    (ctx) => {
+      if (knownHosts.has(ctx.request.headers.host ?? '')) return;
+      ctx.response.setStatusCode(421);
+      return { error: 'Unknown host' };
+    },
+  ]);
+  ```
 - **`[]` blocks every browser origin.** That is intentional: use it for an endpoint only non-browser clients (servers, CLIs, native apps) should reach. With `allowMissingOrigin: false` as well, nothing can connect.
 - **`['*']`** logs a security warning at startup. Use it only when the upgrade isn't authenticated by cookies.
 - **Entries are checked at startup.** Each must be an origin as a browser sends it: scheme, host and optional port, like `'https://app.example.com'` or `'http://localhost:3000'`. A path, a trailing slash, a wildcard such as `'https://*.example.com'`, a bare host, `'null'`, an explicit default port (`'https://app.example.com:443'`, which browsers never send) or `'*'` next to other entries throws.
@@ -644,6 +656,7 @@ await app.listen();
 - **Problem**: Unauthorized origins connecting to WebSocket endpoints
 - **YinzerFlow Solution**: upgrades are same-origin only by default: the `Origin` header must match the request's `Host` (since 0.11.0). `websocket.allowedOrigins` widens that to a list of origins (case-insensitive exact match) or to every origin with `['*']`, and `[]` refuses every browser origin. A missing `Origin` (a non-browser client) passes unless `allowMissingOrigin` is `false`.
 - <span style="color: #e74c3c">**🚨 Cookie auth:**</span> an app that authenticates upgrades with cookies must not use `['*']`. WebSockets are not covered by CORS, and a browser sends cookies on a cross-site upgrade, so with `['*']` any website can open a socket logged in as your user. Behind a proxy that rewrites `Host`, list your public origin instead of relaxing the check.
+- <span style="color: #f39c12">**⚠️ DNS rebinding:**</span> same-origin compares `Origin` with `Host`, and a rebinding page controls both, so it passes. A server reachable on a private address should set an explicit `allowedOrigins` list or refuse unknown `Host` values in a `beforeRouting` hook (see `allowedOrigins` above).
 
 ### 🛡️ Global Hooks and Rate Limiting on Upgrade
 - **Problem**: Upgrades that bypass the app's auth hooks or rate limiter open a second, unguarded door into the app
