@@ -517,7 +517,8 @@ export class YinzerFlow extends SetupImpl {
    * Decide how long the request body is, from the header block parsed into a map by the same parser the request uses,
    * never by searching the raw text (a decoy `X-Note: content-length: 9` or `X-Content-Length` decided framing that way).
    * RFC 9112 §6: Transfer-Encoding gets 501 until chunked decoding exists, and with Content-Length as well 400 (§6.1, a
-   * smuggling shape); a repeated or non-numeric Content-Length is 400 (§6.3). No Content-Length means no body.
+   * smuggling shape); a repeated or non-numeric Content-Length is 400 (§6.3), and one beyond the request buffer is 413
+   * at once. No Content-Length means no body.
    * A head the parser rejects is framed as bodiless here and answered by the request path, as before.
    */
   private _requestFraming(
@@ -546,7 +547,12 @@ export class YinzerFlow extends SetupImpl {
     if (report.repeatedNames.has('content-length') || !/^\d+$/.test(contentLength)) {
       return { statusCode: httpStatusCode.badRequest, message: 'Content-Length must be a single number of bytes' };
     }
-    return { bodyLength: Number(contentLength) };
+    const bodyLength = Number(contentLength);
+    // A body that can't fit the request buffer would only end in a 413 after waiting for it (or never arrive)
+    if (bodyLength > this._maxBufferSize) {
+      return { statusCode: httpStatusCode.contentTooLarge, message: `Request body exceeds the ${this._maxBufferSize}-byte limit` };
+    }
+    return { bodyLength };
   }
 
   /**

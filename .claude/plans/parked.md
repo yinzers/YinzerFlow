@@ -239,16 +239,22 @@ before touching the area an entry names.
 - **Trigger**: the next change to `parseHttpRequest`'s method handling or `httpMethod`, or a report of a custom
   method reaching a GET route.
 
-## slow-headers-no-timeout — nothing bounds how long a client may take to send its request head
+## slow-headers-no-timeout — nothing bounds how long a client may take to send its request head or body
 
 - **What**: `_handleConnection` (app/core/YinzerFlow.ts) buffers until `\r\n\r\n` with only a byte cap
   (`_maxBufferSize`, answered 413) and no timer, so a client that trickles bytes (a slowloris, including the leading
-  empty lines RFC 9112 §2.2 now lets through) holds a socket open indefinitely. Bytes are bounded, time is not. This
-  predates 0.10.0; the CRLF change adds no new exposure, since any slow bytes do the same.
-- **Why deferred**: found while confirming the leading-CRLF strip is bounded; a header timeout needs a chosen default
-  (nginx `client_header_timeout` is 60 s, Node's `headersTimeout` 60 s) and a 408 response path, which is a
-  configuration decision, not a patch.
-- **Cost later**: low; one per-connection timer cleared at header end, a `headersTimeout` option, a 408, and a test.
+  empty lines RFC 9112 §2.2 now lets through) holds a socket open indefinitely. The same holds after the head: a
+  request whose body never arrives (a `Content-Length` larger than what is sent) waits forever. Bytes are bounded,
+  time is not. This predates 0.10.0.
+- **Guard already in place** (0.11.0): a `Content-Length` larger than `_maxBufferSize` gets 413 at once from
+  `_requestFraming`, so a client can't announce a body that could never fit and hold the socket waiting for it. A
+  `Content-Length` within the cap whose bytes never come still waits.
+- **Why deferred**: found while confirming the leading-CRLF strip is bounded, widened by the 0.11.0 security review; a
+  header and body timeout needs chosen defaults (nginx `client_header_timeout` and `client_body_timeout` are 60 s,
+  Node's `headersTimeout` 60 s and `requestTimeout` 300 s) and a 408 response path, which is a configuration decision,
+  not a patch.
+- **Cost later**: low; one per-connection timer reset as bytes arrive and cleared at dispatch, `headersTimeout` and
+  `bodyTimeout` options, a 408, and a test for each phase.
 - **Trigger**: a report of idle or half-sent connections piling up, or the next change to `_handleConnection` or the
   server's connection options.
 

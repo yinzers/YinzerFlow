@@ -685,6 +685,9 @@ describe('YinzerFlow', () => {
         ['a Content-Length list', ['Content-Length: 7, 7'], '{"a":1}', 'HTTP/1.1 400 Bad Request'],
         ['Transfer-Encoding: chunked', ['Transfer-Encoding: chunked'], '7\r\n{"a":1}\r\n0\r\n\r\n', 'HTTP/1.1 501 Not Implemented'],
         ['Content-Length and Transfer-Encoding together', ['Content-Length: 7', 'Transfer-Encoding: chunked'], '{"a":1}', 'HTTP/1.1 400 Bad Request'],
+        // A body that could never fit the request buffer is refused at once instead of waiting for bytes that would only
+        // end in a 413 (or never arrive)
+        ['a Content-Length beyond the request size limit', ['Content-Length: 999999999999'], '{"a":1}', 'HTTP/1.1 413 Content Too Large'],
       ])('should frame a request body from the parsed headers: %s', async (_label, headers, body, statusLine) => {
         let handlerRan = false;
         app.post('/framed', ({ request }) => {
