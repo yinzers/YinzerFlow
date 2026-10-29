@@ -34,13 +34,17 @@ if [ -z "$tag" ]; then
   exit 0
 fi
 
-changed=$(
-  {
-    git diff --name-only --no-renames "$tag" -- app/
-    git ls-files --others --exclude-standard -- app/
-  } | sort -u |
-    grep -v -e '/__tests__/' -e '\.spec\.ts$' -e '\.test\.ts$' || true
-)
+# Each git call is captured on its own so a git failure exits 2 instead of reading as "no changes".
+tracked=$(git diff --name-only --no-renames "$tag" -- app/) || {
+  echo "check-changelog: FAIL. 'git diff $tag' failed; the check cannot tell what changed." >&2
+  exit 2
+}
+untracked=$(git ls-files --others --exclude-standard -- app/) || {
+  echo "check-changelog: FAIL. 'git ls-files' failed; the check cannot tell what changed." >&2
+  exit 2
+}
+# grep -v exits 1 when it filters everything out; that is "no library changes", not an error.
+changed=$(printf '%s\n%s\n' "$tracked" "$untracked" | sort -u | grep -v -e '^$' -e '/__tests__/' -e '\.spec\.ts$' -e '\.test\.ts$' || true)
 
 if [ -z "$changed" ]; then
   echo "check-changelog: no library code changed since $tag. OK."

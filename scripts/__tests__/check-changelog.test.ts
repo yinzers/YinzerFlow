@@ -89,3 +89,17 @@ describe('Unreleased entry detection: TypeScript parser and check-changelog.sh a
     });
   }
 });
+
+// Bug caught: `git diff ... | grep -v ... || true` turned a git failure into "no library changes",
+// so a broken checkout passed the gate.
+describe('check-changelog.sh git errors', () => {
+  it('exits 2 when git diff fails instead of passing', () => {
+    const { code, stderr } = runScript(unreleased('### Features\n\n'), { diffFails: true });
+    expect(code).toBe(2);
+    expect(stderr).toContain('git diff');
+  });
+
+  it('passes when the only changes are test files', () => {
+    expect(runScript(unreleased('### Features\n\n'), { diff: 'app/core/__tests__/a.test.ts' }).code).toBe(0);
+  });
+});
