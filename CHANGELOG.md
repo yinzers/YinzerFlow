@@ -25,6 +25,8 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 - **`ws.subscribe()` on a closed connection leaked it** — subscribing after the client had gone (an `async` `open` handler resuming after an `await`, or a `close` handler) put the dead connection back in the channel for good, so `app.subscriberCount()` kept counting it and it was never freed. `subscribe` now does nothing on a closing or closed connection and returns `false`; it returns `true` otherwise (it used to return nothing).
 
+- **permessage-deflate window sizes are honoured** — a client that asked for a smaller `server_max_window_bits` got that value in the handshake but frames compressed with `websocket.compression.serverMaxWindowBits`, which it couldn't inflate (Node's `ws` failed with "invalid distance too far back"); `send` and `publish` now compress with the window each connection agreed to. With `compression.clientMaxWindowBits` below 15, a client that hadn't offered `client_max_window_bits` (so may use 15) was closed with 1007; the server now always inflates with a 15-bit window.
+
 ### Internal
 
 ## [0.10.0] - 2026-10-29

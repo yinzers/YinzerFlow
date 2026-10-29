@@ -90,6 +90,24 @@ export const _parseCompressionOffer = (
 };
 
 /**
+ * The LZ77 window the server compresses with on a connection: the configured window, or the client's
+ * server_max_window_bits when that is smaller (RFC 7692 §7.1.2.1). The response header and every frame the server
+ * compresses for the connection (send and broadcast alike) must use this one value.
+ */
+export const _negotiatedServerWindowBits = (
+  clientOffer: NonNullable<ReturnType<typeof _parseCompressionOffer>>,
+  configuredServerMaxWindowBits: number,
+): number => Math.min(configuredServerMaxWindowBits, clientOffer.serverMaxWindowBits ?? configuredServerMaxWindowBits);
+
+/**
+ * The window the server inflates client messages with. A 15-bit (32 KB) window decodes a stream compressed with any
+ * smaller one, and the server can't always limit the client: RFC 7692 §7.1.2.2 forbids client_max_window_bits in the
+ * response unless the client offered it, so such a client may use 15. The configured clientMaxWindowBits is only what
+ * the server asks of a client that offered the parameter.
+ */
+export const _inflateWindowBits = 15;
+
+/**
  * Build the server's Sec-WebSocket-Extensions response header value.
  * Always forces no-context-takeover (both directions) for broadcast compatibility.
  */
@@ -103,11 +121,7 @@ export const _buildCompressionResponse = (
   parts.push('server_no_context_takeover');
   parts.push('client_no_context_takeover');
 
-  // Server max window bits — use the smaller of server config and client request
-  const serverBits =
-    clientOffer.serverMaxWindowBits === undefined ?
-      serverConfig.serverMaxWindowBits
-    : Math.min(serverConfig.serverMaxWindowBits, clientOffer.serverMaxWindowBits);
+  const serverBits = _negotiatedServerWindowBits(clientOffer, serverConfig.serverMaxWindowBits);
 
   if (serverBits < 15) {
     parts.push(`server_max_window_bits=${serverBits}`);

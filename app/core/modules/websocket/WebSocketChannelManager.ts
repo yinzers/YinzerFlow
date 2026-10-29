@@ -19,12 +19,10 @@ export class WebSocketChannelManager {
   private readonly _channels = new Map<string, Set<WebSocketConnection>>();
   private readonly _subscriptions = new Map<WebSocketConnection, Set<string>>();
   private _compressionLevel = 1;
-  private _compressionWindowBits = 11;
   private _compressionThreshold = 128;
 
-  setCompressionConfig(level: number, windowBits: number, threshold: number): void {
+  setCompressionConfig(level: number, threshold: number): void {
     this._compressionLevel = level;
-    this._compressionWindowBits = windowBits;
     this._compressionThreshold = threshold;
   }
 
@@ -95,16 +93,22 @@ export class WebSocketChannelManager {
     const payload = isString ? Buffer.from(data, 'utf8') : data;
     const opcode = isString ? wsOpcode.text : wsOpcode.binary;
 
-    // Encode-once: uncompressed frame always ready, compressed frame lazy
+    // Encode-once: the uncompressed frame always, and a compressed frame lazily per negotiated window size, since a
+    // client that agreed to a smaller window can't inflate a frame compressed with a larger one (at most 7 sizes)
     const uncompressedFrame = _encodeFrame(opcode, payload);
-    let compressedFrame: Buffer | undefined = undefined;
+    const compressedFrames = new Map<number, Buffer>();
 
     let recipientCount = 0;
     for (const connection of subscribers) {
       if (connection === sender) continue;
 
       if (connection._compressionEnabled && payload.length >= this._compressionThreshold) {
-        compressedFrame ??= _encodeFrame(opcode, _compressPayload(payload, this._compressionLevel, this._compressionWindowBits), true, true);
+        const windowBits = connection._compressionWindowBits;
+        let compressedFrame = compressedFrames.get(windowBits);
+        if (!compressedFrame) {
+          compressedFrame = _encodeFrame(opcode, _compressPayload(payload, this._compressionLevel, windowBits), true, true);
+          compressedFrames.set(windowBits, compressedFrame);
+        }
         if (connection.sendRaw(compressedFrame) !== wsSendStatus.dropped) recipientCount++;
       } else if (connection.sendRaw(uncompressedFrame) !== wsSendStatus.dropped) {
         recipientCount++;

@@ -288,7 +288,7 @@ describe('WebSocket Compression', () => {
   describe('broadcast compression', () => {
     it('should send compressed frame to compressed connections', () => {
       const manager = new WebSocketChannelManager();
-      manager.setCompressionConfig(1, 11, 0);
+      manager.setCompressionConfig(1, 0);
 
       const { conn: compConn, socket: compSocket } = createConnection(defaultCompressionOpts);
       compConn.setChannelManager(manager);
@@ -303,7 +303,7 @@ describe('WebSocket Compression', () => {
 
     it('should send uncompressed frame to uncompressed connections', () => {
       const manager = new WebSocketChannelManager();
-      manager.setCompressionConfig(1, 11, 0);
+      manager.setCompressionConfig(1, 0);
 
       const { conn: plainConn, socket: plainSocket } = createConnection(disabledCompressionOpts);
       plainConn.setChannelManager(manager);
@@ -318,7 +318,7 @@ describe('WebSocket Compression', () => {
 
     it('should encode compressed frame only once for multiple compressed subscribers', () => {
       const manager = new WebSocketChannelManager();
-      manager.setCompressionConfig(1, 11, 0);
+      manager.setCompressionConfig(1, 0);
 
       const { conn: conn1, socket: socket1 } = createConnection(defaultCompressionOpts);
       const { conn: conn2, socket: socket2 } = createConnection(defaultCompressionOpts);
@@ -337,7 +337,7 @@ describe('WebSocket Compression', () => {
 
     it('should not compress broadcast below threshold', () => {
       const manager = new WebSocketChannelManager();
-      manager.setCompressionConfig(1, 11, 1000);
+      manager.setCompressionConfig(1, 1000);
 
       const { conn, socket } = createConnection(defaultCompressionOpts);
       conn.setChannelManager(manager);

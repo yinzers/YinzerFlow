@@ -447,9 +447,17 @@ export interface InternalWebSocketOptions {
     level: number;
     /** Skip compression for payloads smaller than this (bytes). @default 128 */
     threshold: number;
-    /** Server LZ77 window bits (9-15). Lower = less memory, slightly worse ratio. @default 11 */
+    /**
+     * Largest LZ77 window bits (9-15) the server compresses with. A client that asks for a smaller
+     * `server_max_window_bits` gets frames compressed with its value. Lower = less memory, slightly worse ratio.
+     * @default 11
+     */
     serverMaxWindowBits: number;
-    /** Client LZ77 window bits (9-15). @default 15 */
+    /**
+     * Client LZ77 window bits (9-15) the server asks for, sent only when the client offered `client_max_window_bits`
+     * (RFC 7692 forbids it otherwise). The server inflates with a 15-bit window either way, so any client can connect.
+     * @default 15
+     */
     clientMaxWindowBits: number;
   };
 }

@@ -200,7 +200,7 @@ Skip compression for payloads smaller than this. Compression overhead can make t
 
 ### websocket.compression.serverMaxWindowBits — @default <span style="color: #2ecc71">`11`</span>
 
-Server LZ77 window size (2^bits bytes). Range: 9-15.
+Largest LZ77 window the server compresses with (2^bits bytes). Range: 9-15. A client that asks for a smaller window (`server_max_window_bits` in its offer) gets frames compressed with its value, broadcasts included: `publish` compresses once per distinct window its subscribers agreed to.
 
 | Window Bits | Window Size | Memory | Compression |
 |:-----------:|:-----------:|:------:|:-----------:|
@@ -213,7 +213,9 @@ Server LZ77 window size (2^bits bytes). Range: 9-15.
 
 ### websocket.compression.clientMaxWindowBits — @default <span style="color: #2ecc71">`15`</span>
 
-Client LZ77 window size. Only included in the negotiation response if the client offered the parameter.
+The client LZ77 window size the server asks for. It is only sent when the client offered `client_max_window_bits` (RFC 7692 forbids it otherwise), so a client that didn't may still compress with 15 bits. The server inflates every message with a 15-bit window, which decodes any smaller one, so this setting never causes a decompression failure.
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.11.0:**</span> before 0.11.0 the server compressed with the configured `serverMaxWindowBits` even after agreeing to a smaller window, which clients such as Node's `ws` couldn't inflate, and inflated with `clientMaxWindowBits`, which closed the connection with 1007 when that was below 15 and the client hadn't been limited.
 
 ```typescript
 // Production: compression enabled for JSON-heavy trading data

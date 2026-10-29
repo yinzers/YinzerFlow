@@ -6,6 +6,7 @@ import net from 'net';
 import { createHash } from 'crypto';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { _encodeFrame } from '../WebSocketFrame.ts';
+import { _compressPayload } from '../WebSocketCompression.ts';
 import { buildClientFrame } from './ws-test-utils.ts';
 import { YinzerFlow } from '@core/YinzerFlow.ts';
 import { rejectUpgrade } from '@core/modules/websocket/WebSocketUpgradeRejection.ts';
@@ -834,6 +835,103 @@ describe('WebSocket Integration', () => {
       expect(app.subscriberCount('room')).toBe(0);
       expect(app.publish('room', 'hello')).toBe(0);
       expect(subscribeResult).toBe(false);
+    });
+  });
+
+  // Bug (0.10.x, found by running the `ws` reference client): the negotiated window sizes went into the response header
+  // and nowhere else. A client that asked for server_max_window_bits=9 got "9" in the header and frames compressed with
+  // the configured 11, which it can't inflate ("invalid distance too far back"); with compression.clientMaxWindowBits
+  // below 15 and a client that offered no client_max_window_bits (so it may use 15), the server inflated with the
+  // smaller window and closed 1007. Tier: Medium (feature flow; each row is a negotiation outcome a client sees).
+  describe('permessage-deflate window negotiation', () => {
+    // Matches only at distance 1000, so a 512-byte window (9 bits) can't use them and 9 and 11 compress differently
+    const farRepeats = (blocks: number): string => {
+      let seed = 42;
+      let block = '';
+      for (let i = 0; i < 1000; i++) {
+        seed = (seed * 16_807) % 2_147_483_647; // Park-Miller: exact in a double
+        block += String.fromCharCode(33 + (seed % 90));
+      }
+      return block.repeat(blocks);
+    };
+    const text = farRepeats(3);
+    const compressedClientFrame = (payload: string, windowBits: number): Buffer => {
+      const frame = buildClientFrame(wsOpcode.text, _compressPayload(Buffer.from(payload), 1, windowBits));
+      frame[0] = frame[0]! | 0x40; // RSV1
+      return frame;
+    };
+    const startCompressedApp = async (compression: Record<string, unknown>): Promise<number> => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({
+        port: testPort,
+        host: '127.0.0.1',
+        gracefulShutdownTimeout: 0,
+        websocket: { compression: { enabled: true, threshold: 0, ...compression } },
+      });
+      app.ws('/ws', {
+        open(ws) {
+          ws.subscribe('all');
+        },
+        message(ws, data) {
+          if (data === 'broadcast') app.publish('all', text);
+          else ws.send(data);
+        },
+      });
+      await app.listen();
+      return testPort;
+    };
+
+    it.each([
+      ['no window offer: the configured window', 'permessage-deflate', 11],
+      ['an offer of 9: the smaller window', 'permessage-deflate; server_max_window_bits=9', 9],
+      ['an offer above the configured window: the configured window', 'permessage-deflate; server_max_window_bits=15', 11],
+    ])('should compress with the window it agreed to, %s', async (_label, offer, windowBits) => {
+      const testPort = await startCompressedApp({});
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, undefined, `Sec-WebSocket-Extensions: ${offer}\r\n`);
+      expect(response).toContain(`server_max_window_bits=${windowBits}`);
+
+      const echo = readFrame(socket);
+      socket.write(buildClientFrame(wsOpcode.text, Buffer.from(text)));
+      expect((await echo).payload.equals(_compressPayload(Buffer.from(text), 1, windowBits))).toBe(true);
+      socket.destroy();
+    });
+
+    it('should broadcast to each subscriber with the window that subscriber agreed to', async () => {
+      // The rows above and below only discriminate if the two windows really give different bytes
+      expect(_compressPayload(Buffer.from(text), 1, 9).equals(_compressPayload(Buffer.from(text), 1, 11))).toBe(false);
+      const testPort = await startCompressedApp({});
+      const small = await connectWs(
+        testPort,
+        '/ws',
+        'AAAAAAAAAAAAAAAAAAAAAA==',
+        undefined,
+        'Sec-WebSocket-Extensions: permessage-deflate; server_max_window_bits=9\r\n',
+      );
+      const normal = await connectWs(testPort, '/ws', 'BBBBBBBBBBBBBBBBBBBBBB==', undefined, 'Sec-WebSocket-Extensions: permessage-deflate\r\n');
+      const third = await connectWs(testPort, '/ws', 'CCCCCCCCCCCCCCCCCCCCCC==');
+      await waitFor(() => app.subscriberCount('all') === 3);
+
+      const smallFrame = readFrame(small.socket);
+      const normalFrame = readFrame(normal.socket);
+      third.socket.write(buildClientFrame(wsOpcode.text, Buffer.from('broadcast')));
+
+      expect((await smallFrame).payload.equals(_compressPayload(Buffer.from(text), 1, 9))).toBe(true);
+      expect((await normalFrame).payload.equals(_compressPayload(Buffer.from(text), 1, 11))).toBe(true);
+      for (const client of [small, normal, third]) client.socket.destroy();
+    });
+
+    it('should inflate a window-15 message from a client it could not limit, whatever clientMaxWindowBits is', async () => {
+      const testPort = await startCompressedApp({ clientMaxWindowBits: 9 });
+      const received: Array<string> = [];
+      app.ws('/inflate', { message: (_ws, data) => void received.push(String(data)) });
+      const long = farRepeats(200); // past zlib's 16 KB output chunk, where a too-small window fails
+      const { socket, response } = await connectWs(testPort, '/inflate', undefined, undefined, 'Sec-WebSocket-Extensions: permessage-deflate\r\n');
+      expect(response).not.toContain('client_max_window_bits');
+
+      socket.write(compressedClientFrame(long, 15));
+      await waitFor(() => received.length === 1 || socket.destroyed);
+      expect(received[0] === long).toBe(true);
+      socket.destroy();
     });
   });
 

@@ -23,7 +23,7 @@ import type { InternalCorsEnabledOptions } from '@typedefs/internal/InternalConf
 import { DiagnosticsMonitor } from '@core/modules/diagnostics/DiagnosticsMonitor.ts';
 import { _sanitizeLogField } from '@core/utils/sanitize.ts';
 import { _buildHandshakeResponse, _generateAcceptKey, _isWebSocketUpgrade, _validateHandshake } from '@core/modules/websocket/WebSocketHandshake.ts';
-import { _buildCompressionResponse, _parseCompressionOffer } from '@core/modules/websocket/WebSocketCompression.ts';
+import { _buildCompressionResponse, _negotiatedServerWindowBits, _parseCompressionOffer } from '@core/modules/websocket/WebSocketCompression.ts';
 import { WebSocketConnection } from '@core/modules/websocket/WebSocketConnection.ts';
 import { WebSocketChannelManager } from '@core/modules/websocket/WebSocketChannelManager.ts';
 import { WebSocketSecurity } from '@core/modules/websocket/WebSocketSecurity.ts';
@@ -805,8 +805,7 @@ export class YinzerFlow extends SetupImpl {
       return;
     }
 
-    const extensionResponse = this._negotiateWsCompression(context.request.headers['sec-websocket-extensions']);
-    const compressionNegotiated = extensionResponse !== undefined;
+    const compression = this._negotiateWsCompression(context.request.headers['sec-websocket-extensions']);
 
     // The per-IP cap is checked here, after the last await, so concurrent upgrades can't all pass it while awaiting and
     // then all take a slot; check, 101, trackConnect and close wiring run in one synchronous stretch.
@@ -818,11 +817,11 @@ export class YinzerFlow extends SetupImpl {
 
     // Send 101 handshake response
     const acceptKey = _generateAcceptKey(validation.key);
-    socket.write(_buildHandshakeResponse(acceptKey, undefined, extensionResponse));
+    socket.write(_buildHandshakeResponse(acceptKey, undefined, compression?.header));
     socket.removeAllListeners();
 
     this._wsSecurity.trackConnect(clientAddress);
-    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, rawPath, compressionNegotiated);
+    this._setupWsConnection(socket, data, match.handlers, match.options, clientAddress, rawPath, compression?.serverWindowBits);
   }
 
   /**
@@ -844,17 +843,21 @@ export class YinzerFlow extends SetupImpl {
 
   /**
    * Negotiate permessage-deflate: when the server has compression enabled and the client's Sec-WebSocket-Extensions
-   * offer is acceptable, return the extension response header value; otherwise undefined (no compression).
+   * offer is acceptable, return the extension response header value and the window the server agreed to compress with
+   * (the connection and broadcast must use that value, not the configured one); otherwise undefined (no compression).
    */
-  private _negotiateWsCompression(extensionsHeader: string | undefined): string | undefined {
+  private _negotiateWsCompression(extensionsHeader: string | undefined): { header: string; serverWindowBits: number } | undefined {
     const { compression } = this._configuration.websocket;
     if (!compression.enabled || !extensionsHeader) return undefined;
     const offer = _parseCompressionOffer(extensionsHeader);
     if (!offer) return undefined;
-    return _buildCompressionResponse(offer, {
-      serverMaxWindowBits: compression.serverMaxWindowBits,
-      clientMaxWindowBits: compression.clientMaxWindowBits,
-    });
+    return {
+      header: _buildCompressionResponse(offer, {
+        serverMaxWindowBits: compression.serverMaxWindowBits,
+        clientMaxWindowBits: compression.clientMaxWindowBits,
+      }),
+      serverWindowBits: _negotiatedServerWindowBits(offer, compression.serverMaxWindowBits),
+    };
   }
 
   /**
@@ -926,16 +929,16 @@ export class YinzerFlow extends SetupImpl {
     routeOptions: WebSocketRouteOptions | undefined,
     clientAddress: string,
     path: string,
-    compressionNegotiated = false,
+    compressionWindowBits?: number,
   ): void {
-    const connectionOptions = this._mergeWsConnectionOptions(routeOptions, compressionNegotiated);
+    const connectionOptions = this._mergeWsConnectionOptions(routeOptions, compressionWindowBits);
     const wrappedHandlers = _wrapWebSocketHandlers(handlers, this._hooks, this._log);
     const connection = new WebSocketConnection(socket, data, wrappedHandlers, connectionOptions);
 
     this._wsChannelManager ??= new WebSocketChannelManager();
     if (this._configuration.websocket.compression.enabled) {
       const comp = this._configuration.websocket.compression;
-      this._wsChannelManager.setCompressionConfig(comp.level, comp.serverMaxWindowBits, comp.threshold);
+      this._wsChannelManager.setCompressionConfig(comp.level, comp.threshold);
     }
     connection.setChannelManager(this._wsChannelManager);
 
@@ -957,14 +960,14 @@ export class YinzerFlow extends SetupImpl {
   // eslint-disable-next-line complexity
   private _mergeWsConnectionOptions(
     routeOpts?: WebSocketRouteOptions,
-    compressionNegotiated = false,
+    compressionWindowBits?: number,
   ): {
     maxPayloadLength: number;
     idleTimeout: number;
     backpressure: { strategy: 'buffer' | 'drop'; limit: number };
     heartbeatInterval: number;
     messageRateLimit: { enabled: boolean; maxMessages: number; window: number };
-    compression: { enabled: boolean; level: number; threshold: number; serverMaxWindowBits: number; clientMaxWindowBits: number };
+    compression: { enabled: boolean; level: number; threshold: number; serverMaxWindowBits: number };
   } {
     const wsConfig = this._configuration.websocket;
     const globalHeartbeat = wsConfig.heartbeat.enabled ? wsConfig.heartbeat.interval : 0;
@@ -985,11 +988,10 @@ export class YinzerFlow extends SetupImpl {
         window: routeOpts?.messageRateLimit?.window ?? rl.window,
       },
       compression: {
-        enabled: compressionNegotiated,
+        enabled: compressionWindowBits !== undefined,
         level: comp.level,
         threshold: routeOpts?.compressionThreshold ?? comp.threshold,
-        serverMaxWindowBits: comp.serverMaxWindowBits,
-        clientMaxWindowBits: comp.clientMaxWindowBits,
+        serverMaxWindowBits: compressionWindowBits ?? comp.serverMaxWindowBits,
       },
     };
   }

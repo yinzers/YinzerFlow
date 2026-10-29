@@ -1,6 +1,6 @@
 import type { Socket } from 'net';
 import { _encodeCloseFrame, _encodeFrame, _parseFrame } from './WebSocketFrame.ts';
-import { _compressPayload, _decompressPayload } from './WebSocketCompression.ts';
+import { _compressPayload, _decompressPayload, _inflateWindowBits } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
 import { wsCloseCode, wsOpcode, wsReadyState, wsSendStatus } from '@constants/websocket.ts';
 import type { InternalWsSendStatus } from '@typedefs/constants/websocket.js';
@@ -19,8 +19,8 @@ interface CompressionOptions {
   enabled: boolean;
   level: number;
   threshold: number;
+  /** The window negotiated for this connection (see _negotiatedServerWindowBits), not the configured one */
   serverMaxWindowBits: number;
-  clientMaxWindowBits: number;
 }
 
 interface ConnectionOptions {
@@ -70,6 +70,8 @@ export class WebSocketConnection<T = unknown> {
   _isAlive = true;
   readonly _heartbeatEnabled: boolean;
   readonly _compressionEnabled: boolean;
+  /** The LZ77 window this connection's client agreed to; broadcast compresses one frame per distinct value */
+  readonly _compressionWindowBits: number;
 
   // Token bucket rate limiting
   private _rateLimitTokens: number;
@@ -87,6 +89,7 @@ export class WebSocketConnection<T = unknown> {
     this._remoteAddress = socket.remoteAddress ?? 'unknown';
     this._heartbeatEnabled = options.heartbeatInterval > 0;
     this._compressionEnabled = options.compression.enabled;
+    this._compressionWindowBits = options.compression.serverMaxWindowBits;
     this._rateLimitTokens = options.messageRateLimit.enabled ? options.messageRateLimit.maxMessages : 0;
     this._rateLimitLastRefill = options.messageRateLimit.enabled ? Date.now() : 0;
 
@@ -378,7 +381,7 @@ export class WebSocketConnection<T = unknown> {
     if (compressed) {
       try {
         // Inflation is capped at maxPayloadLength: the frame check only bounds the compressed size
-        finalPayload = _decompressPayload(payload, this._options.compression.clientMaxWindowBits, this._options.maxPayloadLength);
+        finalPayload = _decompressPayload(payload, _inflateWindowBits, this._options.maxPayloadLength);
       } catch (error) {
         if (_isOutputTooLarge(error)) {
           this._rejectTooLarge();
