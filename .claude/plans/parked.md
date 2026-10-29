@@ -239,17 +239,6 @@ before touching the area an entry names.
 - **Trigger**: the next change to `_ensureHeartbeatSweep` or `WebSocketRouteOptions.heartbeatInterval`, or a user
   report of a route's heartbeat timing being ignored.
 
-## ws-idle-below-heartbeat-unwarned — nothing flags idleTimeout at or below the heartbeat interval
-
-- **What**: with `idleTimeout <= heartbeat.interval` (globally, or a route's `idleTimeout` below the global
-  interval), a listen-only client is closed for idleness before the next ping arrives. `_warnWebSocketConfig`
-  doesn't warn, and the per-route override isn't validated at all. The docs now carry the warning.
-- **Why deferred**: found during the same investigation; with the defaults (30 s vs 120 s) it can't happen, and the
-  fix touches config validation for both the global and per-route options.
-- **Cost later**: trivial; one warning in `_warnWebSocketConfig` and one in `app.ws()` route registration.
-- **Trigger**: the next change to `WebSocketConfig.ts` validation or to `app.ws()` option handling, or a report of
-  listen-only clients dropping.
-
 ## unknown-method-read-as-get — a well-formed request with an unrouted method is handled as GET
 
 - **What**: `parseHttpRequest` (app/core/execution/utils/parseHttpRequest.ts) maps any method that isn't in

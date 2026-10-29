@@ -2,11 +2,13 @@
   no-bitwise,
   @typescript-eslint/no-non-null-assertion
 */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { WebSocketConnection } from '../WebSocketConnection.ts';
 import { MockSocket, buildClientFrame } from './ws-test-utils.ts';
 import { wsCloseCode, wsOpcode, wsReadyState } from '@constants/websocket.ts';
-import type { WebSocketHandlers } from '@typedefs/public/WebSocket.js';
+import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
+import { YinzerFlow } from '@core/YinzerFlow.ts';
+import { log } from '@core/utils/log.ts';
 
 const createConnection = (
   handlers: WebSocketHandlers<{ testId: string }> = {},
@@ -149,6 +151,35 @@ describe('WebSocket Heartbeat', () => {
       const writtenCount = socket.written.length;
       conn.ping();
       expect(socket.written.length).toBe(writtenCount);
+    });
+  });
+
+  // Bug (0.10.x): with idleTimeout at or below the heartbeat interval a listen-only client is closed for idleness before
+  // the next ping keeps it alive, and nothing said so at startup or on app.ws(). Tier: Medium (config warning a user acts on).
+  describe('idleTimeout at or below the heartbeat interval', () => {
+    it.each([
+      ['global idleTimeout equal to the interval', { idleTimeout: 30 }, undefined, true],
+      ['global idleTimeout below the interval', { idleTimeout: 10, heartbeat: { interval: 30 } }, undefined, true],
+      ['global idleTimeout above the interval', { idleTimeout: 31 }, undefined, false],
+      ['global idleTimeout 0 (no timeout)', { idleTimeout: 0 }, undefined, false],
+      ['heartbeat disabled (warned separately)', { idleTimeout: 10, heartbeat: { enabled: false } }, undefined, false],
+      ['a route idleTimeout below the global interval', {}, { idleTimeout: 20 }, true],
+      ['a route that turns its heartbeat off', {}, { idleTimeout: 20, heartbeatInterval: 0 }, false],
+      ['a route idleTimeout above the global interval', {}, { idleTimeout: 60 }, false],
+    ] as const)('%s', (_label, websocket, routeOptions, shouldWarn) => {
+      // Config warnings go to the module logger, route warnings to the app's logger; collect both
+      const warn = spyOn(log, 'warn').mockImplementation(() => {});
+      const appWarnings: Array<string> = [];
+      const logger = { info: () => {}, error: () => {}, warn: (...args: Array<unknown>) => void appWarnings.push(args.map(String).join(' ')) };
+      try {
+        const app = new YinzerFlow({ websocket: { ...websocket }, logging: { logger } });
+        app.ws('/ws', {}, routeOptions as WebSocketRouteOptions | undefined);
+        const messages = [...warn.mock.calls.map((call) => String(call[0])), ...appWarnings];
+        const warned = messages.some((message) => message.includes('below the heartbeat'));
+        expect(warned).toBe(shouldWarn);
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 });

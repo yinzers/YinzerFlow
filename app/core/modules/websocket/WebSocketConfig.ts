@@ -158,10 +158,38 @@ export const _warnWebSocketConfig = (config: InternalWebSocketOptions): void => 
     );
   }
 
+  _warnIdleBelowHeartbeat({ setting: 'websocket.idleTimeout', idleTimeout: config.idleTimeout, config, warn: log.warn });
+
   if (!config.heartbeat.enabled) {
     log.warn(
       '[SECURITY WARNING] websocket.heartbeat is disabled. ' +
         'Half-open connections (client network died without clean close) will not be detected automatically.',
     );
   }
+};
+
+/**
+ * Warn when an idle timeout would close a listen-only client before the next heartbeat ping keeps it alive: the ping's
+ * pong is the only frame such a client sends. `routeHeartbeatInterval` is a route's override (0 turns its heartbeat
+ * off); the sweep always runs at the global interval.
+ */
+export const _warnIdleBelowHeartbeat = ({
+  setting,
+  idleTimeout,
+  config,
+  routeHeartbeatInterval,
+  warn,
+}: {
+  setting: string;
+  idleTimeout: number;
+  config: InternalWebSocketOptions;
+  routeHeartbeatInterval?: number | undefined;
+  warn: (message: string) => void;
+}): void => {
+  if (idleTimeout <= 0 || !config.heartbeat.enabled || routeHeartbeatInterval === 0) return;
+  if (idleTimeout > config.heartbeat.interval) return;
+  warn(
+    `${setting} (${idleTimeout}s) is at or below the heartbeat interval (websocket.heartbeat.interval, ${config.heartbeat.interval}s). ` +
+      'A client that only listens is closed for idleness before the next ping can keep it alive. Raise the idle timeout above the interval.',
+  );
 };

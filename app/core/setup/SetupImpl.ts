@@ -14,6 +14,7 @@ import { ensureCompleteRouteOptions } from '@core/setup/utils/routeUtils.js';
 import type { GlobalHookOptions, RouteGroup } from '@typedefs/public/Setup.js';
 import { log } from '@core/utils/log.ts';
 import { WebSocketRouter } from '@core/modules/websocket/WebSocketRouter.ts';
+import { _warnIdleBelowHeartbeat } from '@core/modules/websocket/WebSocketConfig.ts';
 import type { WebSocketHandlers, WebSocketMessageHook, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
 
 export class SetupImpl implements InternalSetupImpl {
@@ -109,6 +110,15 @@ export class SetupImpl implements InternalSetupImpl {
   //   ===== WebSocket Registration =====
   ws<T = unknown>(path: string, handlers: WebSocketHandlers<T>, options?: WebSocketRouteOptions): void {
     this._wsRouter._register(path, handlers as WebSocketHandlers, options);
+    if (options?.idleTimeout !== undefined) {
+      _warnIdleBelowHeartbeat({
+        setting: `app.ws('${path}') idleTimeout`,
+        idleTimeout: options.idleTimeout,
+        config: this._configuration.websocket,
+        routeHeartbeatInterval: options.heartbeatInterval,
+        warn: (message) => this._log.warn(message),
+      });
+    }
   }
 
   wsBeforeMessage(handlers: Array<WebSocketMessageHook>): void {

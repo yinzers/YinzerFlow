@@ -51,7 +51,7 @@ Seconds of inactivity before closing the connection. Set to `0` to disable.
 
 Any frame the client sends resets the timer, and that includes the pong a client answers each heartbeat ping with. Every browser answers pings automatically, so a listen-only client (a dashboard, a ticker) that never sends a message stays connected with the defaults: the server pings every 30 seconds, well inside the 120-second idle timeout.
 
-<span style="color: #e74c3c">**⚠️ Warning:**</span> keep `idleTimeout` above `heartbeat.interval`. With the timeout at or below the interval, a listen-only client is closed for idleness before the next ping can keep it alive. Disabling the heartbeat has the same effect for clients that never send.
+<span style="color: #e74c3c">**⚠️ Warning:**</span> keep `idleTimeout` above `heartbeat.interval`. With the timeout at or below the interval, a listen-only client is closed for idleness before the next ping can keep it alive, and YinzerFlow logs a warning at startup (or when `app.ws()` registers a route whose `idleTimeout` is at or below the interval). Disabling the heartbeat has the same effect for clients that never send.
 
 <span style="color: #f39c12">**⚡ Performance:**</span> For high-frequency data streams (trading quotes), the idle timeout resets on every received frame — frequent data prevents timeout.
 

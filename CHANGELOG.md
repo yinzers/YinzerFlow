@@ -15,6 +15,8 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 ### Features
 
+- **Warning for an idle timeout at or below the heartbeat interval** — `new YinzerFlow()` now warns when `websocket.idleTimeout` is at or below `websocket.heartbeat.interval`, and `app.ws()` warns when a route's `idleTimeout` is, unless that route sets `heartbeatInterval: 0`. A client that only listens would be closed for idleness before the next ping could keep it alive. The route warning goes to the app's logger.
+
 ### Bug Fixes
 
 ### Internal
