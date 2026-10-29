@@ -398,8 +398,9 @@ export interface InternalWebSocketOptions {
    * Which browser origins may open a WebSocket. @default unset (same-origin only)
    *
    * - Unset: same-origin only. The `Origin` header's host and port must match the request's `Host` header
-   *   (case-insensitive; a missing port is the scheme's default, 80 for http/ws and 443 for https/wss). Behind a proxy
-   *   that rewrites `Host`, list your public origin instead.
+   *   (case-insensitive; a missing port is the scheme's default, 80 for http/ws and 443 for https/wss). The scheme itself
+   *   isn't compared, since `Host` doesn't carry one; an app serving both http and https should list its https origin.
+   *   Behind a proxy that rewrites `Host`, list your public origin instead.
    * - `['*']`: every origin. `'*'` must be the only entry.
    * - A list such as `['https://app.example.com']`: case-insensitive exact match. Entries must be serialized origins
    *   (`scheme://host[:port]`, no path, no trailing slash, no default port); anything else throws at startup.

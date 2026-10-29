@@ -349,3 +349,14 @@ before touching the area an entry names.
   with its own changelog line, outside that item.
 - **Cost later**: trivial; use `mapStatusCodeToMessage(httpStatusCode.contentTooLarge)` in the literal.
 - **Trigger**: the next change to `_rejectOversizedRequest` or to `_sendHttpError`.
+
+## ws-origin-scheme-aware — same-origin ignores the Origin's scheme
+
+- **What**: the 0.11.0 same-origin default compares the Origin's host and port with `Host` and never its scheme, so a page
+  served over plain `http` on the same host and port passes for an `https` app. Documented in websockets.md with the
+  advice to list the `https` origin.
+- **Why deferred**: behind TLS termination the server can't know its own scheme; doing it right needs a setting the
+  operator fills in (`websocket.publicScheme`, or trusting `X-Forwarded-Proto` from `ipSecurity.trustedProxies`), which
+  is new API surface (security review of 0.11.0).
+- **Cost later**: low; one option or trusted-header read and a scheme compare in `_isSameOrigin`, plus table rows.
+- **Trigger**: a user asking for scheme-aware same-origin, or the next change to the WebSocket origin policy.
