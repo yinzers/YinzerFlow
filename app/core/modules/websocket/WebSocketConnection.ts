@@ -209,7 +209,7 @@ export class WebSocketConnection<T = unknown> {
     // included) can leave it behind to be parsed and delivered again on the next read.
     while (this._receivedBytes > 0) {
       // The header first: its announced length is refused before a single body byte is waited for or buffered
-      const header = _parseFrameHeader(this._joinFirst(Math.min(this._receivedBytes, _maxFrameHeaderSize)), 0);
+      const header = this._readFrameHeader();
       if (!header) return;
       if (this._announcesTooMuch(header.opcode, header.payloadLength)) {
         this._rejectTooLarge();
@@ -232,6 +232,20 @@ export class WebSocketConnection<T = unknown> {
       this._handleFrame(result.frame);
 
       if (this._readyState === wsReadyState.closed) return;
+    }
+  }
+
+  /**
+   * The next frame's header, or null until it has arrived. A header the parser rejects (RSV2 or RSV3 set) closes the
+   * connection with 1002 here, so the parser's throw never escapes the socket's data listener.
+   */
+  private _readFrameHeader(): ReturnType<typeof _parseFrameHeader> {
+    try {
+      return _parseFrameHeader(this._joinFirst(Math.min(this._receivedBytes, _maxFrameHeaderSize)), 0);
+    } catch (error) {
+      this.close(wsCloseCode.protocolError, error instanceof Error ? error.message : 'Malformed frame header');
+      this._destroySocket();
+      return null;
     }
   }
 

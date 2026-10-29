@@ -213,6 +213,33 @@ describe('WebSocket Integration', () => {
   // Bug (0.9.0): with no wsBeforeMessage hook a throwing message handler escaped the read loop before the receive buffer
   // advanced, so the failing frame was parsed again on every later read and the client's later messages never arrived.
   // Tier: Medium (user flow: one bad message must not wedge a connection).
+  // Found during the 0.11.0 security round: _parseFrameHeader throws on RSV2/RSV3 bits, and the throw escaped the socket's
+  // data listener, an uncaught exception any client could trigger with one byte. Tier: High (untrusted input).
+  describe('malformed frame header', () => {
+    it.each([
+      ['RSV2 set', 0xa1],
+      ['RSV3 set', 0x91],
+    ])('should close 1002 on a frame with %s and keep serving', async (_label, byte0) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
+      app.ws('/ws', { message() {} });
+      app.get('/alive', () => ({ alive: true }));
+      await app.listen();
+
+      const { socket } = await connectWs(testPort);
+      const frame = buildClientFrame(wsOpcode.text, Buffer.from('x'));
+      frame[0] = byte0;
+      const reply = readFrame(socket);
+      socket.write(frame);
+
+      const closeFrame = await reply;
+      expect(closeFrame.opcode).toBe(wsOpcode.close);
+      expect(closeFrame.payload.readUInt16BE(0)).toBe(wsCloseCode.protocolError);
+      expect((await fetch(`http://127.0.0.1:${testPort}/alive`)).status).toBe(200);
+      socket.destroy();
+    });
+  });
+
   describe('throwing message handler', () => {
     it.each([
       ['without', false],
