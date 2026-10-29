@@ -3,7 +3,7 @@
   @typescript-eslint/no-non-null-assertion
 */
 import { wsOpcode } from '@constants/websocket.ts';
-import type { InternalWebSocketParseResult } from '@typedefs/internal/modules/websocket/index.js';
+import type { InternalWebSocketFrameKind, InternalWebSocketParseResult } from '@typedefs/internal/modules/websocket/index.js';
 
 // Pre-computed constants to avoid repeated property lookups in hot path
 const OPCODE_CLOSE = wsOpcode.close;
@@ -21,6 +21,14 @@ export const _unmask = (payload: Buffer, maskKey: Buffer): void => {
 };
 
 const _twoTo32 = 4_294_967_296;
+
+/** Classify an opcode. Every opcode maps to exactly one kind, so a validator switching on it can't skip one. */
+export const _frameKind = (opcode: number): InternalWebSocketFrameKind => {
+  if (opcode === wsOpcode.continuation) return 'continuation';
+  if (opcode === wsOpcode.text || opcode === wsOpcode.binary) return 'data';
+  if (opcode === wsOpcode.close || opcode === wsOpcode.ping || opcode === wsOpcode.pong) return 'control';
+  return 'reserved';
+};
 
 /** The longest a frame header can be: 2 bytes, an 8-byte extended length and a 4-byte mask key. */
 export const _maxFrameHeaderSize = 14;

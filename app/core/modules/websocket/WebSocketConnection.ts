@@ -1,5 +1,5 @@
 import type { Socket } from 'net';
-import { _encodeCloseFrame, _encodeFrame, _maxFrameHeaderSize, _parseFrame, _parseFrameHeader } from './WebSocketFrame.ts';
+import { _encodeCloseFrame, _encodeFrame, _frameKind, _maxFrameHeaderSize, _parseFrame, _parseFrameHeader } from './WebSocketFrame.ts';
 import { WebSocketReceiveBuffer } from './WebSocketReceiveBuffer.ts';
 import { _compressPayload, _decompressPayload, _inflateWindowBits } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
@@ -207,11 +207,17 @@ export class WebSocketConnection<T = unknown> {
     // Parse all complete frames. Each frame leaves the buffer BEFORE it is acted on, so nothing a handler does (a throw
     // included) can leave it behind to be parsed and delivered again on the next read.
     while (this._received.length > 0) {
-      // The header first: its announced length is refused before a single body byte is waited for or buffered
+      // The header first: every rule it can decide is enforced before a single body byte is waited for or buffered
       const header = this._readFrameHeader();
       if (!header) return;
-      if (this._announcesTooMuch(header.opcode, header.payloadLength)) {
+      const violation = this._headerViolation(header);
+      if (violation === 'tooLarge') {
         this._rejectTooLarge();
+        return;
+      }
+      if (violation) {
+        this.close(wsCloseCode.protocolError, violation);
+        this._destroySocket();
         return;
       }
 
@@ -220,13 +226,6 @@ export class WebSocketConnection<T = unknown> {
       const result = _parseFrame(this._received.first(frameSize), 0);
       this._received.consume(frameSize);
       if (!result) return; // unreachable: the whole frame is here
-
-      // RFC 6455 §5.1: server MUST close if client frame is not masked
-      if (!result.frame.masked) {
-        this.close(wsCloseCode.protocolError, 'Client frames must be masked');
-        this._destroySocket();
-        return;
-      }
 
       this._handleFrame(result.frame);
 
@@ -249,15 +248,39 @@ export class WebSocketConnection<T = unknown> {
   }
 
   /**
-   * True when a frame's announced length alone breaks maxPayloadLength: a data frame longer than the limit, or a
-   * continuation that would take the fragmented message in progress past it. Control frames are capped at 125 bytes
-   * separately in _handleFrame.
+   * The one validator every frame header goes through, whatever its opcode, before its body is buffered. Returns the
+   * 1002 reason for a protocol violation, `'tooLarge'` for a message over maxPayloadLength (1009), or null.
+   * RFC 6455: client frames are masked (§5.1); reserved opcodes are refused (§5.2); control frames are final, at most
+   * 125 bytes and without RSV1 (§5.5); a continuation only continues a fragmented message, and no data frame starts
+   * inside one (§5.4); RSV1 marks a compressed message's first frame only (RFC 7692 §6).
    */
-  private _announcesTooMuch(opcode: number, payloadLength: number): boolean {
-    if (opcode >= 0x8) return false;
+  private _headerViolation(header: NonNullable<ReturnType<typeof _parseFrameHeader>>): string | 'tooLarge' | null {
+    if (!header.masked) return 'Client frames must be masked';
     const max = this._options.maxPayloadLength;
-    if (payloadLength > max) return true;
-    return opcode === wsOpcode.continuation && this._fragmentBytes + payloadLength > max;
+    const fragmentInProgress = this._fragmentOpcode !== 0;
+
+    const kind = _frameKind(header.opcode);
+    switch (kind) {
+      case 'reserved':
+        return `Reserved opcode 0x${header.opcode.toString(16)}`;
+      case 'control':
+        if (header.rsv1) return 'RSV1 must not be set on control frames';
+        if (!header.fin) return 'Control frames must not be fragmented';
+        return header.payloadLength > 125 ? 'Control frame payload exceeds 125 bytes' : null;
+      case 'continuation':
+        if (!fragmentInProgress) return 'Unexpected continuation frame';
+        if (header.rsv1) return 'RSV1 must not be set on continuation frames';
+        return this._fragmentBytes + header.payloadLength > max ? 'tooLarge' : null;
+      case 'data':
+        if (fragmentInProgress) return 'Expected a continuation frame';
+        if (header.rsv1 && !this._options.compression.enabled) return 'RSV1 set but no compression negotiated';
+        return header.payloadLength > max ? 'tooLarge' : null;
+      default: {
+        // A new kind fails to compile here instead of skipping validation
+        const unhandled: never = kind;
+        return unhandled;
+      }
+    }
   }
 
   private _onSocketClose(): void {
@@ -292,56 +315,17 @@ export class WebSocketConnection<T = unknown> {
   // Frame handling
   // ============================================
 
-  // eslint-disable-next-line max-statements
   private _handleFrame(frame: { fin: boolean; rsv1: boolean; opcode: number; payload: Buffer }): void {
     const { fin, rsv1, opcode, payload } = frame;
 
-    // Control frames (opcode >= 0x8) — handle immediately, even mid-fragmentation
-    if (opcode >= 0x8) {
-      if (rsv1) {
-        this.close(wsCloseCode.protocolError, 'RSV1 must not be set on control frames');
-        this._destroySocket();
-        return;
-      }
-      // RFC 6455 §5.5: control frames MUST NOT be fragmented and payload ≤125 bytes
-      if (!fin) {
-        this.close(wsCloseCode.protocolError, 'Control frames must not be fragmented');
-        this._destroySocket();
-        return;
-      }
-      if (payload.length > 125) {
-        this.close(wsCloseCode.protocolError, 'Control frame payload exceeds 125 bytes');
-        this._destroySocket();
-        return;
-      }
+    // Every protocol rule was enforced on the header (_headerViolation); this only acts on a valid frame.
+    // Control frames are handled immediately, even mid-fragmentation.
+    if (_frameKind(opcode) === 'control') {
       this._handleControlFrame(opcode, payload);
       return;
     }
 
-    // RSV1 on data frame without compression negotiated = protocol error
-    if (rsv1 && !this._options.compression.enabled) {
-      this.close(wsCloseCode.protocolError, 'RSV1 set but no compression negotiated');
-      this._destroySocket();
-      return;
-    }
-
-    // RFC 6455 §5.4: a continuation only continues a fragmented message, and no other data frame may start until that
-    // message's final fragment (control frames may interleave; they returned above)
-    const fragmentInProgress = this._fragmentOpcode !== 0;
-    if (opcode === wsOpcode.continuation ? !fragmentInProgress : fragmentInProgress) {
-      this.close(wsCloseCode.protocolError, fragmentInProgress ? 'Expected a continuation frame' : 'Unexpected continuation frame');
-      this._destroySocket();
-      return;
-    }
-
-    // Data frames — handle fragmentation
     if (opcode === wsOpcode.continuation) {
-      if (rsv1) {
-        this.close(wsCloseCode.protocolError, 'RSV1 must not be set on continuation frames');
-        this._destroySocket();
-        return;
-      }
-      // Already held to maxPayloadLength from the announced length in _onSocketData
       this._fragmentBytes += payload.length;
       this._fragmentBuffers.push(payload);
 

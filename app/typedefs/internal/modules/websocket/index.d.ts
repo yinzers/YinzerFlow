@@ -29,6 +29,11 @@ export interface InternalWebSocketFrame {
 }
 
 /**
+ * What an opcode is (RFC 6455 §5.2): 0x0 continuation, 0x1-0x2 data, 0x8-0xA control, everything else reserved.
+ */
+export type InternalWebSocketFrameKind = 'continuation' | 'control' | 'data' | 'reserved';
+
+/**
  * Result of attempting to parse a frame from a buffer.
  * `null` means the buffer doesn't contain a complete frame yet — need more data.
  */

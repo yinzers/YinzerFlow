@@ -353,6 +353,44 @@ describe('WebSocketConnection', () => {
       expect(messageFn).not.toHaveBeenCalled();
     });
 
+    // Confirming pass (0.11.0): the length check skipped every opcode >= 0x8, and the 125-byte control cap ran only after
+    // the body was buffered, so a ping (or reserved opcode 0xB) announcing 2 GB buffered 200 MB with no close. Every
+    // opcode now goes through one header validator. Tier: High (untrusted input size bound and framing).
+    it.each([
+      ['a ping announcing 2^31 bytes', header(2 ** 31, wsOpcode.ping)],
+      ['a close announcing 2^31 bytes', header(2 ** 31, wsOpcode.close)],
+      ['a pong announcing 2^31 bytes', header(2 ** 31, wsOpcode.pong)],
+      ['a ping announcing 126 bytes', header(126, wsOpcode.ping)],
+      ['a non-final ping', header(0, wsOpcode.ping, false)],
+      ['reserved data opcode 0x3', header(0, 0x3)],
+      ['reserved control opcode 0xB', header(0, 0xb)],
+      ['reserved control opcode 0xB announcing 2^31 bytes', header(2 ** 31, 0xb)],
+      ['reserved opcode 0xF', header(0, 0xf)],
+    ])('should close 1002 from the header on %s, before any body', (_label, head) => {
+      const messageFn = mock(() => {});
+      const { socket } = createConnection({ message: messageFn }, { ...defaultOptions, maxPayloadLength: limit });
+
+      socket.emit('data', head);
+      expect(socket.destroyed).toBe(true);
+      const writesAtClose = socket.written.length;
+      socket.emit('data', Buffer.alloc(65_536, 0x41)); // streamed body: ignored, nothing more is written or buffered
+
+      expect(socket.written.length).toBe(writesAtClose);
+      const closeFrame = socket.written.find((frame) => (frame[0]! & 0x0f) === wsOpcode.close);
+      expect(closeFrame?.readUInt16BE(2)).toBe(wsCloseCode.protocolError);
+      expect(messageFn).not.toHaveBeenCalled();
+    });
+
+    it('should still answer a 125-byte ping', () => {
+      const { socket } = createConnection({}, { ...defaultOptions, maxPayloadLength: limit });
+
+      socket.emit('data', buildClientFrame(wsOpcode.ping, Buffer.alloc(125, 0x41)));
+
+      const pong = socket.written.find((frame) => (frame[0]! & 0x0f) === wsOpcode.pong);
+      expect(pong?.length).toBe(2 + 125);
+      expect(socket.destroyed).toBe(false);
+    });
+
     it('should still deliver a frame at the limit that arrives one byte at a time', () => {
       const messageFn = mock(() => {});
       const { socket } = createConnection({ message: messageFn }, { ...defaultOptions, maxPayloadLength: limit });
