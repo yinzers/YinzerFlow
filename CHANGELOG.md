@@ -2,46 +2,76 @@
 
 ## [0.10.0] - 2026-10-29
 
+Security release for WebSockets and global hooks. Read the breaking changes before upgrading; the behavior-change notes are in `docs/core/websockets.md` and `docs/core/core-concepts.md`.
+
 ### Breaking Changes
 
-- **WebSocket upgrade rejection now requires explicit API** — hooks that answer an upgrade with a 2xx status now refuse it with 403 instead of accepting it. Use the new `rejectUpgrade()` method to explicitly reject upgrades with any 4xx/5xx status.
-  ```javascript
-  // Old: returning a 2xx from a hook would accept the upgrade
-  // New: must explicitly reject
-  ctx.rejectUpgrade(403, 'Forbidden');
-  ```
-  (ab541a0)
+- **Global hooks run on WebSocket upgrades** — `beforeRouting` and `beforeAll` now run on every upgrade, with the same `routesToInclude`/`routesToExclude` matching as HTTP. Before, a ws route connected even when the same app's auth hook answered REST with 401. A hook that returns a value or sets a non-2xx status refuses the upgrade with that HTTP response; a hook answering 2xx on an upgrade is turned into a 403.
+- **Global hooks run on unmatched routes** — `beforeAll` now runs before the 404 and `afterAll` runs on 404s, as in Express and Fastify, so an auth hook answers 401 on made-up paths instead of revealing which routes exist. Route params are empty on a miss; hooks must not assume a matched route.
+- **The global rate limiter counts WebSocket upgrades** against the same budget and key as HTTP.
+- **Unmatched upgrades are answered by `onNotFound`** — An SPA-fallback `onNotFound` that returns 200 HTML now answers them too; check for the `Upgrade` header there.
+- **Upgrade refusals share one response path** — Origin 403, the per-IP cap 429 (now `429 Too Many Requests`), `false` and `rejectUpgrade()` refusals run `afterAll` and carry the default headers. Origin and per-IP cap checks run after the global hooks; an IP already at its cap is refused before any hook runs.
+- **`allowedOrigins` allows a missing Origin by default** — Browsers always send Origin on WebSocket handshakes, so a missing one is a non-browser client. Set `websocket.allowMissingOrigin: false` to refuse it.
+- **WebSocket handler errors** — A throw in `open`, `message`, `close` or `drain` goes to the route's `error` handler (or is logged once), and the connection stays open. Throws during an upgrade go to the app's `onError` and answer 500.
+- **`publish()` counts only subscribers that took the message** (sent or buffered).
+- **Strict request lines** — Requests must be `METHOD SP target SP HTTP/1.0|1.1` with single spaces; anything else, including empty or non-HTTP requests, gets 400. The response status line is always `HTTP/1.1`.
+- **HEAD** — A hook's response to a HEAD request has no body, and HEAD to an unmatched path gets its 404 with no body.
 
-- **WebSocket send() return value changed** — `send()` now returns a status string ('sent' | 'buffered' | 'dropped') instead of a boolean, allowing callers to distinguish between successful sends, buffered messages, and dropped messages when the socket is destroyed. (37f81a2)
+```typescript
+import { YinzerFlow, rejectUpgrade } from 'yinzerflow';
+
+const app = new YinzerFlow({ port: 3000 });
+
+// One auth hook now guards REST, 404s and WebSocket upgrades alike
+app.beforeAll([
+  async (ctx) => {
+    const user = await sessions.find(ctx.request.headers.authorization);
+    if (!user) {
+      ctx.response.setStatusCode(401);
+      return { error: 'Unauthorized' };
+    }
+    ctx.state.userId = user.id;
+  },
+]);
+
+app.ws<{ userId: string }>('/feed', {
+  upgrade(req) {
+    if (!req.state.userId) return rejectUpgrade(401, { error: 'Sign in again' });
+    return { userId: String(req.state.userId) }; // becomes ws.data
+  },
+  message(ws, data) {
+    const status = ws.send(`echo for ${ws.data.userId}: ${data}`); // 'sent' | 'buffered' | 'dropped'
+  },
+});
+```
 
 ### Features
 
-- **WebSocket hooks receive global state** — `upgrade()` now receives `req.state` populated from global `beforeAll` hooks, enabling consistent state sharing across HTTP and WebSocket connections. (d09761c)
-- **Explicit WebSocket upgrade rejection** — new `rejectUpgrade(status, reason?)` method allows hooks to reject upgrades with any 4xx/5xx status code. (67eba50)
-- **WebSocket message filtering in hooks** — `wsBeforeMessage` hooks can now drop a message by returning `false`, giving applications fine-grained control over incoming messages. (a7b1365)
+- **`rejectUpgrade(status, body?)`** — Return it from `upgrade()` to refuse with any 4xx/5xx status, such as a 401. Returning `false` still means 403.
+- **`req.state` on the upgrade request** — The same `ctx.state` the global hooks wrote, so `upgrade()` can carry it into `ws.data`.
+- **`send()` returns a status** — `'sent' | 'buffered' | 'dropped'` (exported as `wsSendStatus`), where it used to return nothing, so dropped messages are detectable.
+- **`wsBeforeMessage` can drop a message** by returning `false`; call `ws.close(code, reason)` first to also close. A throw is still an error.
+- **`websocket.allowMissingOrigin`** option (default `true`).
 
 ### Bug Fixes
 
-- **HTTP request parsing now RFC 9112 compliant** — empty lines before the request line are now ignored per RFC 9112 2.2 specification. (5139e54)
-- **Strict HTTP request-line parsing** — request-line parser is now strict and never echoes the client's HTTP version back, preventing potential version confusion attacks. (364a693)
-- **WebSocket per-IP slot leak on mid-upgrade disconnect** — fixed a resource leak where clients disconnecting during the upgrade handshake would not release their per-IP capacity slot. (4086954)
-- **WebSocket capacity enforcement timing** — IP capacity now enforced before running app code, preventing unnecessary processing when a client is already at its connection cap. (1d96a0d)
-- **WebSocket upgrade refusal consistency** — all upgrade refusals now go through the context response object, ensuring uniform error handling. (7b60c15)
-- **WebSocket upgrade error responses** — upgrade errors now correctly return 500, and malformed upgrades return 400. (7832551)
-- **Global HTTP hooks on upgrades** — `beforeAll` and `afterAll` hooks and rate limiter now run on WebSocket upgrades, not just HTTP requests. (8be8f5d)
-- **Hooks on unmatched routes** — `beforeAll` and `afterAll` hooks now correctly execute even for unmatched routes. (99a3089)
-- **HEAD request body stripping in hooks** — hook responses to HEAD requests now correctly strip the body. (04bc9a8)
-- **WebSocket send() on destroyed socket** — calling `send()` on a destroyed socket now reports 'dropped' instead of failing silently. (d41b510)
-- **WebSocket handler crash recovery** — a throwing message handler no longer wedges the connection; subsequent messages are processed normally. (584d26d)
+- **Throwing message handler wedged the connection** — The failing frame was redelivered on every read, so later messages never arrived. Frames are now consumed before the handler runs.
+- **A throw inside `upgrade()` dropped the socket** with no response; it now answers 500, and a malformed upgrade answers 400.
+- **Per-IP slot leak** — A client that disconnected while an async hook or `upgrade()` was running still got a 101 and kept its connection slot until restart.
+- **Response header injection** — The status line echoed the client's protocol token, so a bare LF in the request line could inject a header into the response.
+- **Hooks and the WebSocket router parsed the request line differently** (`GET\t/ws`); there is now one parser.
+- **`send()` on a destroyed socket** reports `'dropped'` instead of `'buffered'`.
+- **Empty lines before the request line are ignored** (RFC 9112 §2.2) instead of answering 400.
+- **Header-parse error logs** sanitize client bytes, at debug level for upgrades.
 
-### Security
+### Notes
 
-- **Header parse error log sanitization** — client bytes in header-parse error logs are now sanitized to prevent log injection attacks across HTTP and WebSocket upgrades. (a911d0e)
-- **Missing Origin header support** — added `allowMissingOrigin` option to explicitly control whether upgrades with a missing Origin header are allowed, improving security posture for Origin validation. (b5d2dad)
+- The idle timeout does not drop listen-only clients: the heartbeat is on by default and a client's pong resets the idle timer.
+- An async `wsBeforeMessage` hook can reorder messages; this is now documented.
 
 ### Internal
 
-- **Publish failure handling** — missing executables in publish operations are now treated as failed runs rather than crashes, improving reliability of the release process. (0589f92)
+- The release script treats a missing executable as a failed run instead of crashing after a successful publish.
 
 ## [0.9.0] - 2026-10-28
 
