@@ -20,24 +20,21 @@ export const _unmask = (payload: Buffer, maskKey: Buffer): void => {
   }
 };
 
+const _twoTo32 = 4_294_967_296;
+
+/** The longest a frame header can be: 2 bytes, an 8-byte extended length and a 4-byte mask key. */
+export const _maxFrameHeaderSize = 14;
+
 /**
- * Attempt to parse one WebSocket frame from a buffer starting at `offset`.
- *
- * Returns `null` if the buffer doesn't contain a complete frame (need more TCP data).
- * Otherwise returns the decoded frame and the number of bytes consumed so callers
- * can advance their offset and parse the next frame in the same buffer.
- *
- * Frame wire format (RFC 6455 §5.2):
- * ```
- * Byte 0: [FIN:1][RSV1-3:3][OPCODE:4]
- * Byte 1: [MASK:1][PAYLOAD_LEN:7]
- *   if PAYLOAD_LEN == 126 → next 2 bytes are uint16 length
- *   if PAYLOAD_LEN == 127 → next 8 bytes are uint64 length
- * If MASK == 1 → next 4 bytes are masking key
- * Remaining bytes: payload data
- * ```
+ * Read a frame header (everything before the payload) from `buffer` at `offset`, or return `null` until enough of it has
+ * arrived. The announced payload length is known here, before a single payload byte is buffered, so a caller can refuse
+ * an oversized frame without waiting for its body. A 64-bit length is read whole (it may exceed 4 GB) for the caller to
+ * compare with its limit. `headerSize` includes the mask key.
  */
-export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketParseResult => {
+export const _parseFrameHeader = (
+  buffer: Buffer,
+  offset: number,
+): { fin: boolean; rsv1: boolean; opcode: number; masked: boolean; payloadLength: number; headerSize: number } | null => {
   const available = buffer.length - offset;
 
   // Need at least 2 bytes for the minimal frame header
@@ -56,29 +53,46 @@ export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketPa
   let payloadLength = byte1 & 0x7f;
   let headerSize = 2;
 
-  // Extended payload length: 16-bit
   if (payloadLength === 126) {
     if (available < 4) return null;
     payloadLength = buffer.readUInt16BE(offset + 2);
     headerSize = 4;
-  }
-  // Extended payload length: 64-bit
-  else if (payloadLength === 127) {
+  } else if (payloadLength === 127) {
     if (available < 10) return null;
-    // Read as two 32-bit values — upper 32 bits must be zero (we don't support >4GB frames)
     const upper = buffer.readUInt32BE(offset + 2);
-    if (upper !== 0) {
-      throw new Error('WebSocket frame payload too large (>4GB not supported)');
-    }
-    payloadLength = buffer.readUInt32BE(offset + 6);
+    const lower = buffer.readUInt32BE(offset + 6);
+    const upperBytes = upper * _twoTo32;
+    payloadLength = upperBytes + lower;
     headerSize = 10;
   }
 
-  // Add masking key size if present
-  if (masked) {
-    headerSize += 4;
-  }
+  if (masked) headerSize += 4;
 
+  return { fin, rsv1, opcode, masked, payloadLength, headerSize };
+};
+
+/**
+ * Attempt to parse one WebSocket frame from a buffer starting at `offset`.
+ *
+ * Returns `null` if the buffer doesn't contain a complete frame (need more TCP data).
+ * Otherwise returns the decoded frame and the number of bytes consumed so callers
+ * can advance their offset and parse the next frame in the same buffer.
+ *
+ * Frame wire format (RFC 6455 §5.2):
+ * ```
+ * Byte 0: [FIN:1][RSV1-3:3][OPCODE:4]
+ * Byte 1: [MASK:1][PAYLOAD_LEN:7]
+ *   if PAYLOAD_LEN == 126 → next 2 bytes are uint16 length
+ *   if PAYLOAD_LEN == 127 → next 8 bytes are uint64 length
+ * If MASK == 1 → next 4 bytes are masking key
+ * Remaining bytes: payload data
+ * ```
+ */
+export const _parseFrame = (buffer: Buffer, offset: number): InternalWebSocketParseResult => {
+  const header = _parseFrameHeader(buffer, offset);
+  if (!header) return null;
+  const { fin, rsv1, opcode, masked, payloadLength, headerSize } = header;
+  const available = buffer.length - offset;
   const totalFrameSize = headerSize + payloadLength;
 
   // Not enough data for the full frame yet

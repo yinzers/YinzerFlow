@@ -1,5 +1,5 @@
 import type { Socket } from 'net';
-import { _encodeCloseFrame, _encodeFrame, _parseFrame } from './WebSocketFrame.ts';
+import { _encodeCloseFrame, _encodeFrame, _maxFrameHeaderSize, _parseFrame, _parseFrameHeader } from './WebSocketFrame.ts';
 import { _compressPayload, _decompressPayload, _inflateWindowBits } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
 import { wsCloseCode, wsOpcode, wsReadyState, wsSendStatus } from '@constants/websocket.ts';
@@ -50,7 +50,9 @@ export class WebSocketConnection<T = unknown> {
   private readonly _remoteAddress: string;
 
   // TCP chunk → frame reassembly
-  private _receiveBuffer = Buffer.alloc(0);
+  /** Received bytes not yet parsed, kept as the chunks they arrived in and joined only once a whole frame is here */
+  private _receiveChunks: Array<Buffer> = [];
+  private _receivedBytes = 0;
 
   // WebSocket message fragment reassembly
   private _fragmentBuffers: Array<Buffer> = [];
@@ -200,35 +202,83 @@ export class WebSocketConnection<T = unknown> {
     this._isAlive = true;
     this._resetIdleTimeout();
 
-    // Append chunk to receive buffer
-    this._receiveBuffer = this._receiveBuffer.length === 0 ? Buffer.from(chunk) : Buffer.concat([this._receiveBuffer, chunk]);
+    this._receiveChunks.push(chunk);
+    this._receivedBytes += chunk.length;
 
-    // Parse all complete frames in the buffer. Each frame leaves the buffer BEFORE it is acted on, so nothing a handler
-    // does (a throw included) can leave it behind to be parsed and delivered again on the next read.
-    while (this._receiveBuffer.length > 0) {
-      const result = _parseFrame(this._receiveBuffer, 0);
-      if (result === null) break;
+    // Parse all complete frames. Each frame leaves the buffer BEFORE it is acted on, so nothing a handler does (a throw
+    // included) can leave it behind to be parsed and delivered again on the next read.
+    while (this._receivedBytes > 0) {
+      // The header first: its announced length is refused before a single body byte is waited for or buffered
+      const header = _parseFrameHeader(this._joinFirst(Math.min(this._receivedBytes, _maxFrameHeaderSize)), 0);
+      if (!header) return;
+      if (this._announcesTooMuch(header.opcode, header.payloadLength)) {
+        this._rejectTooLarge();
+        return;
+      }
 
-      const { frame, bytesConsumed } = result;
-      this._receiveBuffer = this._receiveBuffer.subarray(bytesConsumed);
+      const frameSize = header.headerSize + header.payloadLength;
+      if (this._receivedBytes < frameSize) return;
+      const result = _parseFrame(this._joinFirst(frameSize), 0);
+      this._consumeReceived(frameSize);
+      if (!result) return; // unreachable: the whole frame is here
 
       // RFC 6455 §5.1: server MUST close if client frame is not masked
-      if (!frame.masked) {
+      if (!result.frame.masked) {
         this.close(wsCloseCode.protocolError, 'Client frames must be masked');
         this._destroySocket();
         return;
       }
 
-      // Max payload enforcement — check before processing
-      if (frame.payloadLength > this._options.maxPayloadLength) {
-        this._rejectTooLarge();
-        return;
-      }
-
-      this._handleFrame(frame);
+      this._handleFrame(result.frame);
 
       if (this._readyState === wsReadyState.closed) return;
     }
+  }
+
+  /**
+   * True when a frame's announced length alone breaks maxPayloadLength: a data frame longer than the limit, or a
+   * continuation that would take the fragmented message in progress past it. Control frames are capped at 125 bytes
+   * separately in _handleFrame.
+   */
+  private _announcesTooMuch(opcode: number, payloadLength: number): boolean {
+    if (opcode >= 0x8) return false;
+    const max = this._options.maxPayloadLength;
+    if (payloadLength > max) return true;
+    return opcode === wsOpcode.continuation && this._fragmentBytes + payloadLength > max;
+  }
+
+  /** The first `length` received bytes as one buffer, joining leading chunks only when the first one is shorter. */
+  private _joinFirst(length: number): Buffer {
+    const [first] = this._receiveChunks;
+    if (first && first.length >= length) return first;
+
+    let joinedLength = 0;
+    let count = 0;
+    for (const chunk of this._receiveChunks) {
+      if (joinedLength >= length) break;
+      joinedLength += chunk.length;
+      count++;
+    }
+    const joined = Buffer.concat(this._receiveChunks.slice(0, count), joinedLength);
+    this._receiveChunks.splice(0, count, joined);
+    return joined;
+  }
+
+  /** Drop `length` bytes from the front of the received chunks. */
+  private _consumeReceived(length: number): void {
+    let remaining = length;
+    let [first] = this._receiveChunks;
+    while (remaining > 0 && first) {
+      if (first.length <= remaining) {
+        remaining -= first.length;
+        this._receiveChunks.shift();
+        [first] = this._receiveChunks;
+      } else {
+        this._receiveChunks[0] = first.subarray(remaining);
+        remaining = 0;
+      }
+    }
+    this._receivedBytes -= length;
   }
 
   private _onSocketClose(): void {
@@ -303,11 +353,8 @@ export class WebSocketConnection<T = unknown> {
         this._destroySocket();
         return;
       }
+      // Already held to maxPayloadLength from the announced length in _onSocketData
       this._fragmentBytes += payload.length;
-      if (this._fragmentBytes > this._options.maxPayloadLength) {
-        this._rejectTooLarge();
-        return;
-      }
       this._fragmentBuffers.push(payload);
 
       if (fin) {

@@ -274,6 +274,59 @@ describe('WebSocketConnection', () => {
     });
   });
 
+  // Security review (0.11.0): _parseFrame returned null until the whole frame had arrived and the length check ran only
+  // after that, so a header announcing 2 GB followed by a slow body kept the socket open and buffered ~200 MB under a
+  // 1 MB limit. The announced length is now refused as soon as it is readable, before any body byte is buffered.
+  // Tier: High (untrusted input size bound).
+  describe('announced length', () => {
+    const limit = 100;
+    // A masked text-frame header with no mask key or body, announcing `length` in the shortest encoding
+    const header = (length: number, opcode: number = wsOpcode.text, fin = true): Buffer => {
+      const byte0 = (fin ? 0x80 : 0) | opcode;
+      if (length < 126) return Buffer.from([byte0, 0x80 | length]);
+      if (length < 65_536) return Buffer.from([byte0, 0x80 | 126, length >> 8, length & 0xff]);
+      const head = Buffer.alloc(10);
+      head[0] = byte0;
+      head[1] = 0x80 | 127;
+      const twoTo32 = 4_294_967_296;
+      head.writeUInt32BE(Math.floor(length / twoTo32), 2);
+      head.writeUInt32BE(length % twoTo32, 6);
+      return head;
+    };
+    const byteByByte = (bytes: Buffer): Array<Buffer> => [...bytes].map((byte) => Buffer.from([byte]));
+
+    it.each([
+      ['a 2 GB header with no body', [header(2 ** 31)]],
+      ['a 16-bit length one over the limit with no body', [header(limit + 1)]],
+      ['a 64-bit length beyond 4 GB', [header(2 ** 33)]],
+      ['a too-large header arriving one byte at a time', byteByByte(header(2 ** 31))],
+      [
+        'a continuation whose length would take the fragmented total over the limit',
+        [buildClientFrame(wsOpcode.text, Buffer.alloc(60, 0x41), false), header(41, wsOpcode.continuation)],
+      ],
+    ])('should close 1009 on %s without waiting for the body', (_label, chunks) => {
+      const messageFn = mock(() => {});
+      const { socket } = createConnection({ message: messageFn }, { ...defaultOptions, maxPayloadLength: limit });
+
+      for (const chunk of chunks) socket.emit('data', chunk);
+
+      expect(socket.destroyed).toBe(true);
+      const closeFrame = socket.written.find((frame) => (frame[0]! & 0x0f) === wsOpcode.close);
+      expect(closeFrame?.readUInt16BE(2)).toBe(wsCloseCode.tooLarge);
+      expect(messageFn).not.toHaveBeenCalled();
+    });
+
+    it('should still deliver a frame at the limit that arrives one byte at a time', () => {
+      const messageFn = mock(() => {});
+      const { socket } = createConnection({ message: messageFn }, { ...defaultOptions, maxPayloadLength: limit });
+
+      for (const chunk of byteByByte(buildClientFrame(wsOpcode.text, Buffer.alloc(limit, 0x41)))) socket.emit('data', chunk);
+
+      expect(messageFn).toHaveBeenCalledTimes(1);
+      expect(socket.destroyed).toBe(false);
+    });
+  });
+
   // ============================================
   // Backpressure
   // ============================================
