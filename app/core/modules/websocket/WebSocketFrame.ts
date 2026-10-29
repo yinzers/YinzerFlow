@@ -2,7 +2,7 @@
   no-bitwise,
   @typescript-eslint/no-non-null-assertion
 */
-import { wsOpcode } from '@constants/websocket.ts';
+import { wsCloseCode, wsOpcode } from '@constants/websocket.ts';
 import type { InternalWebSocketFrameKind, InternalWebSocketParseResult } from '@typedefs/internal/modules/websocket/index.js';
 
 // Pre-computed constants to avoid repeated property lookups in hot path
@@ -177,6 +177,36 @@ export const _encodeFrame = (opcode: number, payload: Buffer, fin = true, rsv1 =
 
   return frame;
 };
+
+const _strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+
+/**
+ * A close code a peer may send (RFC 6455 §7.4): 1000-1003 and 1007-1014 from the IANA registry, and 3000-4999 for
+ * libraries and applications. 1004-1006 and 1015 are reserved and never sent; everything else is unassigned.
+ */
+export const _isSendableCloseCode = (code: number): boolean =>
+  (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1014) || (code >= 3000 && code <= 4999);
+
+/**
+ * Read a received close frame's body (RFC 6455 §5.5.1): empty, or a 2-byte code followed by a UTF-8 reason.
+ * Returns the code and reason (code 1005 "no status" for an empty body, which is reported to the app and never sent),
+ * or the close code to answer a malformed body with: 1002 for a 1-byte body or a code that may not be sent, 1007 for a
+ * reason that isn't valid UTF-8.
+ */
+export const _parseClosePayload = (payload: Buffer): { code: number; reason: string } | { violation: number; message: string } => {
+  if (payload.length === 0) return { code: wsCloseCode.noStatus, reason: '' };
+  if (payload.length === 1) return { violation: wsCloseCode.protocolError, message: 'Close frame body must be empty or at least 2 bytes' };
+  const code = payload.readUInt16BE(0);
+  if (!_isSendableCloseCode(code)) return { violation: wsCloseCode.protocolError, message: `Invalid close code ${code}` };
+  try {
+    return { code, reason: _strictUtf8.decode(payload.subarray(2)) };
+  } catch {
+    return { violation: wsCloseCode.invalidPayload, message: 'Close reason is not valid UTF-8' };
+  }
+};
+
+/** An empty close frame: the answer to an empty close, since 1005 may not be sent (RFC 6455 §7.4.1). */
+export const _encodeEmptyCloseFrame = (): Buffer => Buffer.from([0x80 | OPCODE_CLOSE, 0]);
 
 /**
  * Encode a close frame with a status code and optional reason string.

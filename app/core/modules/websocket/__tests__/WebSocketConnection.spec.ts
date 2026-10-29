@@ -145,6 +145,45 @@ describe('WebSocketConnection', () => {
   });
 
   describe('close handshake', () => {
+    // Security review (0.11.0): a client's close frame was echoed whatever it held, so a 1-byte body, a reserved or
+    // unregistered code (1005, 1006, 999, 5000) or a reason that isn't UTF-8 went back on the wire, and an empty close
+    // was answered with code 1005, which RFC 6455 §7.4.1 forbids sending. Tier: High (untrusted input, protocol framing).
+    const closeBody = (code: number, reason: Buffer = Buffer.alloc(0)): Buffer => {
+      const head = Buffer.alloc(2);
+      head.writeUInt16BE(code, 0);
+      return Buffer.concat([head, reason]);
+    };
+    it.each([
+      ['an empty close', Buffer.alloc(0), 'empty', wsCloseCode.noStatus],
+      ['a 1-byte body', Buffer.from([0x03]), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['code 999', closeBody(999), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['reserved code 1004', closeBody(1004), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['reserved code 1005', closeBody(1005), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['reserved code 1006', closeBody(1006), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['reserved code 1015', closeBody(1015), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['code 2999', closeBody(2999), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['code 5000', closeBody(5000), wsCloseCode.protocolError, wsCloseCode.abnormal],
+      ['a reason that is not UTF-8', closeBody(1000, Buffer.from([0xff, 0xfe])), wsCloseCode.invalidPayload, wsCloseCode.abnormal],
+      ['code 1000', closeBody(1000), 1000, 1000],
+      ['code 1003', closeBody(1003), 1003, 1003],
+      ['code 1007', closeBody(1007), 1007, 1007],
+      ['code 1014', closeBody(1014), 1014, 1014],
+      ['code 3000', closeBody(3000), 3000, 3000],
+      ['code 4999 with a UTF-8 reason', closeBody(4999, Buffer.from('bye é')), 4999, 4999],
+    ])('should answer %s', (_label, payload, sentCode, handlerCode) => {
+      const closeFn = mock((_ws: unknown, _code: number) => {});
+      const { socket } = createConnection({ close: closeFn });
+
+      socket.emit('data', buildClientFrame(wsOpcode.close, payload));
+
+      const closeFrame = socket.written.find((frame) => (frame[0]! & 0x0f) === wsOpcode.close);
+      const sentLength = closeFrame ? closeFrame[1]! & 0x7f : -1;
+      if (sentCode === 'empty') expect(sentLength).toBe(0);
+      else expect(closeFrame?.readUInt16BE(2)).toBe(Number(sentCode));
+      expect(socket.destroyed).toBe(true);
+      expect(closeFn.mock.calls[0]?.[1]).toBe(handlerCode);
+    });
+
     it('should echo close frame when client initiates close', () => {
       const closeFn = mock(() => {});
       const { socket } = createConnection({ close: closeFn });

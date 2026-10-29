@@ -1,5 +1,14 @@
 import type { Socket } from 'net';
-import { _encodeCloseFrame, _encodeFrame, _frameKind, _maxFrameHeaderSize, _parseFrame, _parseFrameHeader } from './WebSocketFrame.ts';
+import {
+  _encodeCloseFrame,
+  _encodeEmptyCloseFrame,
+  _encodeFrame,
+  _frameKind,
+  _maxFrameHeaderSize,
+  _parseClosePayload,
+  _parseFrame,
+  _parseFrameHeader,
+} from './WebSocketFrame.ts';
 import { WebSocketReceiveBuffer } from './WebSocketReceiveBuffer.ts';
 import { _compressPayload, _decompressPayload, _inflateWindowBits } from './WebSocketCompression.ts';
 import type { WebSocketChannelManager } from './WebSocketChannelManager.ts';
@@ -368,13 +377,18 @@ export class WebSocketConnection<T = unknown> {
     }
 
     if (opcode === wsOpcode.close) {
-      const code = payload.length >= 2 ? payload.readUInt16BE(0) : wsCloseCode.noStatus;
-      const reason = payload.length > 2 ? payload.subarray(2).toString('utf8') : '';
+      const parsed = _parseClosePayload(payload);
+      if ('violation' in parsed) {
+        this.close(parsed.violation, parsed.message);
+        this._destroySocket();
+        return;
+      }
+      const { code, reason } = parsed;
 
       if (this._readyState === wsReadyState.open) {
-        // Client initiated close — echo the close frame back
+        // Client initiated close — echo the close frame back (an empty one for an empty close: 1005 is never sent)
         this._readyState = wsReadyState.closed;
-        const echoFrame = _encodeCloseFrame(code, reason);
+        const echoFrame = code === wsCloseCode.noStatus ? _encodeEmptyCloseFrame() : _encodeCloseFrame(code, reason);
         this._socket.write(echoFrame);
         this._destroySocket();
         this._handlers.close?.(this._asPublic(), code, reason);
