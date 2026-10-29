@@ -4,7 +4,7 @@ import { inferContentType } from '@core/execution/utils/inferContentType.ts';
 import { mapStatusCodeToMessage } from '@core/execution/utils/mapStatusCodeToMessage.ts';
 import { filterAndValidateHeaders } from '@core/execution/utils/validateResponseHeaders.ts';
 import { httpEncoding, httpStatus, httpStatusCode } from '@constants/http.ts';
-import type { InternalHttpEncoding, InternalHttpHeaders, InternalHttpStatus, InternalHttpStatusCode } from '@typedefs/constants/http.js';
+import type { InternalHttpEncoding, InternalHttpHeaders, InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { Request } from '@typedefs/public/Request.ts';
 import type { InternalResponseImpl } from '@typedefs/internal/InternalResponseImpl.d.ts';
 
@@ -28,7 +28,7 @@ export class ResponseImpl implements InternalResponseImpl {
   readonly _request: Request;
 
   _statusCode: InternalHttpStatusCode = httpStatusCode.ok;
-  _status: InternalHttpStatus = httpStatus.ok;
+  _status: string = httpStatus.ok;
   _headers: Partial<Record<InternalHttpHeaders, string>> = {};
   _setCookies: Array<string> = []; // Track multiple Set-Cookie headers
   _body: unknown = '';

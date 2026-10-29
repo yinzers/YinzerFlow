@@ -133,6 +133,22 @@ app.get('/api/users/:id', ({ response }) => {
 });
 ```
 
+### Status Codes
+
+`setStatusCode` takes any integer from 100 to 599. Every code in the IANA registry (plus 418) is listed in the exported `httpStatusCode` constant, offered by autocomplete, and sent with its registered reason phrase, such as `503 Service Unavailable`. Any other code in range is sent with its class's phrase (`Informational`, `Success`, `Redirection`, `Client Error`, `Server Error`), so `setStatusCode(299)` answers `299 Success`. A code outside 100 to 599, or a non-integer, throws, and the request is answered by your `onError` handler.
+
+```typescript
+import { httpStatusCode } from 'yinzerflow';
+
+app.get('/maintenance', ({ response }) => {
+  response.setStatusCode(httpStatusCode.serviceUnavailable); // 503
+  response.addHeaders({ 'Retry-After': '120' });
+  return { error: 'Back in two minutes' };
+});
+```
+
+<span style="color: #f39c12">**⚠️ Behavior change in 0.11.0:**</span> before 0.11.0 only 16 codes worked; any other (503, 418, 422 and so on) threw inside `setStatusCode` and the client got 500.
+
 ### Security Headers
 
 Automatic security headers are added to every response by default.

@@ -786,18 +786,28 @@ describe('YinzerFlow', () => {
 
   describe('Response Handling', () => {
     describe('Status Codes and Headers', () => {
-      it('should handle custom status codes', async () => {
+      // Bug (0.10.x): any code missing from the 16-entry status table threw in setStatusCode, so 503, 418 or 299 came
+      // back as 500. Tier: High (validator at the boundary of every response's status line).
+      it.each([
+        ['a listed code', httpStatusCode.created, 'HTTP/1.1 201 Created'],
+        ['503', 503, 'HTTP/1.1 503 Service Unavailable'],
+        ['418', 418, "HTTP/1.1 418 I'm a teapot"],
+        ['an unlisted 2xx gets its class phrase', 299, 'HTTP/1.1 299 Success'],
+        ['the lowest valid code', 100, 'HTTP/1.1 100 Continue'],
+        ['the highest valid code', 599, 'HTTP/1.1 599 Server Error'],
+        ['600 is refused', 600, 'HTTP/1.1 500 Internal Server Error'],
+        ['99 is refused', 99, 'HTTP/1.1 500 Internal Server Error'],
+      ])('should answer setStatusCode with %s', async (_label, statusCode, statusLine) => {
         app.get('/custom-status', (ctx) => {
-          ctx.response.setStatusCode(httpStatusCode.created);
-          return { created: true };
+          ctx.response.setStatusCode(statusCode);
+          return { done: true };
         });
 
         await app.listen();
 
         const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/custom-status'));
 
-        expect(response).toContain('201 Created');
-        expect(response).toContain('"created":true');
+        expect(response).toStartWith(statusLine);
       });
 
       it('should handle custom headers', async () => {

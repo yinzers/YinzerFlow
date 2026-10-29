@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { isValidStatusCode, mapStatusCodeToMessage } from '../mapStatusCodeToMessage.ts';
+import { mapStatusCodeToMessage } from '../mapStatusCodeToMessage.ts';
 import { httpStatusCode } from '@constants/http.ts';
 
 describe('mapStatusCodeToMessage', () => {
@@ -14,39 +14,22 @@ describe('mapStatusCodeToMessage', () => {
     }
   });
 
-  it('should throw error for unsupported status codes', () => {
-    expect(() => mapStatusCodeToMessage(100 as any)).toThrow('Unknown status code: 100');
-    expect(() => mapStatusCodeToMessage(418 as any)).toThrow('Unknown status code: 418');
-    expect(() => mapStatusCodeToMessage(999 as any)).toThrow('Unknown status code: 999');
+  // Bug (0.10.x): every code outside a 16-entry table threw, so setStatusCode(503) answered 500.
+  // Tier: High (validator). Only codes a status line can't carry throw now.
+  it.each([
+    [100, 'Continue'],
+    [418, "I'm a teapot"],
+    [503, 'Service Unavailable'],
+    [199, 'Informational'],
+    [299, 'Success'],
+    [399, 'Redirection'],
+    [499, 'Client Error'],
+    [599, 'Server Error'],
+  ])('should give %d the reason phrase %p', (statusCode, phrase) => {
+    expect(mapStatusCodeToMessage(statusCode)).toBe(phrase);
   });
 
-  it('should provide clear error messages', () => {
-    const statusCode = 123;
-    expect(() => mapStatusCodeToMessage(statusCode as any)).toThrow(`Unknown status code: ${statusCode}`);
-  });
-});
-
-describe('isValidStatusCode', () => {
-  it('should return true for all defined status codes', () => {
-    for (const code of Object.values(httpStatusCode)) {
-      expect(isValidStatusCode(code)).toBe(true);
-    }
-  });
-
-  it('should return false for undefined status codes', () => {
-    expect(isValidStatusCode(100)).toBe(false);
-    expect(isValidStatusCode(418)).toBe(false);
-    expect(isValidStatusCode(999)).toBe(false);
-    expect(isValidStatusCode(0)).toBe(false);
-    expect(isValidStatusCode(-1)).toBe(false);
-  });
-
-  it('should work as type guard', () => {
-    const statusCode = 200;
-
-    if (isValidStatusCode(statusCode)) {
-      const message = mapStatusCodeToMessage(statusCode);
-      expect(message).toBe('OK');
-    }
+  it.each([[99], [600], [0], [-1], [200.5], [Number.NaN]])('should refuse %p with a clear error', (statusCode) => {
+    expect(() => mapStatusCodeToMessage(statusCode)).toThrow('Status codes must be integers from 100 to 599');
   });
 });

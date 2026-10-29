@@ -491,18 +491,23 @@ describe('WebSocket Integration', () => {
 
     // Bug (0.9.x): the upgrade handler could only refuse with 403 (`false`), so an expired token couldn't answer 401
     // and a client couldn't tell "log in again" from "forbidden". Tier: Medium (error state a client handles differently).
-    it('should answer the status and body the upgrade handler passes to rejectUpgrade', async () => {
+    // Bug (0.10.x): a code missing from the status table (418, 503) threw while refusing and answered 500.
+    it.each([
+      [401, 'HTTP/1.1 401 Unauthorized'],
+      [418, "HTTP/1.1 418 I'm a teapot"],
+      [503, 'HTTP/1.1 503 Service Unavailable'],
+    ])('should answer rejectUpgrade(%d) with that status and body', async (statusCode, statusLine) => {
       const { testPort } = createTestApp();
       app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0 });
       app.ws('/ws', {
         upgrade() {
-          return rejectUpgrade(401, { error: 'Token expired' });
+          return rejectUpgrade(statusCode, { error: 'Token expired' });
         },
       });
       await app.listen();
 
       const { socket, response } = await connectWs(testPort);
-      expect(response).toStartWith('HTTP/1.1 401 Unauthorized');
+      expect(response).toStartWith(statusLine);
       expect(response).toContain('{"error":"Token expired"}');
       socket.destroy();
     });

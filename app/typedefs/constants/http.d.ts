@@ -81,16 +81,18 @@ export type InternalHttpStatus = CreateEnum<typeof httpStatus>;
  *   return { error: 'Internal server error' };
  * }
  *
- * // Status code validation
- * const isValidStatusCode = (code: number): boolean => {
- *   return Object.values(InternalHttpStatusCode).includes(code as any);
- * };
+ * // Any integer from 100 to 599 is accepted; codes outside the table get their class's reason phrase
+ * ctx.response.setStatusCode(299); // "HTTP/1.1 299 Success"
  * ```
+ *
+ * The listed codes are offered by autocomplete, and any other `number` is accepted too. A code outside 100-599, or
+ * a non-integer, throws when it is set.
  *
  * @see {@link InternalHttpStatus} for corresponding status text
  * @see {@link httpStatusCode} for the underlying constant values
  */
-export type InternalHttpStatusCode = CreateEnum<typeof httpStatusCode>;
+// `Record<never, never> & number` keeps the listed literals in autocomplete; a bare `| number` would absorb them
+export type InternalHttpStatusCode = CreateEnum<typeof httpStatusCode> | (Record<never, never> & number);
 
 /**
  * HTTP method constants for request methods.

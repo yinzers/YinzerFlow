@@ -19,6 +19,8 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 ### Bug Fixes
 
+- **Every valid status code works** — `response.setStatusCode()` and `rejectUpgrade()` threw for any code outside a 16-entry table, so `setStatusCode(503)` or `rejectUpgrade(418)` answered 500. `httpStatus` and `httpStatusCode` now list the whole IANA registry plus 418 (new keys such as `serviceUnavailable`, `notImplemented`, `unprocessableContent`, `imATeapot`; every existing key is unchanged). Any other integer from 100 to 599 is sent with its class's reason phrase (`299 Success`); a code outside that range or a non-integer still throws, with a clearer message. The `setStatusCode` parameter type now accepts any `number` while still autocompleting the listed codes.
+
 ### Internal
 
 ## [0.10.0] - 2026-10-29

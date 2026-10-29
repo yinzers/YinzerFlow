@@ -101,7 +101,11 @@ export interface Response {
    * };
    * ```
    *
-   * @see {@link InternalHttpStatusCode} for all available status codes
+   * Any integer from 100 to 599 works. Codes in `httpStatusCode` (the IANA registry, plus 418) get their registered
+   * reason phrase; any other code gets its class's phrase, such as `299 Success`.
+   *
+   * @throws When the code is not an integer from 100 to 599
+   * @see {@link InternalHttpStatusCode} for the listed status codes
    */
   setStatusCode: (statusCode: InternalHttpStatusCode) => void;
 
