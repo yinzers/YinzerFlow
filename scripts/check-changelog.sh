@@ -11,8 +11,10 @@
 #
 # "Empty" Unreleased = between the "## [Unreleased]" heading and the next "## " heading there is
 # no line matching: optional indentation, "-" or "*", whitespace, then a non-space character. A
-# missing Unreleased section counts as empty. Subsection headings alone are not entries. The
-# match is line-based and not code-fence aware (a "- " line inside a fence would count).
+# missing Unreleased section counts as empty. Subsection headings alone are not entries. Fenced
+# code blocks (opened by a line starting with ``` or ~~~, closed by the same marker) are skipped:
+# a "## " or "- " line inside one neither ends the section nor counts as an entry. This mirrors
+# scripts/changelog.ts; scripts/__tests__/check-changelog.test.ts runs one table through both.
 #
 # Compared against the working tree: tracked edits (staged or not) via `git diff <tag>`, plus
 # untracked non-ignored files. Passes when there is no v* tag or nothing changed since it.
@@ -46,6 +48,13 @@ if [ -z "$changed" ]; then
 fi
 
 if awk '
+  match($0, /^[ \t]*(```|~~~)/) {
+    marker = substr($0, RLENGTH, 1)
+    if (fence == "") fence = marker
+    else if (fence == marker) fence = ""
+    next
+  }
+  fence != "" { next }
   /^## \[Unreleased\]/ { in_section = 1; next }
   /^## / { in_section = 0 }
   in_section && /^[ \t]*[-*][ \t]+[^ \t]/ { found = 1 }

@@ -3,7 +3,10 @@
  * flow can be exercised without running a release.
  *
  * "Empty" Unreleased means the same thing here as in scripts/check-changelog.sh: no line in the
- * section matches `^\s*[-*]\s+\S`. Keep the two definitions in step.
+ * section matches `^\s*[-*]\s+\S`, outside fenced code blocks. A fence opens on a line starting
+ * (after optional whitespace) with ``` or ~~~ and closes on the same marker; headings and bullets
+ * inside one are ignored for section boundaries and the empty check. Keep the two parsers in step:
+ * scripts/__tests__/check-changelog.test.ts runs one table through both.
  */
 
 export const UNRELEASED_HEADING = '## [Unreleased]';
@@ -15,6 +18,19 @@ export const SUBSECTIONS = ['Breaking Changes', 'Security', 'Features', 'Bug Fix
 export const UNRELEASED_SKELETON = `${UNRELEASED_HEADING}\n\n${SUBSECTIONS.map((name) => `### ${name}\n\n`).join('')}`;
 
 const BULLET = /^[ \t]*[-*][ \t]+\S/;
+const FENCE = /^[ \t]*(```|~~~)/;
+
+/** True for every line that is inside a fenced code block or is a fence delimiter. */
+const _fenceMask = (lines: string[]): boolean[] => {
+  let open = '';
+  return lines.map((line) => {
+    const marker = FENCE.exec(line)?.[1][0] ?? '';
+    if (marker === '') return open !== '';
+    if (open === '') open = marker;
+    else if (open === marker) open = '';
+    return true;
+  });
+};
 
 interface UnreleasedRange {
   /** Index of the heading line. */
@@ -23,12 +39,12 @@ interface UnreleasedRange {
   end: number;
 }
 
-const _findUnreleased = (lines: string[]): UnreleasedRange | null => {
-  const start = lines.findIndex((line) => line.startsWith(UNRELEASED_HEADING));
+const _findUnreleased = (lines: string[], fenced: boolean[]): UnreleasedRange | null => {
+  const start = lines.findIndex((line, i) => !fenced[i] && line.startsWith(UNRELEASED_HEADING));
   if (start === -1) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (lines[i].startsWith('## ')) {
+    if (!fenced[i] && lines[i].startsWith('## ')) {
       end = i;
       break;
     }
@@ -39,9 +55,10 @@ const _findUnreleased = (lines: string[]): UnreleasedRange | null => {
 /** True when the Unreleased section exists and has at least one bullet line. */
 export const hasUnreleasedEntries = (content: string): boolean => {
   const lines = content.split('\n');
-  const range = _findUnreleased(lines);
+  const fenced = _fenceMask(lines);
+  const range = _findUnreleased(lines, fenced);
   if (!range) return false;
-  return lines.slice(range.start + 1, range.end).some((line) => BULLET.test(line));
+  return lines.some((line, i) => i > range.start && i < range.end && !fenced[i] && BULLET.test(line));
 };
 
 /**
@@ -50,13 +67,14 @@ export const hasUnreleasedEntries = (content: string): boolean => {
  */
 export const unreleasedBody = (content: string): string => {
   const lines = content.split('\n');
-  const range = _findUnreleased(lines);
+  const fenced = _fenceMask(lines);
+  const range = _findUnreleased(lines, fenced);
   if (!range || !hasUnreleasedEntries(content)) return '';
 
   const groups: string[][] = [[]];
-  for (const line of lines.slice(range.start + 1, range.end)) {
-    if (line.startsWith('### ')) groups.push([line]);
-    else groups[groups.length - 1].push(line);
+  for (let i = range.start + 1; i < range.end; i++) {
+    if (!fenced[i] && lines[i].startsWith('### ')) groups.push([lines[i]]);
+    else groups[groups.length - 1].push(lines[i]);
   }
 
   const kept: string[] = [];
@@ -80,7 +98,7 @@ export const promoteUnreleased = (
   if (body === '') throw new Error('Unreleased has no entries to promote');
 
   const lines = content.split('\n');
-  const range = _findUnreleased(lines)!;
+  const range = _findUnreleased(lines, _fenceMask(lines))!;
   const entry = `## [${version}] - ${date}\n\n${body}`;
   const before = lines.slice(0, range.start).join('\n');
   const after = lines.slice(range.end).join('\n');
@@ -95,7 +113,8 @@ export const promoteUnreleased = (
 export const addRelease = (content: string, entry: string): string => {
   const header = '# Changelog\n\nAll notable changes to YinzerFlow will be documented in this file.\n\n';
   const lines = content.split('\n');
-  const range = _findUnreleased(lines);
+  const fenced = _fenceMask(lines);
+  const range = _findUnreleased(lines, fenced);
 
   if (range) {
     const before = lines.slice(0, range.end).join('\n');
@@ -103,7 +122,7 @@ export const addRelease = (content: string, entry: string): string => {
     return `${before}\n${entry}\n\n${after}`;
   }
   // No Unreleased yet: the new section goes above the first release heading, below the intro.
-  const firstRelease = lines.findIndex((line) => line.startsWith('## '));
+  const firstRelease = lines.findIndex((line, i) => !fenced[i] && line.startsWith('## '));
   if (content.startsWith('# Changelog') && firstRelease !== -1) {
     const intro = lines.slice(0, firstRelease).join('\n');
     return `${intro}\n${UNRELEASED_SKELETON}${entry}\n\n${lines.slice(firstRelease).join('\n')}`;

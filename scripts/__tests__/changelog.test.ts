@@ -20,6 +20,16 @@ describe('promoteUnreleased', () => {
     expect(hasUnreleasedEntries(content)).toBe(false);
   });
 
+  it('keeps a fenced block with "##", "###" and blank lines byte for byte', () => {
+    const fence = '```';
+    const block = `${fence}md\n## inside\n\n\n### also inside\n${fence}`;
+    const filled = UNRELEASED_SKELETON.replace('### Features\n', `### Features\n\n${block}\n\n- **After the fence** — kept\n`);
+    const { body, content } = promoteUnreleased(`${head}${filled}${old}`, '0.11.0', '2026-11-01');
+
+    expect(body).toBe(`### Features\n\n${block}\n\n- **After the fence** — kept`);
+    expect(content).toContain(`${UNRELEASED_SKELETON}## [0.11.0]`);
+  });
+
   it('refuses an Unreleased section that has only subsection headings', () => {
     expect(() => promoteUnreleased(`${head}${UNRELEASED_SKELETON}${old}`, '0.11.0', '2026-11-01')).toThrow();
   });
