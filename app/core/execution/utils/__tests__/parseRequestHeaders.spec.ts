@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { applySecurityPolicies, parseHeaderStructure, parseRequestHeaders, sanitizeHeaders, validateRawHeaders } from '../parseRequestHeaders.ts';
+import { applySecurityPolicies, parseHeaderStructure, parseRequestHeaders, validateRawHeaders } from '../parseRequestHeaders.ts';
 import { validateResponseHeaderValue, validateResponseHeaders } from '../validateResponseHeaders.ts';
 
 describe('parseRequestHeaders', () => {
@@ -276,13 +276,6 @@ describe('parseRequestHeaders', () => {
         });
       });
 
-      it('should remove control characters from header values', () => {
-        const headerWithControlChars = 'X-Custom: value\x00\x01\x02with\x1Fcontrol\x7Fchars';
-        const result = parseRequestHeaders(headerWithControlChars);
-
-        expect(result['x-custom']).toBe('valuewithcontrolchars');
-      });
-
       it('should preserve horizontal tab in header values', () => {
         const headerWithTab = 'X-Custom: value\twith\ttabs';
         const result = parseRequestHeaders(headerWithTab);
@@ -384,13 +377,6 @@ describe('parseRequestHeaders', () => {
     });
 
     describe('Edge case security scenarios', () => {
-      it('should handle null bytes in header values', () => {
-        const headerWithNull = 'X-Custom: value\x00truncated';
-        const result = parseRequestHeaders(headerWithNull);
-
-        expect(result['x-custom']).toBe('valuetruncated');
-      });
-
       it('should parse complex legitimate header combinations', () => {
         const legitimateComplexHeaders = [
           'X-Forwarded-For: 192.168.1.1\r\nSet-Cookie: sessionid=abc123',
@@ -404,20 +390,6 @@ describe('parseRequestHeaders', () => {
           const result = parseRequestHeaders(headers);
           expect(Object.keys(result)).toHaveLength(2); // Should parse into 2 headers
         });
-      });
-
-      it('should handle headers with only control characters', () => {
-        const controlCharHeader = 'X-Control: \x01\x02\x03\x04\x05';
-        const result = parseRequestHeaders(controlCharHeader);
-
-        expect(result['x-control']).toBe('');
-      });
-
-      it('should handle mixed valid and invalid characters', () => {
-        const mixedHeader = 'X-Mixed: valid\x00\x01text\x1Fmore\x7Fvalid';
-        const result = parseRequestHeaders(mixedHeader);
-
-        expect(result['x-mixed']).toBe('validtextmorevalid');
       });
     });
   });
@@ -452,29 +424,6 @@ describe('parseRequestHeaders', () => {
       });
     });
 
-    describe('sanitizeHeaders', () => {
-      it('should remove control characters', () => {
-        const headers = {
-          'x-custom': 'value\x00\x01with\x1Fcontrol\x7Fchars',
-          'x-normal': 'normal value',
-        };
-
-        const result = sanitizeHeaders(headers);
-
-        expect(result).toEqual({
-          'x-custom': 'valuewithcontrolchars',
-          'x-normal': 'normal value',
-        });
-      });
-
-      it('should preserve horizontal tabs', () => {
-        const headers = { 'x-tabs': 'value\twith\ttabs' };
-        const result = sanitizeHeaders(headers);
-
-        expect(result['x-tabs']).toBe('value\twith\ttabs');
-      });
-    });
-
     describe('applySecurityPolicies', () => {
       it('should pass through headers as-is for now', () => {
         const headers = {
@@ -489,33 +438,15 @@ describe('parseRequestHeaders', () => {
     });
 
     describe('Integration of all steps', () => {
-      it('should process headers through all steps correctly', () => {
+      it('should keep a value with control characters raw and report the head malformed', () => {
         const rawHeaders = 'Content-Type: application/json\r\nX-Custom: value\x00with\x01control';
+        const report = { repeatedNames: new Set<string>(), malformed: false };
 
-        // Step 1: Validate
-        expect(() => validateRawHeaders(rawHeaders)).not.toThrow();
-
-        // Step 2: Parse structure
-        const parsed = parseHeaderStructure(rawHeaders);
-        expect(parsed).toEqual({
+        expect(parseRequestHeaders(rawHeaders, report)).toEqual({
           'content-type': 'application/json',
-          'x-custom': 'value\x00with\x01control', // Still has control chars
+          'x-custom': 'value\x00with\x01control',
         });
-
-        // Step 3: Sanitize
-        const sanitized = sanitizeHeaders(parsed);
-        expect(sanitized).toEqual({
-          'content-type': 'application/json',
-          'x-custom': 'valuewithcontrol', // Control chars removed
-        });
-
-        // Step 4: Apply security policies
-        const secured = applySecurityPolicies(sanitized);
-        expect(secured).toEqual(sanitized); // No changes for now
-
-        // Main function should produce same result
-        const mainResult = parseRequestHeaders(rawHeaders);
-        expect(mainResult).toEqual(secured);
+        expect(report.malformed).toBe(true);
       });
     });
   });

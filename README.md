@@ -55,7 +55,7 @@ YinzerFlow includes comprehensive security features out of the box:
 - **IP security** - Advanced IP validation and spoofing detection
 - **CORS protection** - Configurable cross-origin resource sharing
 - **Body parsing limits** - Protection against payload attacks
-- **Header validation** - Automatic sanitization and size limits
+- **Header validation** - Malformed or ambiguous headers are refused with 400, plus size limits
 - **CRLF injection prevention** - Secure header handling
 
 ## 📄 License

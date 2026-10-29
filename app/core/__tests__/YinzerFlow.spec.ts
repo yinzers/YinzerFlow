@@ -648,6 +648,30 @@ describe('YinzerFlow', () => {
     });
 
     describe('Malformed Requests', () => {
+      // Confirming pass (0.11.0): control characters were stripped from header values before framing read them, so
+      // `Content-Length: 1<VT>0` framed 10 bytes and `0<FF>5` framed 5. RFC 9110 §5.5: a value with a control character
+      // other than HTAB is malformed, a 400, never silently rewritten. Tier: High (request framing, untrusted input).
+      it.each([
+        ['a vertical tab inside Content-Length', ['Content-Length: 1\x0b0'], 'HTTP/1.1 400 Bad Request'],
+        ['a form feed inside Content-Length', ['Content-Length: 0\x0c5'], 'HTTP/1.1 400 Bad Request'],
+        ['a NUL inside a header value', ['X-Note: a\x00b', 'Content-Length: 7'], 'HTTP/1.1 400 Bad Request'],
+        ['a DEL inside a header value', ['X-Note: a\x7fb', 'Content-Length: 7'], 'HTTP/1.1 400 Bad Request'],
+        ['a tab inside a header value', ['X-Note: a\tb', 'Content-Length: 7'], 'HTTP/1.1 200 OK'],
+      ])('should treat %s by the raw value', async (_label, headers, statusLine) => {
+        let handlerRan = false;
+        app.post('/ctl', () => {
+          handlerRan = true;
+          return { ok: true };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('POST', '/ctl', headers, '{"a":1}'));
+
+        expect(response).toStartWith(statusLine);
+        expect(handlerRan).toBe(statusLine === 'HTTP/1.1 200 OK');
+      });
+
       // Security review (0.11.0): Content-Length was found with an unanchored regex over the raw head, so a decoy
       // `X-Note: content-length: 999999` (or `X-Content-Length`) decided framing, and Transfer-Encoding was never read: a
       // chunked body reached the handler raw, and Content-Length won over TE (RFC 9112 §6.1). Framing now comes from the

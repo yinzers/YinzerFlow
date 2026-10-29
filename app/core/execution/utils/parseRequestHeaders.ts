@@ -1,6 +1,10 @@
 import type { InternalHttpHeaders } from '@typedefs/constants/http.js';
 import type { InternalHeaderParseReport } from '@typedefs/internal/InternalRequestImpl.js';
 
+// Any control character except horizontal tab (0x09); CR and LF can't reach a value, they split lines
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const _controlCharacter = /[\x00-\x08\x0A-\x1F\x7F]/;
+
 // A CR not followed by LF, or an LF not preceded by CR
 const _bareLineBreak = /\r(?!\n)|(?<!\r)\n/;
 
@@ -13,7 +17,7 @@ const MAX_HEADER_VALUE_LENGTH = 8192;
  * Parse incoming request headers from raw headers string with security validation
  *
  * This is the main orchestrator function that delegates to specialized helpers
- * for each processing step: validation → parsing → sanitization → security
+ * for each processing step: validation → parsing → security
  *
  * @example
  * ```ts
@@ -23,7 +27,8 @@ const MAX_HEADER_VALUE_LENGTH = 8192;
  *
  * `report`, when given, receives the lower-cased name of every header that appeared on more than one line, and is
  * marked malformed for a line RFC 9112 answers with 400: whitespace before the colon or around the name (§5.1, which
- * also covers an obs-fold continuation line), or a bare CR or LF (§2.2). Parsing carries on either way; the caller decides.
+ * also covers an obs-fold continuation line), a bare CR or LF (§2.2), or a control character other than horizontal tab in a
+ * value (RFC 9110 §5.5). Values are never rewritten. Parsing carries on either way; the caller decides.
  */
 export const parseRequestHeaders = (rawHeaders: string, report?: InternalHeaderParseReport): Partial<Record<InternalHttpHeaders, string>> => {
   if (!rawHeaders) return {};
@@ -34,11 +39,8 @@ export const parseRequestHeaders = (rawHeaders: string, report?: InternalHeaderP
   // Step 2: Parse header structure into key-value pairs
   const parsedHeaders = parseHeaderStructure(rawHeaders, report);
 
-  // Step 3: Sanitize header values (remove control chars, etc.)
-  const sanitizedHeaders = sanitizeHeaders(parsedHeaders);
-
-  // Step 4: Apply security policies (business logic, injection prevention)
-  const securedHeaders = applySecurityPolicies(sanitizedHeaders);
+  // Step 3: Apply security policies (business logic, injection prevention)
+  const securedHeaders = applySecurityPolicies(parsedHeaders);
 
   return securedHeaders;
 };
@@ -87,9 +89,8 @@ export const parseHeaderStructure = (rawHeaders: string, report?: InternalHeader
 
     const rawKey = line.slice(0, colonIndex);
     const key = rawKey.trim();
-    // `Host : x` and a continuation line ` X-Forwarded-For: y` are read as headers by some parsers and not others (§5.1)
-    if (report && rawKey !== key) report.malformed = true;
     const value = line.slice(colonIndex + 1).trim();
+    if (report && _isMalformedLine(rawKey, key, value)) report.malformed = true;
 
     if (!key) continue;
 
@@ -121,21 +122,7 @@ export const parseHeaderStructure = (rawHeaders: string, report?: InternalHeader
 };
 
 /**
- * Step 3: Sanitize header values
- * Removes control characters and normalizes values
- */
-export const sanitizeHeaders = (headers: Record<string, string>): Record<string, string> => {
-  const sanitized: Record<string, string> = {};
-
-  for (const [key, value] of Object.entries(headers)) {
-    sanitized[key] = sanitizeHeaderValue(value);
-  }
-
-  return sanitized;
-};
-
-/**
- * Step 4: Apply security policies
+ * Step 3: Apply security policies
  * Business logic validation and injection prevention
  */
 export const applySecurityPolicies = (headers: Record<string, string>): Record<string, string> =>
@@ -162,11 +149,9 @@ const isValidHeaderName = (name: string): boolean => {
 };
 
 /**
- * Sanitize header value to prevent injection attacks
+ * A header line RFC 9112 answers with 400. Whitespace around the name: `Host : x` and a continuation line
+ * ` X-Forwarded-For: y` are read as headers by some parsers and not others (§5.1). A control character other than horizontal tab
+ * in the value (RFC 9110 §5.5): stripping them silently let `Content-Length: 1<VT>0` frame 10 bytes, so the value is
+ * refused, never rewritten.
  */
-const sanitizeHeaderValue = (value: string): string => {
-  // SECURITY: Remove control characters except horizontal tab
-  // Allow printable ASCII, horizontal tab (0x09), and extended ASCII
-  const sanitized = value.replace(/[\x00-\x08\x0A-\x1F\x7F]/g, '');
-  return sanitized;
-};
+const _isMalformedLine = (rawKey: string, key: string, value: string): boolean => rawKey !== key || _controlCharacter.test(value);
