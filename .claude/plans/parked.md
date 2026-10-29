@@ -413,3 +413,48 @@ before touching the area an entry names.
 - **Trigger**: a raw low-buffer client probe (pings at line rate, receive window near zero) showing write-queue growth,
   or a memory report from a deployment.
 
+## request-head-single-cut — the request head is located and cut differently in different places
+
+- **What**: one producer, three symptoms. The head is found by `_handleHeaderPhase` (`indexOf('\r\n\r\n')` after the
+  leading empty lines), cut again by `parseHttpRequest` (first `\r\n` for the request line, then the next
+  `\r\n\r\n` in the rest), and matched for upgrades by `_isWebSocketUpgrade`, a substring test over the raw head.
+  - The two cuts disagree: a request with no header lines (`GET / HTTP/1.1\r\n\r\nbody`) leaves `rest` starting with
+    `\r\n`, so `parseHttpRequest` finds the next `\r\n\r\n` inside the body and reads body bytes as headers.
+  - The dispatched buffer is every byte received, not the head plus `Content-Length` bytes, so pipelined bytes after
+    the body become part of it.
+  - `_isWebSocketUpgrade` matches `upgrade: websocket` anywhere in the head, a header value included, instead of
+    reading the parsed `Upgrade` and `Connection` headers.
+- **Why deferred**: final 0.11.0 security pass, graded a note: the server closes every connection after one response
+  (no keep-alive), so pipelined bytes are never a second request, and the head-parsing 400s in this release refuse the
+  shapes that would steer either cut. One cut, computed once and passed to framing, the parser and upgrade detection
+  (from the parsed headers), is a restructure of the connection state machine rather than a release fix.
+- **Cost later**: medium; `_handleHeaderPhase` produces `{ requestLineEnd, headEnd, bodyEnd }` once, `RequestImpl`
+  takes those offsets instead of re-cutting the string, the dispatched buffer is sliced at `bodyEnd`, and upgrade
+  detection reads the parsed headers; plus table tests for a headerless request, pipelined bytes and a decoy
+  `upgrade: websocket` value.
+- **Trigger**: the next change to how the head is located (`_handleHeaderPhase` or `parseHttpRequest`), a deployment
+  behind a front proxy that pipelines or reuses backend connections, or adding keep-alive.
+
+## no-connection-close-header — responses close the socket without saying so
+
+- **What**: every connection is closed after one response, but ordinary responses built by `ResponseImpl` don't send
+  `Connection: close` (only the direct error writers `_sendHttpError` and the 413 path do). RFC 9112 §9.6 says a server
+  that closes after a response should send it, so an HTTP/1.1 client or proxy that assumes persistence may try to
+  reuse the connection and see a reset.
+- **Why deferred**: final 0.11.0 security pass note; clients recover by reconnecting, and the right fix depends on
+  whether keep-alive is added, which would change the header's meaning per request.
+- **Cost later**: trivial; add `Connection: close` in `_parseResponseIntoString` (or where the socket is ended), plus
+  one wire-level assertion.
+- **Trigger**: adding keep-alive, a report of resets from a pooling client or proxy, or the next change to
+  `_parseResponseIntoString`.
+
+## close-reason-bom-stripped — a leading BOM in a close reason is dropped
+
+- **What**: `_parseClosePayload` (app/core/modules/websocket/WebSocketFrame.ts) decodes the reason with
+  `new TextDecoder('utf-8', { fatal: true })`, which strips a leading U+FEFF by default, so a reason that starts with
+  a BOM reaches the `close` handler and the echoed frame without it.
+- **Why deferred**: final 0.11.0 security pass note; only the reason text changes, the code and the validity check are
+  correct, and no client depends on a leading BOM.
+- **Cost later**: trivial; pass `ignoreBOM: true` to the decoder, plus one table row in the close-frame test.
+- **Trigger**: the next change to `_parseClosePayload`, or a report of a close reason arriving altered.
+
