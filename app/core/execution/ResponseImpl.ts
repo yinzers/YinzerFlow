@@ -24,6 +24,10 @@ const _dateRefreshTimer = setInterval(() => {
 }, 1000);
 _dateRefreshTimer.unref();
 
+/** Statuses that never carry content: 204 No Content, 205 Reset Content, 304 Not Modified */
+const _bodilessStatuses: ReadonlySet<number> = new Set([httpStatusCode.noContent, httpStatusCode.resetContent, httpStatusCode.notModified]);
+const _resetContent = httpStatusCode.resetContent;
+
 export class ResponseImpl implements InternalResponseImpl {
   readonly _request: Request;
 
@@ -45,13 +49,19 @@ export class ResponseImpl implements InternalResponseImpl {
     // response head. HTTP/1.0 clients accept an HTTP/1.1 status line (RFC 9110 §6.2).
     const statusLine = `HTTP/1.1 ${this._statusCode} ${this._status}`;
     const encoding = determineEncoding(this._headers['content-type'], this._body);
-    const body = formatBodyIntoString(this._body, { encoding });
+    const bodiless = _bodilessStatuses.has(this._statusCode);
+    const body = bodiless ? '' : formatBodyIntoString(this._body, { encoding });
+
+    // 204, 205 and 304 never carry content (RFC 9110 §15.3.5, §15.3.6, §15.4.5): a client reads no body after them, so
+    // any bytes sent would be read as the next response. 204 and 304 also carry no Content-Length; 205 says 0.
+    if (bodiless) this._removeContentLength();
+    if (this._statusCode === _resetContent) this._headers['Content-Length'] = '0';
 
     // Set Date + Content-Length BEFORE assembling headers into the response string.
     // Content-Length = body bytes only (not status line + headers), per HTTP/1.1 spec.
     this._setHeadersIfNotSet({
       Date: _cachedDateHeader,
-      'Content-Length': String(Buffer.byteLength(body, 'utf8')),
+      ...(bodiless ? {} : { 'Content-Length': String(Buffer.byteLength(body, 'utf8')) }),
     });
 
     this._encoding = encoding;
@@ -62,6 +72,13 @@ export class ResponseImpl implements InternalResponseImpl {
     const headersSection = allHeaderLines.length > 0 ? `${allHeaderLines.join('\r\n')}\r\n` : '';
 
     this._stringBody = `${statusLine}\r\n${headersSection}\r\n${body}`;
+  }
+
+  /** Drop every Content-Length header, whatever case it was set in. */
+  private _removeContentLength(): void {
+    for (const key of Object.keys(this._headers)) {
+      if (key.toLowerCase() === 'content-length') delete this._headers[key];
+    }
   }
 
   _setHeadersIfNotSet(headers: Partial<Record<InternalHttpHeaders, string>>): void {
@@ -93,6 +110,14 @@ export class ResponseImpl implements InternalResponseImpl {
   }
 
   setStatusCode(statusCode: InternalHttpStatusCode): void {
+    // A 1xx is an interim response, never a final one: sent as one (with a body) it throws out of sync clients and proxies, and a
+    // 101 on a request carrying Upgrade would let traffic tunnel past a proxy. 101 comes only from the WebSocket handshake.
+    if (!Number.isInteger(statusCode) || statusCode < 200 || statusCode > 599) {
+      throw new Error(
+        `setStatusCode(${String(statusCode)}): a response status must be an integer from 200 to 599. ` +
+          `1xx codes are interim responses, and WebSocket upgrades (101) are answered by app.ws(), n'at.`,
+      );
+    }
     this._statusCode = statusCode;
     this._status = mapStatusCodeToMessage(statusCode);
   }

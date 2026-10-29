@@ -81,12 +81,12 @@ export type InternalHttpStatus = CreateEnum<typeof httpStatus>;
  *   return { error: 'Internal server error' };
  * }
  *
- * // Any integer from 100 to 599 is accepted; codes outside the table get their class's reason phrase
+ * // Any integer from 200 to 599 is accepted; codes outside the table get their class's reason phrase
  * ctx.response.setStatusCode(299); // "HTTP/1.1 299 Success"
  * ```
  *
- * The listed codes are offered by autocomplete, and any other `number` is accepted too. A code outside 100-599, or
- * a non-integer, throws when it is set.
+ * The listed codes are offered by autocomplete, and any other `number` is accepted too. A code outside 200-599
+ * (1xx are interim responses), or a non-integer, throws when it is set.
  *
  * @see {@link InternalHttpStatus} for corresponding status text
  * @see {@link httpStatusCode} for the underlying constant values

@@ -101,10 +101,12 @@ export interface Response {
    * };
    * ```
    *
-   * Any integer from 100 to 599 works. Codes in `httpStatusCode` (the IANA registry, plus 418) get their registered
-   * reason phrase; any other code gets its class's phrase, such as `299 Success`.
+   * Any integer from 200 to 599 works. Codes in `httpStatusCode` (the IANA registry, plus 418) get their registered
+   * reason phrase; any other code gets its class's phrase, such as `299 Success`. 204, 205 and 304 are sent with no
+   * body (and 204 and 304 with no Content-Length), whatever the handler returns.
    *
-   * @throws When the code is not an integer from 100 to 599
+   * @throws When the code is not an integer from 200 to 599. 1xx codes are interim responses, never a final one; the
+   * WebSocket handshake's 101 is sent by `app.ws()`.
    * @see {@link InternalHttpStatusCode} for the listed status codes
    */
   setStatusCode: (statusCode: InternalHttpStatusCode) => void;

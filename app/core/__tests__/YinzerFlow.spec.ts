@@ -788,12 +788,18 @@ describe('YinzerFlow', () => {
     describe('Status Codes and Headers', () => {
       // Bug (0.10.x): any code missing from the 16-entry status table threw in setStatusCode, so 503, 418 or 299 came
       // back as 500. Tier: High (validator at the boundary of every response's status line).
+      // Security review (0.11.0): 1xx went out as a final response with a body, which desyncs clients and proxies, and a
+      // 101 on a request carrying Upgrade let traffic tunnel past a proxy. A 1xx is refused like any invalid code.
       it.each([
         ['a listed code', httpStatusCode.created, 'HTTP/1.1 201 Created'],
         ['503', 503, 'HTTP/1.1 503 Service Unavailable'],
         ['418', 418, "HTTP/1.1 418 I'm a teapot"],
         ['an unlisted 2xx gets its class phrase', 299, 'HTTP/1.1 299 Success'],
-        ['the lowest valid code', 100, 'HTTP/1.1 100 Continue'],
+        ['the lowest valid code', 200, 'HTTP/1.1 200 OK'],
+        ['100 is refused', 100, 'HTTP/1.1 500 Internal Server Error'],
+        ['101 is refused', 101, 'HTTP/1.1 500 Internal Server Error'],
+        ['103 is refused', 103, 'HTTP/1.1 500 Internal Server Error'],
+        ['199 is refused', 199, 'HTTP/1.1 500 Internal Server Error'],
         ['the highest valid code', 599, 'HTTP/1.1 599 Server Error'],
         ['600 is refused', 600, 'HTTP/1.1 500 Internal Server Error'],
         ['99 is refused', 99, 'HTTP/1.1 500 Internal Server Error'],
@@ -808,6 +814,31 @@ describe('YinzerFlow', () => {
         const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/custom-status'));
 
         expect(response).toStartWith(statusLine);
+      });
+
+      // Security review (0.11.0): 204, 205 and 304 went out with the handler's body and a Content-Length, so a client or
+      // proxy that (per RFC 9110) reads no body after them took those bytes as the start of the next response.
+      // Tier: High (response framing).
+      it.each([
+        [204, false],
+        [205, true],
+        [304, false],
+      ])('should send %d with no body', async (statusCode, contentLengthZero) => {
+        app.get('/no-body', (ctx) => {
+          ctx.response.setStatusCode(statusCode);
+          ctx.response.addHeaders({ 'Content-Length': '17' });
+          return { ignored: 'body' };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/no-body'));
+        const [head = '', body] = response.split('\r\n\r\n');
+
+        expect(head).toStartWith(`HTTP/1.1 ${statusCode} `);
+        expect(body).toBe('');
+        const contentLength = head.split('\r\n').filter((line) => line.toLowerCase().startsWith('content-length:'));
+        expect(contentLength).toEqual(contentLengthZero ? ['Content-Length: 0'] : []);
       });
 
       it('should handle custom headers', async () => {
