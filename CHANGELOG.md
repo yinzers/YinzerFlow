@@ -4,6 +4,18 @@
 
 ### Breaking Changes
 
+### Security
+
+### Features
+
+### Bug Fixes
+
+### Internal
+
+## [0.11.0] - 2026-10-29
+
+### Breaking Changes
+
 - **`setStatusCode()` refuses 1xx, and 204, 205 and 304 never carry a body** — `setStatusCode(100)`, `101`, `103` or any 1xx sent an interim status as the final response, with a body, which desyncs clients and proxies; a `101` on a request carrying `Upgrade` let traffic tunnel past a proxy. It now throws (the request is answered 500 by `onError`); the WebSocket 101 comes only from `app.ws()`. A 204, 205 or 304 used to send the handler's return value and a `Content-Length`, which a client reads as the start of the next response; they now go out with no body, 204 and 304 with no `Content-Length` and 205 with `Content-Length: 0`. Code that relied on a body with 204 or on a 1xx response must change.
 - **WebSockets are same-origin by default** — `websocket.allowedOrigins` used to default to `[]`, and an empty list allowed every origin, so any website could open a socket (logged in as the visitor, with cookie auth) unless you set a list. Now an unset `allowedOrigins` allows only upgrades whose `Origin` matches the request's `Host` (case-insensitive, default ports 80/443 normalized); `['*']` is the only way to allow every origin; `[]` refuses every browser origin; a list of origins matches exactly as before. Same-origin compares host and port only, not the scheme (which `Host` doesn't carry); an app serving both http and https should list its https origin. Behind a proxy that rewrites `Host`, list your public origin. `allowMissingOrigin` now applies under every setting, including `[]`. An `Origin` header that is present but empty is refused with 403 under every setting, `['*']` included; it used to count as missing. Entries are validated at startup: anything that isn't `scheme://host[:port]` (a path, trailing slash, wildcard, bare host, `'null'`, an explicit default port) or `'*'` mixed with other entries throws. See `docs/core/websockets.md`.
 
@@ -33,8 +45,6 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 - **Every valid status code works** — `response.setStatusCode()` and `rejectUpgrade()` threw for any code outside a 16-entry table, so `setStatusCode(503)` or `rejectUpgrade(418)` answered 500. `httpStatus` and `httpStatusCode` now list every assigned code in the IANA registry (306, which is unused, and temporary registrations excepted) plus 418 (new keys such as `serviceUnavailable`, `notImplemented`, `unprocessableContent`, `imATeapot`; every existing key is unchanged). Any other integer from 200 to 599 is sent with its class's reason phrase (`299 Success`); a code outside that range or a non-integer throws, with a clearer message. The `setStatusCode` parameter type now accepts any `number` while still autocompleting the listed codes.
 - **`ws.subscribe()` on a closed connection leaked it** — subscribing after the client had gone (an `async` `open` handler resuming after an `await`, or a `close` handler) put the dead connection back in the channel for good, so `app.subscriberCount()` kept counting it and it was never freed. `subscribe` now does nothing on a closing or closed connection and returns `false`; it returns `true` otherwise (it used to return nothing).
 - **permessage-deflate window sizes are honoured** — a client that asked for a smaller `server_max_window_bits` got that value in the handshake but frames compressed with `websocket.compression.serverMaxWindowBits`, which it couldn't inflate (Node's `ws` failed with "invalid distance too far back"); `send` and `publish` now compress with the window each connection agreed to. With `compression.clientMaxWindowBits` below 15, a client that hadn't offered `client_max_window_bits` (so may use 15) was closed with 1007; the server now always inflates with a 15-bit window.
-
-### Internal
 
 ## [0.10.0] - 2026-10-29
 
