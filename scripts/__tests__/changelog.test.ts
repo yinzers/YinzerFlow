@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { addRelease, hasUnreleasedEntries, promoteUnreleased, UNRELEASED_SKELETON } from '../changelog.ts';
+import { addRelease, hasUnreleasedEntries, hasVersionHeading, promoteUnreleased, UNRELEASED_SKELETON } from '../changelog.ts';
 
 const head = '# Changelog\n\nAll notable changes to YinzerFlow will be documented in this file.\n\n';
 const old = '## [0.10.0] - 2026-10-29\n\n### Features\n\n- **Old thing** — shipped\n';
@@ -32,6 +32,18 @@ describe('promoteUnreleased', () => {
 
   it('refuses an Unreleased section that has only subsection headings', () => {
     expect(() => promoteUnreleased(`${head}${UNRELEASED_SKELETON}${old}`, '0.11.0', '2026-11-01')).toThrow();
+  });
+});
+
+// Bug caught: promoting into a version that already has a heading ships two entries for one version.
+describe('duplicate version heading', () => {
+  const filled = UNRELEASED_SKELETON.replace('### Features\n', '### Features\n\n- **New** — thing\n');
+
+  it('promoteUnreleased throws when the version is already released, and hasVersionHeading sees it', () => {
+    const content = `${head}${filled}${old}`;
+    expect(hasVersionHeading(content, '0.10.0')).toBe(true);
+    expect(hasVersionHeading(content, '0.11.0')).toBe(false);
+    expect(() => promoteUnreleased(content, '0.10.0', '2026-11-01')).toThrow('0.10.0');
   });
 });
 

@@ -22,7 +22,7 @@
 
 import dts from 'bun-plugin-dts';
 import { existsSync, mkdirSync } from 'node:fs';
-import { addRelease, hasUnreleasedEntries, promoteUnreleased } from './changelog.ts';
+import { addRelease, hasUnreleasedEntries, hasVersionHeading, promoteUnreleased } from './changelog.ts';
 
 // ─── Arguments ──────────────────────────────────────────────────────────────────
 
@@ -750,6 +750,10 @@ const main = async (): Promise<void> => {
   // ── Changelog plan (promotion, or the --ai-changelog fallback; preflight guaranteed one of them) ──
   log.step('Preparing changelog');
   const currentChangelog = (await Bun.file('CHANGELOG.md').exists()) ? await Bun.file('CHANGELOG.md').text() : '';
+  if (hasVersionHeading(currentChangelog, newVersion)) {
+    log.error(`CHANGELOG.md already has a "## [${newVersion}]" heading. Pick another version or fix the file.`);
+    process.exit(1);
+  }
   const plan = hasUnreleasedEntries(currentChangelog)
     ? planPromotion(currentChangelog, newVersion)
     : await draftChangelogWithAi(currentChangelog, lastTag, newVersion);

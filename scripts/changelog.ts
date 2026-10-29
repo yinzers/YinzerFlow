@@ -85,9 +85,17 @@ export const unreleasedBody = (content: string): string => {
   return kept.join('\n\n');
 };
 
+/** True when a `## [<version>]` heading (outside fenced code) already exists. */
+export const hasVersionHeading = (content: string, version: string): boolean => {
+  const lines = content.split('\n');
+  const fenced = _fenceMask(lines);
+  return lines.some((line, i) => !fenced[i] && line.startsWith(`## [${version}]`));
+};
+
 /**
  * Turns the Unreleased section into the release entry for `version`, and puts a fresh empty
- * Unreleased skeleton above it. Throws when Unreleased has no entries.
+ * Unreleased skeleton above it. Throws when Unreleased has no entries or `version` already has a
+ * heading.
  */
 export const promoteUnreleased = (
   content: string,
@@ -96,6 +104,7 @@ export const promoteUnreleased = (
 ): { content: string; entry: string; body: string } => {
   const body = unreleasedBody(content);
   if (body === '') throw new Error('Unreleased has no entries to promote');
+  if (hasVersionHeading(content, version)) throw new Error(`CHANGELOG.md already has a heading for ${version}`);
 
   const lines = content.split('\n');
   const range = _findUnreleased(lines, _fenceMask(lines))!;
