@@ -274,3 +274,17 @@ before touching the area an entry names.
 - **Cost later**: low; one per-connection timer cleared at header end, a `headersTimeout` option, a 408, and a test.
 - **Trigger**: a report of idle or half-sent connections piling up, or the next change to `_handleConnection` or the
   server's connection options.
+
+## absolute-form-target-404 — `GET http://host/x HTTP/1.1` gets 404 instead of being served
+
+- **What**: RFC 9112 §3.2.2 says a server MUST accept the absolute-form request-target (`http://host/path`).
+  `canonicalizeRequestPath` (app/core/execution/utils/canonicalizeRequestPath.ts:45) treats the whole target as a path,
+  so `http://host/x` collapses to `/http:/host/x`, no route matches, and the client gets 404. Not exploitable: hooks
+  and the router both read that same canonical path, so no hook is skipped for a route that is then served.
+- **Why deferred**: found in the 0.10.0 confirming security pass, which graded it a note. Clients send absolute form
+  only to proxies, and nothing in front of YinzerFlow does that in current deployments; accepting it needs a decision
+  on the authority part (ignore it, or check it against `Host`), which is more than a patch.
+- **Cost later**: low. Strip `scheme://authority` before canonicalizing (keeping the path, or `/` when it is empty),
+  or answer 400 for an absolute-form target, plus a table row in the canonicalization test and one integration test.
+- **Trigger**: the first forward- or reverse-proxy deployment that sends absolute-form targets, or the first bug report
+  of a 404 for a `http://...` request line.
