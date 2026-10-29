@@ -10,6 +10,7 @@ export class WebSocketSecurity {
    * Decide whether an upgrade's Origin is allowed.
    *
    * - A missing Origin (a non-browser client) is allowed exactly when `allowMissingOrigin` is true, in every mode.
+   *   A present but empty Origin is not missing: no client sends one legitimately, so it is refused in every mode.
    * - `allowedOrigins` unset: same-origin only. The Origin's host and port must equal the `Host` header's, compared
    *   case-insensitively, with a missing port read as the Origin scheme's default (80 for http/ws, 443 for https/wss).
    *   Only http, https, ws and wss origins can be same-origin.
@@ -27,7 +28,8 @@ export class WebSocketSecurity {
     allowedOrigins: Array<string> | undefined;
     allowMissingOrigin: boolean;
   }): boolean {
-    if (!origin) return allowMissingOrigin;
+    if (origin === undefined) return allowMissingOrigin;
+    if (origin === '') return false;
     if (allowedOrigins === undefined) return _isSameOrigin(origin, host);
     if (allowedOrigins.length === 1 && allowedOrigins[0] === '*') return true;
 

@@ -63,7 +63,7 @@ Maximum concurrent WebSocket connections from a single IP address.
 
 ### websocket.allowedOrigins — @default <span style="color: #2ecc71">unset</span> (same-origin only)
 
-Which browser origins may open a WebSocket. An upgrade whose `Origin` isn't allowed gets 403; one with no `Origin` header at all is governed by `allowMissingOrigin` below, in every form.
+Which browser origins may open a WebSocket. An upgrade whose `Origin` isn't allowed gets 403; one with no `Origin` header at all is governed by `allowMissingOrigin` below, in every form. An `Origin` header that is present but empty is refused with 403 in every form, `['*']` included, since no client sends one legitimately.
 
 <span style="color: #f39c12">**⚠️ Behavior change in 0.11.0:**</span> before 0.11.0 the default was `[]` and an empty list allowed every origin, so any website could open a socket to your server unless you set a list. Now leaving the option unset allows only the same origin, `['*']` is the only way to allow every origin, and `[]` allows no browser origin at all. An app that served browsers from another origin with the old default must now list that origin (or set `['*']`). A list of origins behaves as before.
 

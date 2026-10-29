@@ -27,7 +27,7 @@ const createTestApp = (customConfig?: Record<string, unknown>): { app: YinzerFlo
  */
 const buildUpgradeRequest = (path: string, key = 'dGhlIHNhbXBsZSBub25jZQ==', origin?: string, extraHeaders = '', host = 'localhost'): string => {
   let req = `GET ${path} HTTP/1.1\r\nHost: ${host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n`;
-  if (origin) req += `Origin: ${origin}\r\n`;
+  if (origin !== undefined) req += `Origin: ${origin}\r\n`;
   req += extraHeaders;
   req += '\r\n';
   return req;
@@ -575,6 +575,8 @@ describe('WebSocket Integration', () => {
       ['[]: a missing Origin is allowed', [], {}, 'localhost', undefined, '101 Switching Protocols'],
       ['[]: a missing Origin is refused with allowMissingOrigin: false', [], { allowMissingOrigin: false }, 'localhost', undefined, 'HTTP/1.1 403'],
       ['list: a missing Origin is allowed', ['https://app.example'], {}, 'localhost', undefined, '101 Switching Protocols'],
+      // Security review (0.11.0): an empty Origin header was read as a missing one and allowed as a non-browser client
+      ["an empty Origin is refused, even under ['*']", ['*'], {}, 'localhost', '', 'HTTP/1.1 403'],
       [
         'list: a missing Origin is refused with allowMissingOrigin: false',
         ['https://app.example'],
