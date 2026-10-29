@@ -16,15 +16,17 @@ const MAX_HEADER_VALUE_LENGTH = 8192;
  * parseRequestHeaders('Host: example.com\r\nContent-Type: application/json\r\n\r\n');
  * // Returns { host: 'example.com', 'content-type': 'application/json' }
  * ```
+ *
+ * `repeatedNames`, when given, receives the lower-cased name of every header that appeared on more than one line.
  */
-export const parseRequestHeaders = (rawHeaders: string): Partial<Record<InternalHttpHeaders, string>> => {
+export const parseRequestHeaders = (rawHeaders: string, repeatedNames?: Set<string>): Partial<Record<InternalHttpHeaders, string>> => {
   if (!rawHeaders) return {};
 
   // Step 1: Pre-parse validation (format, DoS protection)
   validateRawHeaders(rawHeaders);
 
   // Step 2: Parse header structure into key-value pairs
-  const parsedHeaders = parseHeaderStructure(rawHeaders);
+  const parsedHeaders = parseHeaderStructure(rawHeaders, repeatedNames);
 
   // Step 3: Sanitize header values (remove control chars, etc.)
   const sanitizedHeaders = sanitizeHeaders(parsedHeaders);
@@ -54,7 +56,7 @@ export const validateRawHeaders = (rawHeaders: string): void => {
  * Step 2: Parse header structure into key-value pairs
  * Handles line ending normalization and basic parsing
  */
-export const parseHeaderStructure = (rawHeaders: string): Record<string, string> => {
+export const parseHeaderStructure = (rawHeaders: string, repeatedNames?: Set<string>): Record<string, string> => {
   const headers: Record<string, string> = {};
 
   // Normalize line endings and split
@@ -91,6 +93,8 @@ export const parseHeaderStructure = (rawHeaders: string): Record<string, string>
     // join them with ',' in order, so a proxy that adds its own line doesn't erase the hops before it.
     const name = key.toLowerCase();
     const previous = headers[name];
+    // Last-wins for everything but X-Forwarded-For; callers that must refuse a repeat (Host, an upgrade's Origin) ask
+    if (previous !== undefined) repeatedNames?.add(name);
     headers[name] = name === 'x-forwarded-for' && previous ? `${previous}, ${value}` : value;
   }
 

@@ -347,6 +347,8 @@ export interface InternalRequestImpl extends Request {
    * before any hook runs (RequestHandlerImpl.handle, and the WebSocket upgrade path).
    */
   readonly _isRequestLineValid: boolean;
+  /** Lower-cased names of headers that appeared on more than one line. `host` here is a 400 on every request. */
+  readonly _repeatedHeaders: ReadonlySet<string>;
 
   /**
    * The original raw request data as received from the client.

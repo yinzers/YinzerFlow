@@ -742,7 +742,7 @@ YinzerFlow implements several security measures for core concepts:
 
 ### 🛡️ Strict Request Line (RFC 9112)
 - **Problem**: A lenient request-line parser lets two parsers read one request differently (a tab-separated line gave hooks one path and the router another), and echoing the client's version token let a bare line feed write a header into the response
-- **YinzerFlow Solution**: One parser reads the request line for HTTP requests and WebSocket upgrades alike, and accepts only `METHOD SP target SP HTTP/1.0` or `HTTP/1.1`. Anything else (tabs or repeated spaces, trailing bytes, another version) gets a 400 before any hook runs. The response status line is always `HTTP/1.1`, never the client's token.
+- **YinzerFlow Solution**: One parser reads the request line for HTTP requests and WebSocket upgrades alike, and accepts only `METHOD SP target SP HTTP/1.0` or `HTTP/1.1`. Anything else (tabs or repeated spaces, trailing bytes, another version) gets a 400 before any hook runs. The response status line is always `HTTP/1.1`, never the client's token. A request with more than one `Host` header also gets a 400 before any hook runs (RFC 9112 §3.2, since 0.11.0), so a proxy in front and YinzerFlow can't route one request to two hosts.
 
 <span style="color: #f39c12">**⚠️ Behavior change in 0.10.0:**</span> request lines must use single spaces and HTTP/1.0 or HTTP/1.1. Before 0.10.0 other shapes were read leniently (and an unrecognized version was echoed back in the status line); now they get 400.
 

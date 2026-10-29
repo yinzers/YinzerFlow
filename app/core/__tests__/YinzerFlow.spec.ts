@@ -841,6 +841,26 @@ describe('YinzerFlow', () => {
         expect(contentLength).toEqual(contentLengthZero ? ['Content-Length: 0'] : []);
       });
 
+      // Security review (0.11.0): a repeated Host was last-wins, so a front proxy and YinzerFlow could route one request to
+      // two different hosts. RFC 9112 §3.2: more than one Host is a 400. Tier: High (request framing, untrusted input).
+      it.each([
+        ['two Host lines', ['Host: other.example']],
+        ['two Host lines in different case', ['host: other.example']],
+      ])('should answer 400 to a request with %s', async (_label, extraHeaders) => {
+        let handlerRan = false;
+        app.get('/host', () => {
+          handlerRan = true;
+          return { ok: true };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('GET', '/host', extraHeaders));
+
+        expect(response).toStartWith('HTTP/1.1 400 Bad Request');
+        expect(handlerRan).toBe(false);
+      });
+
       it('should handle custom headers', async () => {
         app.get('/custom-headers', (ctx) => {
           ctx.response.addHeaders({

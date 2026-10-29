@@ -713,8 +713,8 @@ export class YinzerFlow extends SetupImpl {
     const clientAddress = context.request.ipAddress;
 
     // One request-line parser for hooks, routing and the handshake: the shared HTTP parser's
-    if (!context._request._isRequestLineValid) {
-      requestHandler._rejectMalformedRequestLine(context);
+    // Origin decides the cross-site check and Host the same-origin compare, so neither may be repeated on an upgrade
+    if (requestHandler._rejectMalformedHead(context, ['host', 'origin'])) {
       this._sendContextResponse({ context, socket, startTime, requestBytes: buffer.length });
       return;
     }

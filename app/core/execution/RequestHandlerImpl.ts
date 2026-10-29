@@ -30,10 +30,7 @@ export class RequestHandlerImpl {
     try {
       // 0. Derive the one path that routing AND hook matching both use, so they can never disagree.
       // Traversal, encoded slashes and malformed encoding are rejected here, before any hook runs.
-      if (!context._request._isRequestLineValid) {
-        this._rejectMalformedRequestLine(context);
-        return void 0;
-      }
+      if (this._rejectMalformedHead(context, ['host'])) return void 0;
 
       const canonicalPath = canonicalizeRequestPath(context.request.path);
       if (canonicalPath === null) {
@@ -206,6 +203,25 @@ export class RequestHandlerImpl {
       message: '400 Bad Request: request path contains a dot segment, an encoded slash or backslash, a NUL, or invalid percent-encoding',
     });
     context._response._parseResponseIntoString();
+  }
+
+  /**
+   * Answer 400, before any hook runs, to a request head that can't be read one way: a request line that isn't
+   * `METHOD SP target SP HTTP/1.x`, or one of `uniqueHeaders` (lower-cased) on more than one line. RFC 9112 §3.2 makes a
+   * repeated Host a 400 on every request; a WebSocket upgrade also refuses a repeated Origin. Last-wins would let a
+   * front proxy and YinzerFlow read different values. Returns true when it answered.
+   */
+  _rejectMalformedHead(context: InternalContextImpl, uniqueHeaders: Array<string>): boolean {
+    if (!context._request._isRequestLineValid) {
+      this._rejectMalformedRequestLine(context);
+      return true;
+    }
+    const repeated = uniqueHeaders.find((name) => context._request._repeatedHeaders.has(name));
+    if (repeated === undefined) return false;
+    context.response.setStatusCode(httpStatusCode.badRequest);
+    context._response._setBody({ success: false, message: `400 Bad Request: more than one ${repeated} header` });
+    context._response._parseResponseIntoString();
+    return true;
   }
 
   /** Answer a request line that isn't `METHOD SP target SP HTTP/1.x` with 400, before any hook runs. */

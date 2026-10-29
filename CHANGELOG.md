@@ -14,6 +14,7 @@ new YinzerFlow({ websocket: { allowedOrigins: ['*'] } }); // the old allow-all d
 
 ### Security
 
+- **A repeated `Host` header is a 400, and so is a repeated `Origin` on a WebSocket upgrade** — both were last-wins, so a proxy in front could route or check one value while YinzerFlow (and the WebSocket origin check) read another. RFC 9112 §3.2 makes more than one `Host` a 400 on every request; both are now answered 400 before any hook runs.
 - **Oversized WebSocket frames are refused from their header** — the server waited for a whole frame before comparing its length with `websocket.maxPayloadLength`, so a client could announce a 2 GB frame and stream the body slowly, holding the connection open while hundreds of megabytes buffered. The announced length (and, for a fragment, the message total so far plus that length) is now checked as soon as the length bytes arrive, and the connection closes with 1009 before any of the body is buffered. Received data is no longer re-copied on every TCP chunk.
 - **`websocket.maxPayloadLength` now bounds whole messages** — it was checked only per frame on the wire, so a client could send a message of any size split into fragments, or a compressed frame that inflated far past the limit (with compression enabled, a 64 KB frame reached the `message` handler as 64 MB, enough to exhaust memory). Fragments are now counted against the limit as they arrive and decompression stops at the limit; either closes the connection with 1009, like an oversized frame.
 

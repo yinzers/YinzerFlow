@@ -599,6 +599,27 @@ describe('WebSocket Integration', () => {
       socket.destroy();
     });
 
+    // Security review (0.11.0): a repeated Host or Origin on an upgrade was last-wins, so the origin check could read a
+    // different value than a front proxy or a logging hook did. Both are a 400 before any hook runs.
+    // Tier: High (origin check input; each row is one header that must be unique).
+    it.each([
+      ['two Host lines', 'Host: evil.example\r\n', undefined],
+      ['two Origin lines', 'Origin: http://localhost\r\n', 'http://localhost'],
+      ['two Origin lines that disagree', 'Origin: https://evil.example\r\n', 'http://localhost'],
+    ])('should answer 400 to an upgrade with %s', async (_label, extraHeaders, origin) => {
+      const { testPort } = createTestApp();
+      app = new YinzerFlow({ port: testPort, host: '127.0.0.1', gracefulShutdownTimeout: 0, websocket: { allowedOrigins: ['*'] } });
+      let hookRan = false;
+      app.beforeAll([() => void (hookRan = true)]);
+      app.ws('/ws', { message() {} });
+      await app.listen();
+
+      const { socket, response } = await connectWs(testPort, '/ws', undefined, origin, extraHeaders);
+      expect(response).toStartWith('HTTP/1.1 400 Bad Request');
+      expect(hookRan).toBe(false);
+      socket.destroy();
+    });
+
     // Bug (0.10.x): any string was accepted, so a typo ('https://app.example/', a bare host, '*.example') silently never
     // matched, and '*' next to real origins was ambiguous. Tier: High (validator for the CSWSH defence).
     it.each([
