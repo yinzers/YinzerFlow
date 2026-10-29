@@ -288,3 +288,19 @@ before touching the area an entry names.
   or answer 400 for an absolute-form target, plus a table row in the canonicalization test and one integration test.
 - **Trigger**: the first forward- or reverse-proxy deployment that sends absolute-form targets, or the first bug report
   of a 404 for a `http://...` request line.
+
+## changelog-gate-no-tag-fail-open — `check-changelog.sh` passes when no `v*` tag is reachable
+
+- **What**: `scripts/check-changelog.sh` finds its baseline with `git describe --tags --abbrev=0 --match 'v*'`
+  and exits 0 ("nothing to compare against") when that finds nothing. In a checkout without tags (a shallow
+  clone, or a fetch that skipped tags) the gate therefore passes for any `app/` change with no changelog entry.
+  A failing `git describe` and a genuinely tagless repo look the same to the script.
+- **Why deferred**: the only places it runs today are green-check on a full local checkout and the release
+  script in the `bun` service, both of which have the tags; a hard failure on "no tag" would also break a
+  brand-new repo before its first release. Telling "no tags exist" from "tags were not fetched" needs a signal
+  the script does not have yet (for example `git rev-parse --is-shallow-repository`, or a required-tag setting).
+- **Cost later**: low. Fail with exit 2 when `git rev-parse --is-shallow-repository` is true, or when the
+  caller says tags are required, plus one table row in `scripts/__tests__/check-changelog.test.ts` using the
+  fake git.
+- **Trigger**: a CI lane that runs this check on a shallow clone (a default `actions/checkout` fetches depth 1
+  and no tags), or any report of the check passing where an `app/` change had no entry.
