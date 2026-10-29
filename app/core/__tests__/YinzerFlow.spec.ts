@@ -897,6 +897,8 @@ describe('YinzerFlow', () => {
         ['a header name starting with whitespace (obs-fold)', 'GET /hdr HTTP/1.1\r\nHost: localhost\r\n X-Forwarded-For: 1.2.3.4\r\n\r\n'],
         ['a bare LF inside the head', 'GET /hdr HTTP/1.1\r\nHost: localhost\nX-Forwarded-For: 1.2.3.4\r\n\r\n'],
         ['a bare CR inside the head', 'GET /hdr HTTP/1.1\r\nHost: localhost\rX-Forwarded-For: 1.2.3.4\r\n\r\n'],
+        ['an obs-fold line with no colon', 'GET /hdr HTTP/1.1\r\nHost: localhost\r\nX-Forwarded-For: 1.2.3.4\r\n\t, 5.6.7.8\r\n\r\n'],
+        ['a line with no colon', 'GET /hdr HTTP/1.1\r\nHost: localhost\r\nnot-a-header\r\n\r\n'],
       ])('should answer 400 to a request head with %s', async (_label, request) => {
         let handlerRan = false;
         app.get('/hdr', () => {

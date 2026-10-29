@@ -74,10 +74,16 @@ export const parseHeaderStructure = (rawHeaders: string, report?: InternalHeader
   const headerLines = normalizedHeaders.split('\n');
 
   for (const line of headerLines) {
+    // An obs-fold line (leading space or tab) and a line with no colon are 400s (RFC 9112 §5.1, §5.2), not lines to skip:
+    // another parser may read a fold as part of the previous header's value
+    if (report && (line.startsWith(' ') || line.startsWith('\t'))) report.malformed = true;
     if (!line.trim()) continue;
 
     const colonIndex = line.indexOf(':');
-    if (colonIndex === -1) continue;
+    if (colonIndex === -1) {
+      if (report) report.malformed = true;
+      continue;
+    }
 
     const rawKey = line.slice(0, colonIndex);
     const key = rawKey.trim();
