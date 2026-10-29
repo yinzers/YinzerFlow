@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.10.0] - 2026-10-29
+
+### Breaking Changes
+
+- **WebSocket upgrade rejection now requires explicit API** — hooks that answer an upgrade with a 2xx status now refuse it with 403 instead of accepting it. Use the new `rejectUpgrade()` method to explicitly reject upgrades with any 4xx/5xx status.
+  ```javascript
+  // Old: returning a 2xx from a hook would accept the upgrade
+  // New: must explicitly reject
+  ctx.rejectUpgrade(403, 'Forbidden');
+  ```
+  (ab541a0)
+
+- **WebSocket send() return value changed** — `send()` now returns a status string ('sent' | 'buffered' | 'dropped') instead of a boolean, allowing callers to distinguish between successful sends, buffered messages, and dropped messages when the socket is destroyed. (37f81a2)
+
+### Features
+
+- **WebSocket hooks receive global state** — `upgrade()` now receives `req.state` populated from global `beforeAll` hooks, enabling consistent state sharing across HTTP and WebSocket connections. (d09761c)
+- **Explicit WebSocket upgrade rejection** — new `rejectUpgrade(status, reason?)` method allows hooks to reject upgrades with any 4xx/5xx status code. (67eba50)
+- **WebSocket message filtering in hooks** — `wsBeforeMessage` hooks can now drop a message by returning `false`, giving applications fine-grained control over incoming messages. (a7b1365)
+
+### Bug Fixes
+
+- **HTTP request parsing now RFC 9112 compliant** — empty lines before the request line are now ignored per RFC 9112 2.2 specification. (5139e54)
+- **Strict HTTP request-line parsing** — request-line parser is now strict and never echoes the client's HTTP version back, preventing potential version confusion attacks. (364a693)
+- **WebSocket per-IP slot leak on mid-upgrade disconnect** — fixed a resource leak where clients disconnecting during the upgrade handshake would not release their per-IP capacity slot. (4086954)
+- **WebSocket capacity enforcement timing** — IP capacity now enforced before running app code, preventing unnecessary processing when a client is already at its connection cap. (1d96a0d)
+- **WebSocket upgrade refusal consistency** — all upgrade refusals now go through the context response object, ensuring uniform error handling. (7b60c15)
+- **WebSocket upgrade error responses** — upgrade errors now correctly return 500, and malformed upgrades return 400. (7832551)
+- **Global HTTP hooks on upgrades** — `beforeAll` and `afterAll` hooks and rate limiter now run on WebSocket upgrades, not just HTTP requests. (8be8f5d)
+- **Hooks on unmatched routes** — `beforeAll` and `afterAll` hooks now correctly execute even for unmatched routes. (99a3089)
+- **HEAD request body stripping in hooks** — hook responses to HEAD requests now correctly strip the body. (04bc9a8)
+- **WebSocket send() on destroyed socket** — calling `send()` on a destroyed socket now reports 'dropped' instead of failing silently. (d41b510)
+- **WebSocket handler crash recovery** — a throwing message handler no longer wedges the connection; subsequent messages are processed normally. (584d26d)
+
+### Security
+
+- **Header parse error log sanitization** — client bytes in header-parse error logs are now sanitized to prevent log injection attacks across HTTP and WebSocket upgrades. (a911d0e)
+- **Missing Origin header support** — added `allowMissingOrigin` option to explicitly control whether upgrades with a missing Origin header are allowed, improving security posture for Origin validation. (b5d2dad)
+
+### Internal
+
+- **Publish failure handling** — missing executables in publish operations are now treated as failed runs rather than crashes, improving reliability of the release process. (0589f92)
+
 ## [0.9.0] - 2026-10-28
 
 Security release. Read the breaking changes before upgrading; the full upgrade notes are in `docs/modules/rate-limiting.md` under "Behavior change in 0.9.0".
