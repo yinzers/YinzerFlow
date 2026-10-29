@@ -367,3 +367,18 @@ before touching the area an entry names.
 - **Trigger**: a memory report from a deployment (RSS growth under many slow WebSocket senders), or the next change to
   WebSocket connection limits (`maxConnectionsPerIp`, `maxPayloadLength` defaults or the per-IP accounting).
 
+## chunked-request-bodies — Transfer-Encoding: chunked requests get 501
+
+- **What**: since 0.11.0 `_requestFraming` (app/core/YinzerFlow.ts) answers any request carrying `Transfer-Encoding` with
+  501 Not Implemented, and Content-Length plus Transfer-Encoding with 400. Before that a chunked body reached the
+  handler raw, chunk-size lines included. Clients that stream a body without knowing its length (a Node
+  `http.request` POST with no Content-Length, `fetch` with a stream body) can't send to YinzerFlow.
+- **Why deferred**: the security review asked to stop mis-framing chunked bodies before release; a correct decoder
+  (chunk sizes, extensions, trailers, the body-size cap applied while decoding, `Transfer-Encoding` values other than
+  `chunked`) is a feature with its own tests, not a release-blocker patch.
+- **Cost later**: medium; a streaming chunk decoder in the body phase of `_handleConnection` that enforces
+  `_maxBufferSize` as it decodes, hands the handler the decoded body and drops `Transfer-Encoding`, plus a table test of
+  valid, malformed and oversized chunk streams.
+- **Trigger**: a user report of a streaming client, such as a Node `http.request` POST without a Content-Length,
+  getting 501.
+

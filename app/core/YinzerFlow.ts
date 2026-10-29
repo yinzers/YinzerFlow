@@ -31,6 +31,7 @@ import { _wrapWebSocketHandlers } from '@core/modules/websocket/WebSocketHandler
 import { _isUpgradeRejection } from '@core/modules/websocket/WebSocketUpgradeRejection.ts';
 import { wsCloseCode } from '@constants/websocket.ts';
 import { httpStatusCode } from '@constants/http.ts';
+import { parseRequestHeaders } from '@core/execution/utils/parseRequestHeaders.ts';
 import { mapStatusCodeToMessage } from '@core/execution/utils/mapStatusCodeToMessage.ts';
 import type { InternalHttpStatusCode } from '@typedefs/constants/http.js';
 import type { WebSocketHandlers, WebSocketRouteOptions } from '@typedefs/public/WebSocket.js';
@@ -494,13 +495,39 @@ export class YinzerFlow extends SetupImpl {
   }
 
   /**
-   * Extract Content-Length value from raw HTTP headers.
-   * Returns 0 if the header is missing (e.g. GET requests with no body).
+   * Decide how long the request body is, from the header block parsed into a map by the same parser the request uses,
+   * never by searching the raw text (a decoy `X-Note: content-length: 9` or `X-Content-Length` decided framing that way).
+   * RFC 9112 §6: Transfer-Encoding gets 501 until chunked decoding exists, and with Content-Length as well 400 (§6.1, a
+   * smuggling shape); a repeated or non-numeric Content-Length is 400 (§6.3). No Content-Length means no body.
+   * A head the parser rejects is framed as bodiless here and answered by the request path, as before.
    */
-  private _parseContentLength(buffer: Buffer, headerEndIndex: number): number {
-    const headersStr = buffer.subarray(0, headerEndIndex).toString();
-    const match = /content-length:\s*(?<digits>\d+)/i.exec(headersStr);
-    return match?.groups?.digits ? parseInt(match.groups.digits, 10) : 0;
+  private _requestFraming(
+    buffer: Buffer,
+    requestStart: number,
+    headerEndIndex: number,
+  ): { bodyLength: number } | { statusCode: InternalHttpStatusCode; message: string } {
+    const requestLineEnd = buffer.indexOf('\r\n', requestStart);
+    const headersRaw = requestLineEnd >= headerEndIndex ? '' : buffer.subarray(requestLineEnd + 2, headerEndIndex).toString();
+    const report = { repeatedNames: new Set<string>(), malformed: false };
+    let headers: ReturnType<typeof parseRequestHeaders> = {};
+    try {
+      headers = parseRequestHeaders(headersRaw, report);
+    } catch {
+      return { bodyLength: 0 };
+    }
+
+    const contentLength = headers['content-length'];
+    if (headers['transfer-encoding'] !== undefined) {
+      if (contentLength !== undefined) {
+        return { statusCode: httpStatusCode.badRequest, message: 'A request may not carry both Content-Length and Transfer-Encoding' };
+      }
+      return { statusCode: httpStatusCode.notImplemented, message: 'Transfer-Encoding is not supported; send the body with a Content-Length' };
+    }
+    if (contentLength === undefined) return { bodyLength: 0 };
+    if (report.repeatedNames.has('content-length') || !/^\d+$/.test(contentLength)) {
+      return { statusCode: httpStatusCode.badRequest, message: 'Content-Length must be a single number of bytes' };
+    }
+    return { bodyLength: Number(contentLength) };
   }
 
   /**
@@ -676,7 +703,15 @@ export class YinzerFlow extends SetupImpl {
       }
     }
 
-    state.expectedBodyLength = this._parseContentLength(buffer, state.headerEndIndex);
+    const framing = this._requestFraming(buffer, requestStart, state.headerEndIndex);
+    if ('statusCode' in framing) {
+      // The body's end is unknown, so the connection can't be reused: answer and close
+      state.requestDispatched = true;
+      this._log.debug(`Refused request framing from ${clientAddress}: ${framing.message}`);
+      this._sendHttpError(socket, framing.statusCode, framing.message);
+      return;
+    }
+    state.expectedBodyLength = framing.bodyLength;
     const bodyStart = state.headerEndIndex + 4;
 
     if (buffer.length - bodyStart >= state.expectedBodyLength) {

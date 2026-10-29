@@ -648,6 +648,34 @@ describe('YinzerFlow', () => {
     });
 
     describe('Malformed Requests', () => {
+      // Security review (0.11.0): Content-Length was found with an unanchored regex over the raw head, so a decoy
+      // `X-Note: content-length: 999999` (or `X-Content-Length`) decided framing, and Transfer-Encoding was never read: a
+      // chunked body reached the handler raw, and Content-Length won over TE (RFC 9112 §6.1). Framing now comes from the
+      // parsed header map. Tier: High (request framing, untrusted input).
+      it.each([
+        ['a normal POST', ['Content-Type: application/json', 'Content-Length: 7'], '{"a":1}', 'HTTP/1.1 200 OK'],
+        ['a decoy content-length inside another header', ['X-Note: content-length: 999999', 'Content-Length: 7'], '{"a":1}', 'HTTP/1.1 200 OK'],
+        ['X-Content-Length, which does not frame', ['X-Content-Length: 50'], '', 'HTTP/1.1 200 OK'],
+        ['a repeated Content-Length', ['Content-Length: 7', 'Content-Length: 7'], '{"a":1}', 'HTTP/1.1 400 Bad Request'],
+        ['a non-numeric Content-Length', ['Content-Length: 7abc'], '{"a":1}', 'HTTP/1.1 400 Bad Request'],
+        ['a Content-Length list', ['Content-Length: 7, 7'], '{"a":1}', 'HTTP/1.1 400 Bad Request'],
+        ['Transfer-Encoding: chunked', ['Transfer-Encoding: chunked'], '7\r\n{"a":1}\r\n0\r\n\r\n', 'HTTP/1.1 501 Not Implemented'],
+        ['Content-Length and Transfer-Encoding together', ['Content-Length: 7', 'Transfer-Encoding: chunked'], '{"a":1}', 'HTTP/1.1 400 Bad Request'],
+      ])('should frame a request body from the parsed headers: %s', async (_label, headers, body, statusLine) => {
+        let handlerRan = false;
+        app.post('/framed', ({ request }) => {
+          handlerRan = true;
+          return { received: request.body };
+        });
+
+        await app.listen();
+
+        const response = await sendHttpRequest(testPort, createHttpRequest('POST', '/framed', headers, body));
+
+        expect(response).toStartWith(statusLine);
+        expect(handlerRan).toBe(statusLine === 'HTTP/1.1 200 OK');
+      });
+
       it('should handle malformed HTTP requests gracefully', async () => {
         await app.listen();
 
