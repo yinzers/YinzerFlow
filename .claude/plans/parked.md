@@ -382,3 +382,28 @@ before touching the area an entry names.
 - **Trigger**: a user report of a streaming client, such as a Node `http.request` POST without a Content-Length,
   getting 501.
 
+## ws-length-encoding-lenient — non-minimal lengths accepted; a top-bit 64-bit length closes 1009
+
+- **What**: `_parseFrameHeader` (app/core/modules/websocket/WebSocketFrame.ts) accepts a payload length in a longer
+  encoding than needed (a 16-bit length under 126, a 64-bit length under 65536), which RFC 6455 §5.2 requires to be
+  minimal, and a 64-bit length with its most significant bit set (which §5.2 forbids) is read as a huge number and
+  closed with 1009 by the size check instead of 1002.
+- **Why deferred**: security review note for 0.11.0; neither shape gets a body buffered past `maxPayloadLength` since
+  cb56dd2, so the only effect is accepting a non-conforming encoding and the close code a broken client sees.
+- **Cost later**: trivial; two rules in `_headerViolation` (or a flag from `_parseFrameHeader`) returning 1002, plus
+  three table rows next to the announced-length tests.
+- **Trigger**: the next change to `_parseFrameHeader` or `_headerViolation`, or an Autobahn-style conformance run.
+
+## ws-pong-bypasses-backpressure — pongs are written past the backpressure limit
+
+- **What**: `_handleControlFrame` answers every ping with `this._socket.write(pongFrame)` directly, not through
+  `_writeFrame`, so pongs are never counted against `backpressure.limit` or dropped under the `'drop'` strategy. A
+  client that sends pings and never reads could grow the socket's write queue by up to 125 bytes plus header per ping.
+  Nothing else bounds it: `messageRateLimit` counts only delivered messages, not control frames.
+- **Why deferred**: security review note for 0.11.0, marked inconclusive: whether the kernel and Bun's socket buffering
+  let the queue grow meaningfully before the peer's window closes hasn't been measured.
+- **Cost later**: low; route pongs through `_writeFrame` (or skip a pong while backpressured, as RFC 6455 §5.5.3 lets
+  an endpoint answer only the latest ping), plus a test with a backpressured mock socket.
+- **Trigger**: a raw low-buffer client probe (pings at line rate, receive window near zero) showing write-queue growth,
+  or a memory report from a deployment.
+
