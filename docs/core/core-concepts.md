@@ -135,7 +135,7 @@ app.get('/api/users/:id', ({ response }) => {
 
 ### Status Codes
 
-`setStatusCode` takes any integer from 200 to 599. Every code in the IANA registry (plus 418) is listed in the exported `httpStatusCode` constant, offered by autocomplete, and sent with its registered reason phrase, such as `503 Service Unavailable`. Any other code in range is sent with its class's phrase (`Success`, `Redirection`, `Client Error`, `Server Error`), so `setStatusCode(299)` answers `299 Success`. A code outside 200 to 599, or a non-integer, throws, and the request is answered by your `onError` handler. That includes every 1xx: they are interim responses, never a final one, and the WebSocket handshake's `101` is sent by `app.ws()`.
+`setStatusCode` takes any integer from 200 to 599. Every assigned code in the IANA registry (plus 418) is listed in the exported `httpStatusCode` constant, offered by autocomplete, and sent with its registered reason phrase, such as `503 Service Unavailable`. Any other code in range is sent with its class's phrase (`Success`, `Redirection`, `Client Error`, `Server Error`), so `setStatusCode(299)` answers `299 Success`. A code outside 200 to 599, or a non-integer, throws, and the request is answered by your `onError` handler. That includes every 1xx: they are interim responses, never a final one, and the WebSocket handshake's `101` is sent by `app.ws()`.
 
 `204 No Content`, `205 Reset Content` and `304 Not Modified` are always sent with no body, whatever the handler returns, because clients read no body after them. `204` and `304` also carry no `Content-Length`; `205` carries `Content-Length: 0`.
 
